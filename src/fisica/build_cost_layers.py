@@ -24,7 +24,7 @@ import rasterio
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fisica.edge_cost import DEFAULT_MAX_SLOPE_DEG, NEIGHBOURS, edge_costs  # noqa: E402
-from fisica.metabolico import J_PER_WH  # noqa: E402
+from fisica.metabolic import J_PER_WH  # noqa: E402
 
 
 def cell_cost_wh(energy_j, cell_size_m):

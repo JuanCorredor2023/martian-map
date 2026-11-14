@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from fisica.metabolico import (G_EARTH, G_MARS, G_MOON, J_PER_WH, TOTAL_MASS_KG,
+from fisica.metabolic import (G_EARTH, G_MARS, G_MOON, J_PER_WH, TOTAL_MASS_KG,
                                apollo_speed, liters_o2, santee_2001_power,
                                segment_cost)
 

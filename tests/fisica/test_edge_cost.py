@@ -10,7 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from fisica.edge_cost import NEIGHBOURS, edge_costs
-from fisica.metabolico import segment_cost
+from fisica.metabolic import segment_cost
 
 N, E, S, W, NE = 0, 2, 4, 6, 1
 

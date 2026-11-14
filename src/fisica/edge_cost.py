@@ -17,7 +17,7 @@ Output layout (shared contract with the graph code):
 
 import numpy as np
 
-from .metabolico import G_MARS, TOTAL_MASS_KG
+from .metabolic import G_MARS, TOTAL_MASS_KG
 
 # (d_row, d_col) for k = 0..7. Row grows southwards (north-up raster).
 NEIGHBOURS = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)]
@@ -39,7 +39,7 @@ def _shifted(a, d_row, d_col):
 
 
 def santee_power_array(mass_kg, v, alpha_deg, g_mps2):
-    """Vectorised version of metabolico.santee_2001_power (total only)."""
+    """Vectorised version of metabolic.santee_2001_power (total only)."""
     a = np.radians(alpha_deg)
     w_level = (3.28 * mass_kg + 71.1) * (0.661 * v * np.cos(a) + 0.115)
     up = 3.5 * mass_kg * g_mps2 * v * np.sin(a)
