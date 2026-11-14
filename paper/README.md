@@ -29,7 +29,7 @@ Besides the demo, the team will submit a scientific paper. This folder collects 
 | E2 · Curiosity's traverse on the grid and terrain-only baseline | [notes/E2_curiosity_traverse.md](notes/E2_curiosity_traverse.md) | Juan |
 | Base grid, terrain features, tiles | to do | JB |
 | E1 · MaxEnt IRL | to do | Juan |
-| E3 · metabolic and O2 cost | to do | Sebas |
+| E3 · metabolic and O2 cost | [notes/E3_metabolic_cost.md](notes/E3_metabolic_cost.md) | Sebas |
 | E4 · graph, R(v), walkback · MVP baselines | to do | Aaron |
 | E5 · orienteering · E6 benchmark | to do | Diana |
 | E8 · boxwork top-hat and U-Net | to do | JB |

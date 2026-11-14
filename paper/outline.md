@@ -20,7 +20,7 @@ Why EVA planning on Mars needs terrain-aware, energy-aware routes; the boxwork a
 - 3.1 Base grid and terrain features → *base grid note*
 - 3.2 Curiosity's traverse on the grid and terrain-only baseline → [E2](notes/E2_curiosity_traverse.md)
 - 3.3 Learned terrain cost (MaxEnt IRL) → *E1 note*
-- 3.4 Metabolic and O2 cost under Mars gravity → *E3 note*
+- 3.4 Metabolic and O2 cost under Mars gravity → [E3](notes/E3_metabolic_cost.md)
 - 3.5 Graph, return-energy layer R(v) and walkback routes → *E4 note*
 - 3.6 Station selection (orienteering) → *E5 note*
 - 3.7 Boxwork ridges and hollows (top-hat, U-Net) → *E8 note*
