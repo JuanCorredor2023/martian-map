@@ -29,10 +29,21 @@ function sunDirection(azDeg, elDeg) {
   return new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
 }
 
+// Centred message box. It can always be closed: the cross, the Escape key or a
+// click outside it.
 function showMessage(html) {
-  ui('message').innerHTML = html;
-  ui('message').hidden = false;
+  const box = ui('message');
+  box.innerHTML = `<button id="message-close" title="Close (Esc)" aria-label="Close">×</button>${html}`;
+  box.hidden = false;
+  ui('message-close').addEventListener('click', hideMessage);
 }
+
+function hideMessage() { ui('message').hidden = true; }
+
+window.addEventListener('keydown', e => { if (e.key === 'Escape') hideMessage(); });
+window.addEventListener('pointerdown', e => {
+  if (!ui('message').hidden && !ui('message').contains(e.target)) hideMessage();
+});
 
 async function main() {
   if (window.innerWidth < 700 || window.innerHeight < 500) ui('about').open = false;
@@ -140,7 +151,11 @@ async function main() {
     const result = CHECKS[check] ? CHECKS[check](window.viz3d) : {error: `unknown check: ${check}`};
     window.viz3d.checkResult = result;
     console.log(JSON.stringify(result));
-    showMessage(`<code style="text-align:left;white-space:pre-wrap">${JSON.stringify(result, null, 1)}</code>`);
+    const plain = new URLSearchParams(params);
+    plain.delete('check');
+    showMessage(`<div class="muted">Result of the "${check}" check, shown because the address has
+      <b>?check=${check}</b>. <a href="?${plain}">Open the map without it</a>.</div>
+      <code style="text-align:left;white-space:pre-wrap">${JSON.stringify(result, null, 1)}</code>`);
     dirty = true;
   }
 }

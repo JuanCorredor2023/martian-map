@@ -39,6 +39,11 @@
           cursor: pointer; color: var(--text); font: inherit; }
   #home svg { display: block; width: 22px; height: 22px; }
   #message { top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 460px; text-align: center; }
+  #message { padding-top: 30px; max-height: 80%; overflow-y: auto; }
+  #message-close { position: absolute; top: 4px; right: 6px; width: 26px; height: 26px; border: 0;
+                   border-radius: 6px; background: transparent; color: var(--text); font-size: 20px;
+                   line-height: 1; cursor: pointer; }
+  #message-close:hover { background: rgba(255, 255, 255, 0.12); }
   #message code { display: block; margin-top: 8px; padding: 6px 8px; border-radius: 4px;
                   background: #1c222b; color: var(--text); user-select: all; }
   @media (max-width: 520px) { #info { width: auto; right: 76px; } }
