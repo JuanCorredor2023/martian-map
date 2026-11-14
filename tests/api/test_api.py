@@ -256,3 +256,29 @@ def test_plan_tour_with_e5_respects_duration():
     assert len(ps["visit_order"]) < 3 and ps["time_s"] <= 30 * 60 + 1      # duration binds
     assert len(pl["stop_index"]) == len(pl["visit_order"])
     assert all(b >= a for a, b in zip(pl["used_wh"], pl["used_wh"][1:]))
+
+
+def test_human_cost_graph_vs_e3():
+    from api import planner
+    if planner.e1_weights_path(REPO / "data" / "base") is None:
+        pytest.skip("E1 weights (e1-sand-v1) not downloaded")
+    import numpy as np
+    base = str(REPO / "data" / "base")
+    e3, hu = planner.graph(base, 30.0, False), planner.graph(base, 30.0, True)
+    assert e3.cost_model == "E3" and "E1" in hu.cost_model
+    a, b = e3.csr("energy_j"), hu.csr("energy_j")
+    assert a.nnz == b.nnz                                       # same edges
+    ratio = b.data / a.data
+    assert ratio.min() >= 1 - 1e-6 and ratio.max() <= 1.12      # factor 1 .. 1.115 (sand)
+    assert np.array_equal(e3.csr("time_s").data, hu.csr("time_s").data)   # E1 prices energy only
+
+
+def test_plan_reports_cost_model_and_walkback_accepts_flag():
+    body = plan_body(goal=[8143217.5, -284993.2],
+                     stations=[{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5}])
+    for human in (False, True):
+        fc = client.post("/plan", json={**body, "human_cost": human}).json()
+        assert fc["properties"]["human_cost"] is human and fc["properties"]["cost_model"]
+    wb = client.post("/walkback", json={"current_position": [CENTRE[0] + 300, CENTRE[1]],
+                                        "energy_remaining_wh": 150, "human_cost": False}).json()
+    assert "E3" in wb["properties"]["warnings"][0]

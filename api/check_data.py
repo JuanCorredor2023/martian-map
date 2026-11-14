@@ -22,11 +22,17 @@ RELEASES = [
      "saved science stations (the HUD can still add them by hand)"),
     ("e12", ["sep_alert.json", "rad_summary.json", "route_dose.geojson"], "e12-dose-v1", False,
      "the radiation panel"),
-    ("e8", ["sand.tif"], "e8-v0", False, "the sand layer"),
+    ("e8", ["sand.tif"], "e8-v0", False, "the sand layer and E1's sand price"),
+    ("e1", ["e1_weights.json", "sand_mean_5m.tif"], "e1-sand-v1", False,
+     "the human cost (without it /plan uses E3 alone)"),
+    ("tiles/3d", ["."], "generated", False,
+     "the 3D view (run once: python src/viz3d/build_terrain_assets.py)"),
 ]
 
 
 def download_hint(folder, release):
+    if release == "generated":
+        return "python src/viz3d/build_terrain_assets.py"
     zip_name = release.replace("-", "_") + ".zip"
     if release == "stations-v1":
         return f"gh release download {release} --dir data/{folder}"

@@ -176,7 +176,7 @@ def return_home(req: ReturnHomeRequest):
     Dijkstra on time, no new planning)."""
     limit = req.max_cell_slope_deg if req.max_cell_slope_deg else None
     try:
-        out = guide.return_home(str(BASE), limit, req.position, req.habitat)
+        out = guide.return_home(str(BASE), limit, req.position, req.habitat, req.human_cost)
     except ValueError as err:
         raise HTTPException(status_code=422, detail=str(err))
     crs_wkt = (BASE / "crs.wkt").read_text(encoding="utf-8").strip()
@@ -191,7 +191,8 @@ def rejoin(req: RejoinRequest):
     profile (t_s, used_wh, rv_wh, rv_time_s) so the guide can splice it in."""
     limit = req.max_cell_slope_deg if req.max_cell_slope_deg else None
     try:
-        out = guide.rejoin(str(BASE), limit, req.position, req.target, req.habitat)
+        out = guide.rejoin(str(BASE), limit, req.position, req.target, req.habitat,
+                           req.human_cost)
     except ValueError as err:
         raise HTTPException(status_code=422, detail=str(err))
     crs_wkt = (BASE / "crs.wkt").read_text(encoding="utf-8").strip()
@@ -213,20 +214,20 @@ def walkback(req: WalkbackRequest):
     limit = req.max_cell_slope_deg if req.max_cell_slope_deg else None
     base_xy = req.base or _box_centre()
     try:
-        g = wb.grid(str(BASE), limit)
+        g = wb.grid(str(BASE), limit, req.human_cost)
         base_node, pos_node = g.node(*base_xy), g.node(*req.current_position)
     except ValueError as err:
         raise HTTPException(status_code=422, detail=str(err))
-    r_t, r_e = wb.return_fields(str(BASE), limit, base_node)
+    r_t, r_e = wb.return_fields(str(BASE), limit, base_node, req.human_cost)
     if not np.isfinite(r_t.flat[pos_node]):
         raise HTTPException(status_code=422, detail="no walkable path from this position "
                             "to the base (blocked cell or isolated area)")
     e_rem_j = req.energy_remaining_wh * 3600.0
-    f_e = wb.forward_energy(str(BASE), limit, pos_node, e_rem_j)
+    f_e = wb.forward_energy(str(BASE), limit, pos_node, e_rem_j, req.human_cost)
     combined = f_e + r_e                                   # J: go to v, then return
 
     rt_here, re_here = float(r_t.flat[pos_node]), float(r_e.flat[pos_node])
-    warnings = ["PROVISIONAL return fields (E3 costs, Sebas) until rv.tif arrives from E4"]
+    warnings = [f"return fields on {g.cost_model} costs (same graph as /plan)"]
     if req.base is None:
         warnings.append("base not set: using the box centre (illustrative)")
     features = [
@@ -275,6 +276,7 @@ def _plan_tour(req):
                        for s in req.stations]
     fc["properties"] = dict(
         model="santee_2001", source="E5_orienteering_on_E4 (live)", habitat=list(req.start),
+        cost_model=info["cost_model"], human_cost=req.human_cost,
         units={"coordinates": "m", "energy": "Wh", "time": "s"},
         energy_budget_wh=req.energy_budget_wh, energy_usable_wh=p["usable_wh"],
         feasible=p["feasible"], max_cell_slope_deg=req.max_cell_slope_deg,
@@ -312,7 +314,7 @@ def _plan_live(req):
                        for s in req.stations]
     fc["properties"] = dict(
         model="santee_2001", source="E4_walkback (live)",
-        habitat=list(req.start),
+        habitat=list(req.start), cost_model=info["cost_model"], human_cost=req.human_cost,
         units={"coordinates": "m", "energy": "Wh", "time": "s"},
         energy_budget_wh=req.energy_budget_wh, energy_usable_wh=p["usable_wh"],
         feasible=p["feasible"], max_cell_slope_deg=req.max_cell_slope_deg,

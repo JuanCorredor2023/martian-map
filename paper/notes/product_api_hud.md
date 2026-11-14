@@ -61,7 +61,7 @@ The app has two stages: **plan** in the habitat (the HUD) and **guide** during t
 - **Offline:** deck.gl 9.1.14 is vendored in `web/vendor/`, so the HUD and the guide need no internet at demo time. A test fails if a page loads a script from a CDN.
 
 ### Walkback: the red line and the energy-safe area (`api/walkback.py`, `POST /walkback`)
-**Provisional:** E4 (Aaron) owns R(v); until his `rv.tif` arrives, the HUD computes the fields itself from the same E3 directed costs.
+The fields are computed on the **same shared E4 graph** as `/plan` and the guide (`planner.graph`), with E3 or human costs (E3 × E1 sand).
 - R_T(v) and R_E(v): minimum time and energy from v back to the base, from Dijkstra runs from the base on the **reversed** graph that keep each original arc's cost (guide section 20). Cached per base and cell-block limit. Run time is under 1 s per field on the 4 M-node, 25 M-edge graph (`scipy.sparse.csgraph.dijkstra`).
 - Red line: contour R_T = 1800 s, the 30 min emergency-oxygen contingency (guide section 20.4). It depends only on the base.
 - Energy-safe boundary: contour of F_E(p, v) + R_E(v) = E_remaining, with F_E from a forward Dijkstra limited to E_remaining (guide section 20.3). It is recomputed for each position and energy, about 0.3 s.
@@ -133,7 +133,7 @@ Source: `api/walkback.py` fields, computed in the session that produced this not
 
 ## Limitations
 - The multi-station tour (`api/tour.py`) runs only when E5 is importable; until E5 is merged, `/plan` plans the single-goal E4 round trip.
-- The walkback fields are provisional (computed here, not E4's `rv.tif`) and the base defaults to the box centre, which is illustrative; the habitat location is not fixed by the team yet.
+- The base defaults to the box centre until the user moves it (the habitat is a user input).
 - The rubric's empirical base is thin: one drill sample per setting, LPSC 2026 abstracts and JPL releases, no peer-reviewed paper on the in-situ campaign, no published TMAH result. Revisit when they appear.
 - Additive scores can stack near-duplicate stations; BASALT removed redundant locations. Not handled yet (options: minimum distance between stations of the same type, or one station per site with the maximum of its types).
 - A contact station only makes sense if the 2 × 2 km box contains a real contact between units; to be checked on the map.
