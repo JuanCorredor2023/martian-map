@@ -19,7 +19,7 @@ import warnings
 
 import numpy as np
 
-from .metabolic import G_MARS, J_PER_WH, TOTAL_MASS_KG
+from .metabolic import BODY_MASS_KG, G_EARTH, G_MARS, J_PER_WH, TOTAL_MASS_KG
 
 # (d_row, d_col) for k = 0..7. Row grows southwards (north-up raster).
 NEIGHBOURS = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)]
@@ -55,9 +55,35 @@ def santee_power_array(mass_kg, v, alpha_deg, g_mps2):
     return w_level + w_slope
 
 
+def pandolf_cf_power_array(mass_kg, v, alpha_deg, eta=1.0, body_kg=BODY_MASS_KG):
+    """Vectorised metabolic.pandolf_cf_power (sensitivity branch only)."""
+    w, l = body_kg, mass_kg - body_kg
+    g = 100.0 * np.tan(np.radians(alpha_deg))
+    m = 1.5 * w + 2.0 * (w + l) * (l / w) ** 2 + eta * (w + l) * (1.5 * v ** 2 + 0.35 * v * g)
+    cf = eta * (g * (w + l) * v / 3.5 - (w + l) * (g + 6) ** 2 / w + (25 - v ** 2))
+    return np.where(g < 0, m - cf, m)
+
+
+MODELS = ("santee2001", "pandolf_cf", "pandolf_cf_scaled")
+
+
+def model_power(model, mass_kg, v, alpha_deg, g_mps2):
+    """Power for one of MODELS. Only santee2001 is nominal; the Pandolf branches are
+    for sensitivity: pandolf_cf is terrestrial, pandolf_cf_scaled multiplies it by
+    g/g_Earth (the CSRM whole-power scaling, the low-cost scenario of the guide)."""
+    if model == "santee2001":
+        return santee_power_array(mass_kg, v, alpha_deg, g_mps2)
+    if model == "pandolf_cf":
+        return pandolf_cf_power_array(mass_kg, v, alpha_deg)
+    if model == "pandolf_cf_scaled":
+        return pandolf_cf_power_array(mass_kg, v, alpha_deg) * g_mps2 / G_EARTH
+    raise ValueError(f"unknown model {model!r}; expected one of {MODELS}")
+
+
 def edge_costs(dem, cell_size_m=1.0, mass_kg=TOTAL_MASS_KG, g_mps2=G_MARS,
                signed=True, max_slope_deg=DEFAULT_MAX_SLOPE_DEG,
-               cell_slope_deg=None, max_cell_slope_deg=DEFAULT_MAX_CELL_SLOPE_DEG):
+               cell_slope_deg=None, max_cell_slope_deg=DEFAULT_MAX_CELL_SLOPE_DEG,
+               model="santee2001"):
     """Directed time (s) and energy (J) for the 8 edges of every cell.
 
     dem: 2-D float array of elevations in metres, NaN = nodata.
@@ -67,6 +93,7 @@ def edge_costs(dem, cell_size_m=1.0, mass_kg=TOTAL_MASS_KG, g_mps2=G_MARS,
         max_cell_slope_deg are blocked (no edge in or out); this covers the
         cross-slope risk that Santee does not model. Pass max_cell_slope_deg=None
         (or no raster) to disable the block.
+    model: "santee2001" (nominal) or a Pandolf branch, for sensitivity only.
     Returns (time_s, energy_j, alpha_deg), each float32 of shape (8, rows, cols).
     """
     if max_slope_deg >= SPEED_ZERO_SLOPE_DEG:
@@ -95,7 +122,7 @@ def edge_costs(dem, cell_size_m=1.0, mass_kg=TOTAL_MASS_KG, g_mps2=G_MARS,
         alpha_v = np.where(valid, alpha, 0.0)                # placeholder to avoid warnings
         v = 0.75 - 0.01 * (alpha_v if signed else np.abs(alpha_v))
         dt = d_h / (v * np.cos(np.radians(alpha_v)))
-        e = santee_power_array(mass_kg, v, alpha_v, g_mps2) * dt
+        e = model_power(model, mass_kg, v, alpha_v, g_mps2) * dt
         time_s[k] = np.where(valid, dt, np.nan)
         energy_j[k] = np.where(valid, e, np.nan)
         alpha_out[k] = np.where(valid, alpha, np.nan)

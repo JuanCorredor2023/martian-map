@@ -11,7 +11,7 @@ Conventions (do not change without posting in the contracts issue):
 - Power in W, time in s, energy in J. Wh is for display only.
 """
 
-from math import cos, radians, sin
+from math import cos, radians, sin, tan
 
 # Nominal parameters (declared assumptions, guide section 9)
 TOTAL_MASS_KG = 124.2          # 75 kg astronaut + 47.8 kg suit/load
@@ -67,3 +67,27 @@ def segment_cost(d_horizontal_m, alpha_deg, mass_kg=TOTAL_MASS_KG,
 def liters_o2(energy_j):
     """Metabolic-equivalent O2 (L). This is NOT a PLSS tank reading."""
     return energy_j / 1000.0 / KJ_PER_LITER_O2
+
+
+# ---------------------------------------------------------------------------
+# Alternative branch for SENSITIVITY ONLY (guide sections 5-8): Pandolf (1977)
+# with the Santee (2003) downhill correction CF, as reproduced in the CSRM.
+# Terrestrial model, no gravity term. Never mix it with Santee 2001.
+# ---------------------------------------------------------------------------
+BODY_MASS_KG = 75.0                     # W in Pandolf; the load is L = m - W
+
+
+def pandolf_cf_power(body_kg, load_kg, v_mps, alpha_deg, eta=1.0):
+    """Pandolf + CF metabolic power in W. G is the slope in PERCENT.
+
+    M = 1.5W + 2(W+L)(L/W)^2 + eta(W+L)[1.5V^2 + 0.35VG]
+    M_total = M - CF when G < 0, CF = eta{G(W+L)V/3.5 - (W+L)(G+6)^2/W + (25 - V^2)}
+    The (25 - V^2) form follows Kim et al. ICES-2025-129; Potter et al. (2013)
+    write 25V^2. Beyond about -12 % the correction may over-correct.
+    """
+    w, l = body_kg, load_kg
+    g = 100.0 * tan(radians(alpha_deg))
+    m = 1.5 * w + 2.0 * (w + l) * (l / w) ** 2 + eta * (w + l) * (1.5 * v_mps ** 2 + 0.35 * v_mps * g)
+    if g < 0:
+        m -= eta * (g * (w + l) * v_mps / 3.5 - (w + l) * (g + 6) ** 2 / w + (25 - v_mps ** 2))
+    return m

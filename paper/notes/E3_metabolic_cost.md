@@ -1,6 +1,6 @@
 # E3 · Metabolic and O2 cost of walking under Mars gravity
 
-Owner: Sebas (`@Seredial0326`) · Issue: #6 · PRs: #21, #26 · Status: done for the MVP (E1 weights still to be combined, hours 20–24) · Last update: 2026-11-14 (boxwork resolution limitation added)
+Owner: Sebas (`@Seredial0326`) · Issue: #6 · PRs: #21, #26 · Status: done for the MVP (E1 weights still to be combined, hours 20–24) · Last update: 2026-11-14 (sensitivity added)
 
 ## Question
 How much energy, time and metabolic O2 does a suited astronaut spend on each move across the 1 m base grid, under Mars gravity? The answer is the cost the planner uses: E4 (return energy R(v) and walkback) and E5 (orienteering) plan on it.
@@ -70,6 +70,34 @@ Source for every number: `src/fisica/paper_figures.py` → `data/e3/e3_summary.j
 
 The minimum edge energy on the real DEM (338.75 J for a 1 m move) equals the analytic c_min,h, which is an independent check of the vectorised code.
 
+### Sensitivity (`src/fisica/sensitivity.py` → `data/e3/e3_sensitivity.json`)
+One parameter at a time from the nominal model (Santee 2001, 124.2 kg, signed Apollo speed, g = 3.71 m/s², 30° cell block). The habitat is at the box centre. The route goes to Curiosity's drilled ridge, Nevado Sajama, about 665 m away. The Pandolf + CF branch (`pandolf_cf_power`, guide sections 5–7) is implemented only for this comparison, with its own tests (315.87 W on flat ground).
+
+| Scenario | Toy 5 km (energy / time) | Median R_E (Wh) | Cells that can return | Box within 30 min | Route energy / time | Route within 5 m of nominal (max offset) |
+|---|---|---|---|---|---|---|
+| nominal | 2215 kJ / 1.91 h | 135.0 | 84.4 % | 63.4 % | 93.4 Wh / 15.7 min | 100 % (0 m) |
+| mass 100 kg | 1841 kJ / 1.91 h | 112.3 | 84.4 % | 63.4 % | 77.3 Wh / 15.7 min | 100 % (0 m) |
+| mass 150 kg | 2615 kJ / 1.91 h | 159.3 | 84.4 % | 63.4 % | 110.5 Wh / 15.7 min | 100 % (0 m) |
+| speed from |alpha| | 2215 kJ / 1.91 h | 138.4 | 84.4 % | 53.1 % | 93.5 Wh / 15.9 min | 100 % (1 m) |
+| gravity Moon 1.62 | 2071 kJ / 1.91 h | 125.6 | 84.4 % | 63.4 % | 81.8 Wh / 15.7 min | 82 % (17 m) |
+| gravity Earth 9.81 | 2636 kJ / 1.91 h | 145.1 | 84.4 % | 63.4 % | 127.0 Wh / 15.8 min | 100 % (2 m) |
+| model Pandolf + CF | 2892 kJ / 1.91 h | 205.2 | 84.4 % | 63.4 % | 139.9 Wh / 15.8 min | 89 % (16 m) |
+| model Pandolf + CF x g/gE | 1094 kJ / 1.91 h | 77.6 | 84.4 % | 63.4 % | 52.9 Wh / 15.8 min | 89 % (16 m) |
+| cell block 20 deg | 2215 kJ / 1.91 h | 95.3 | 42.9 % | 35.9 % | 94.8 Wh / 16.0 min | 39 % (57 m) |
+| cell block 25 deg | 2215 kJ / 1.91 h | 138.2 | 70.4 % | 45.4 % | 93.6 Wh / 15.8 min | 77 % (17 m) |
+| no cell block | 2215 kJ / 1.91 h | 107.5 | 99.1 % | 92.4 % | 93.3 Wh / 15.7 min | 100 % (1 m) |
+
+![E3 sensitivity](../figures/e3_fig2_sensitivity.png)
+
+*Figure E3-2. Change against the nominal model of the median return energy, the energy of the route to Nevado Sajama, and the share of the box within 30 min. Labels give the share of each route within 5 m of the nominal route.*
+
+What it shows:
+- **Energy follows mass and model, not time.** Mass changes energy almost proportionally (±17–18 %), and the route stays identical. The metabolic model is the largest energy uncertainty: Pandolf + CF gives +50–52 % and its g-scaled version −43 %, a factor of 2.6 between them. Gravity applied only to the slope term moves the route energy by −12 % (Moon) to +36 % (Earth).
+- **The 30 min line depends only on the speed convention and the cell block,** because E3's speed has no mass, gravity or model term. With speed from |alpha| the share within 30 min falls from 63.4 % to 53.1 %: downhill becomes slower. With the cell block it ranges from 35.9 % (20°) to 92.4 % (no block).
+- **Routes are robust to the physiology, not to the block.** Under every mass, speed and gravity choice, 82–100 % of the route stays within 5 m of the nominal route, and both Pandolf branches keep 89 %. A 20° cell block reroutes it (39 % within 5 m, up to 57 m away) and leaves only 42.9 % of the box able to return.
+- Caveat on the median R_E column: changing the block changes *which* cells can return, so the median is over a different set (20° gives a lower median because only cells near the habitat remain). Read it together with the reachable share.
+- The toy route time is 1.91 h in every scenario: the toy route has no downhill, so even the |alpha| speed convention leaves it unchanged.
+
 ## Checks
 - 20 unit tests in `tests/fisica/` (`python -m pytest tests/fisica -q`): every reference value above, gravity changing only W_slope, downhill W_slope < 0 with M > 0, up/down asymmetry, grid borders, nodata, both slope limits, cell block on/off, and positive costs right up to the 75° guard.
 - Aaron reviewed the edges against the real DEM for E4: `NEIGHBOURS` orientation correct (N = row − 1), no edge leaving the grid, energies 339–1428 J, largest strongly connected component 84.4 % of the grid with the default configuration.
@@ -77,7 +105,7 @@ The minimum edge energy on the real DEM (338.75 J for a 1 m move) equals the ana
 
 ## Limitations
 - **Not validated on Mars.** Santee 2001 comes from Earth and lunar lineage; applying g = 3.71 m/s² in the slope term is our extrapolation. The ~290 W Apollo 14 value is an inference from the reports, a plausibility check, not a validation [Carr2003].
-- **Speed convention.** Signed or |alpha| Apollo speed changes the downhill costs (c_min,h 338.75 against 351.00 J/m). We use signed; a sensitivity run with |alpha| is still to do.
+- **Speed convention.** Signed or |alpha| Apollo speed changes the downhill costs (c_min,h 338.75 against 351.00 J/m) and the 30 min zone (63.4 % against 53.1 % of the box, see Sensitivity). We use signed; the choice must be declared.
 - **Negative result: the Apollo regression breaks on steep climbs.** V = 0.75 − 0.01·alpha reaches 0 at +75°. Without a slope limit, the real DEM has 107 climbing edges at or above 75°; their time is negative and 91 of them gave negative energy, which breaks Dijkstra (non-negative weights). The regression was fitted on gentle slopes and must not be extrapolated; hence the guard.
 - **Cross-slope is not modelled.** Santee only sees the slope along the move. The 30° cell block is a design choice, not a physiological threshold.
 - **The DEM does not see the boxwork.** The base grid note shows that the 1 m DEM does not resolve the 1–3 m ridges that the 0.25 m orthophoto shows clearly, so inside the boxwork the metabolic cost misses the up-and-down of crossing ridges and is probably an underestimate. This matches E2: terrain features from the DEM do not explain the route inside the boxwork (AUC about 0.53). The fix has to come from the image (E8 `sand.tif`, ridge/hollow masks) and the E1 weights.
@@ -96,10 +124,12 @@ From the repo root, with `data/base/` from release `base-grid-v2`:
 python -m pytest tests/fisica -q
 python src/fisica/build_cost_layers.py data/base/dem_1m.tif data/base --slope-raster data/base/slope_deg.tif
 python src/fisica/paper_figures.py
+python src/fisica/sensitivity.py
 ```
 
 ## Outputs
 - `data/base/edges_e3.npz` (185 MB): directed `time_s`, `energy_j`, `alpha_deg`; not in git, regenerated in about 3 s.
 - `data/base/costo_e3.tif`: Wh per cell, display only.
 - `data/e3/e3_summary.json`: every number in this note.
-- `paper/figures/e3_fig1_power_and_cost_vs_slope.png`.
+- `paper/figures/e3_fig1_power_and_cost_vs_slope.png`, `paper/figures/e3_fig2_sensitivity.png`.
+- `data/e3/e3_sensitivity.json`: every number in the Sensitivity table.
