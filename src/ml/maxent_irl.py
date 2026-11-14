@@ -83,6 +83,7 @@ class Demo:
     phi: np.ndarray
     path: np.ndarray
     name: str = ""
+    offset: tuple = (0, 0)     # (row, col) of the window's top-left cell on the full grid
 
     def __post_init__(self):
         self.path = np.asarray(self.path, dtype=np.int64)
