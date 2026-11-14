@@ -8,14 +8,16 @@
 //   light=az,el     light direction in degrees: azimuth from north towards east, elevation
 //   fps=1           render every frame and show frames per second
 //   spin=1          slowly orbit the camera (to measure fps without touching anything)
-//   check=shading   run a check from checks.js (shading, route) and show its result as JSON
+//   check=shading   run a check from checks.js (shading, route, rehearse) and show its result as JSON
 //   drag=pan        map-style mouse: drag moves, right-drag rotates (default: drag rotates)
 import * as THREE from 'three';
-import { loadLastPlan, requestDefaultPlan } from './api.js';
+import { loadLastPlan, loadRubric, requestDefaultPlan } from './api.js';
+import { hideCard, showCard, stationCard } from './card.js';
 import { TerrainControls } from './controls.js';
 import { MarkerLayer } from './markers.js';
-import { RouteOverlay } from './overlays.js';
+import { GroundLines, RouteOverlay } from './overlays.js';
 import { mainRoute, parsePlan, planMarkers } from './plan_model.js';
+import { Rehearsal } from './rehearse.js';
 import { Terrain, BUILD_HINT } from './terrain.js';
 
 const ui = id => document.getElementById(id);
@@ -97,12 +99,15 @@ async function main() {
                                        {leftDrag: params.get('drag') === 'pan' ? 'pan' : 'rotate'});
   controls.autoRotate = params.get('spin') === '1';
   controls.home();
-  ui('compass').addEventListener('click', () => controls.faceNorth());
-  ui('home').addEventListener('click', () => controls.home());
+  // While rehearsing the camera belongs to the rehearsal: these two do nothing then.
+  ui('compass').addEventListener('click', () => { if (!rehearsal.active) controls.faceNorth(); });
+  ui('home').addEventListener('click', () => { if (!rehearsal.active) controls.home(); });
 
-  // What is drawn on the ground: the route of the plan and the markers.
+  // What is drawn on the ground: the route of the plan, the markers, and the walkback
+  // lines of the rehearsal.
   const overlays = new RouteOverlay(terrain, scene);
   const markers = new MarkerLayer(terrain, scene, camera);
+  const walkbackLines = new GroundLines(terrain, scene, 'walkback');
 
   function resize() {
     const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -111,19 +116,25 @@ async function main() {
     camera.updateProjectionMatrix();
     overlays.setResolution(w, h);
     markers.setResolution(w, h);
+    walkbackLines.setResolution(w, h);
+    shownFov = camera.fov;
     dirty = true;
   }
 
   // Render only when something changed, unless fps/spin ask for every frame.
   const continuous = params.get('fps') === '1' || controls.autoRotate;
   let dirty = true, frames = 0, since = performance.now(), fps = 0, last = performance.now();
+  let shownFov = camera.fov;                   // the pins are sized for this field of view
   window.addEventListener('resize', resize);
   resize();
 
   function readout() {
-    const centre = controls.centreGround();             // what is at the middle of the screen
+    // What is at the middle of the screen; while rehearsing, where the walker is.
+    const centre = rehearsal.active ? null : controls.centreGround();
     let text = 'Looking at the sky';
-    if (centre && Math.abs(centre[0]) <= terrain.half && Math.abs(centre[2]) <= terrain.half) {
+    if (rehearsal.active) {
+      text = rehearsal.positionText();
+    } else if (centre && Math.abs(centre[0]) <= terrain.half && Math.abs(centre[2]) <= terrain.half) {
       const [x, y] = terrain.toMars(centre[0], centre[2]);
       text = `x ${x.toFixed(0)} m · y ${y.toFixed(0)} m · elevation ` +
         `${terrain.elevation(terrain.heightAt(centre[0], centre[2], 1)).toFixed(0)} m`;
@@ -132,29 +143,69 @@ async function main() {
     }
     ui('readout').textContent = continuous ? `${text} · ${fps.toFixed(0)} fps` : text;
     // The needle shows where north is on screen: it turns against the heading.
-    ui('compass-needle').setAttribute('transform', `rotate(${-THREE.MathUtils.radToDeg(controls.yaw)})`);
+    const heading = rehearsal.active ? rehearsal.viewYaw : controls.yaw;
+    ui('compass-needle').setAttribute('transform', `rotate(${-THREE.MathUtils.radToDeg(heading)})`);
   }
 
   // Relief slider. The shown height is DEM + (k - 1) * local relief, so everything
   // that stands on the ground is placed again: route, markers and the camera's floor.
+  // The rehearsal locks it at true scale (reliefLock is the reason shown) and gives the
+  // previous value back when it ends.
+  let reliefLock = null;
   function setRelief(value) {
-    const k = terrain.setExaggeration(Number(value) || 1);
+    const k = terrain.setExaggeration(reliefLock ? 1 : Number(value) || 1);
     overlays.refresh();
     markers.refresh();
+    walkbackLines.refresh();
     controls.refresh();
     ui('relief').value = k;
-    ui('relief-label').textContent = k === 1 ? 'Relief at true scale' : `Local relief ×${k} (exaggerated)`;
+    ui('relief').disabled = Boolean(reliefLock);
+    ui('relief-label').textContent = reliefLock || (k === 1 ? 'Relief at true scale' : `Local relief ×${k} (exaggerated)`);
     dirty = true;
     return k;
   }
+  const relief = {
+    lock(reason) { reliefLock = reason; pendingRelief = null; setRelief(1); },
+    unlock(k) { reliefLock = null; setRelief(k); },
+  };
   let pendingRelief = null;                    // dragging the slider: at most one update per frame
   ui('relief').max = terrain.maxExaggeration;
   ui('relief').disabled = false;
   ui('relief').addEventListener('input', e => { pendingRelief = e.target.value; });
   setRelief(params.get('k') || 2);
 
-  // A click (not a drag) on a marker selects it. Nothing is shown yet: later blocks
-  // set markers.onSelect.
+  // Route rehearsal (rehearse.js) and the card of a station (card.js). The type labels
+  // of the card come from the server's rubric, asked once; until it answers (or if it
+  // does not) the card shows the type as the plan writes it.
+  let rubric = {};
+  loadRubric().then(r => { rubric = r; });
+  const rehearsal = new Rehearsal({terrain, scene, camera, canvas, controls, relief, lines: walkbackLines,
+                                   rubric: () => rubric});
+
+  // Fly to where a marker is seen from about 60 m, coming from where the camera is now.
+  function flyToMarker(marker) {
+    const point = markers.positionOf(marker.id);
+    if (!point || rehearsal.active) return;
+    const dx = point[0] - controls.position[0], dz = point[2] - controls.position[2];
+    const yaw = Math.hypot(dx, dz) > 1 ? Math.atan2(dx, -dz) : controls.yaw;       // north is -Z
+    controls.flyToLook(point, 60, {yaw, pitch: THREE.MathUtils.degToRad(20)});
+  }
+
+  // Clicking a pin shows its card; in free flight the card can take the camera there.
+  markers.onSelect = marker => {
+    const d = marker.data || {};
+    const what = marker.kind === 'habitat' ? {title: 'Habitat', subtitle: 'Start and end of the EVA', rows: []}
+      : d.kind === 'station'
+        ? stationCard({id: marker.label, type: d.type, score: d.score, serviceMin: d.service_time_min,
+                       order: d.order, visited: d.visited}, rubric)
+        : {title: marker.label || 'Point', subtitle: '', rows: []};
+    if (marker.kind === 'goal') what.subtitle = what.subtitle ? `${what.subtitle} · goal of the route` : 'Goal of the route';
+    showCard({...what, color: marker.color,
+              actions: rehearsal.active ? [] : [{label: 'Fly here', onClick: () => flyToMarker(marker)}]});
+    dirty = true;
+  };
+
+  // A click (not a drag) on a marker selects it (markers.onSelect).
   let press = null;
   canvas.addEventListener('pointerdown', e => { press = {x: e.clientX, y: e.clientY, id: e.pointerId}; });
   canvas.addEventListener('pointerup', e => {
@@ -176,6 +227,8 @@ async function main() {
   // page draws what the answer contains; a plan with no route still shows its points.
   function showPlan(got) {
     const model = got.fc ? parsePlan(got.fc) : null;
+    rehearsal.setPlan(model);                  // leaves the rehearsal: its route is gone
+    hideCard();
     overlays.setPlan(model);
     markers.set(model ? planMarkers(model, got.stationTypes || {}) : []);
     window.viz3d.plan = {...got, model};
@@ -236,9 +289,14 @@ async function main() {
   function frame(now) {
     requestAnimationFrame(frame);
     if (pendingRelief !== null) { setRelief(pendingRelief); pendingRelief = null; }
-    if (controls.update((now - last) / 1000)) dirty = true;    // wheel easing, auto-rotate, drags
+    if (controls.update((now - last) / 1000)) dirty = true;    // wheel easing, auto-rotate, drags, flights
+    if (rehearsal.update((now - last) / 1000)) dirty = true;   // every frame only while playing or dragging
     last = now;
     if (!dirty && !continuous) return;
+    if (camera.fov !== shownFov) {             // a flight or the rehearsal changed it: resize the pins
+      shownFov = camera.fov;
+      markers.setResolution(canvas.clientWidth, canvas.clientHeight);
+    }
     renderer.render(scene, camera);
     dirty = false;
     frames++;
@@ -253,7 +311,7 @@ async function main() {
   // Handle for the manual checks listed in the PR and for later blocks.
   // `plan` is {fc, source, error, missing, stationTypes, model} once a plan was asked for.
   window.viz3d = {terrain, scene, camera, controls, renderer, sun, sunDirection, overlays, markers,
-                  plan: null, showPlan, reloadPlan, planDefault, setRelief,
+                  rehearsal, walkbackLines, plan: null, showPlan, reloadPlan, planDefault, setRelief,
                   get fps() { return fps; }, redraw() { dirty = true; }};
   // The terrain is usable while the plan loads. ?plan=default is the user asking.
   const planReady = params.get('plan') === 'default' ? planDefault() : reloadPlan();
