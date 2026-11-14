@@ -25,6 +25,8 @@ class PlanRequest(BaseModel):
     margin: float = Field(default=0.10, ge=0, lt=1)
     apollo_speed_uses_signed_slope: bool = True
     service_energy_wh_per_min: Optional[float] = Field(default=None, ge=0)
+    # Cells steeper than this (slope_deg.tif) are blocked; null disables the block.
+    max_cell_slope_deg: Optional[float] = Field(default=30.0, ge=0, le=90)
 
     @field_validator("stations")
     @classmethod

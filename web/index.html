@@ -27,6 +27,10 @@
   .muted { color: var(--muted); font-size: 12px; }
   .legend { height: 10px; border-radius: 3px; margin: 6px 0 2px;
             background: linear-gradient(90deg, #2e9b3e 0%, #f2d43a 33%, #f28c28 66%, #d7301f 100%); }
+  .legend.cost { background: linear-gradient(90deg, #000004, #3b0f70, #8c2981, #de4968, #fe9f6d, #fcfdbf); }
+  .row { display: flex; justify-content: space-between; align-items: center; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+            background: rgb(230, 40, 40); margin-right: 4px; }
   .ticks { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
   button { width: 100%; padding: 7px; margin-top: 4px; border: 0; border-radius: 6px;
            background: var(--accent); color: #111; font-weight: 600; cursor: pointer; }
@@ -49,6 +53,17 @@
   <input type="range" id="slope-opacity" min="0" max="1" step="0.05" value="0.5">
   <div class="legend"></div>
   <div class="ticks"><span>0°</span><span>15°</span><span>30°</span><span>45°+</span></div>
+  <hr>
+  <label><input type="checkbox" id="show-cost"> E3 walking cost</label>
+  <div id="cost-legend" hidden>
+    <div class="legend cost"></div>
+    <div class="ticks"><span id="cost-min"></span><span>Wh per 1 m cell</span><span id="cost-max"></span></div>
+  </div>
+  <hr>
+  <label><input type="checkbox" id="block-on" checked>
+    <span><span class="swatch"></span>Block cells steeper than <b id="block-value">30</b>°</span></label>
+  <input type="range" id="block-slope" min="15" max="60" step="1" value="30">
+  <div class="muted" id="block-info"></div>
   <hr>
   <button id="plan-btn">Plan EVA (test route)</button>
   <div id="plan-info" class="muted"></div>
@@ -94,6 +109,48 @@ function tileLayer(id, url, maxZoom, visible, opacity = 1) {
 const ui = id => document.getElementById(id);
 let deckgl, tiles, planFC = null;
 
+// Whole-box overlays: one PNG covering the 2 x 2 km box (no tiles needed).
+const boxBounds = () => [0, SIZE_M / S, SIZE_M / S, 0];        // [left, bottom, right, top]
+const blockLimit = () => ui("block-on").checked ? Number(ui("block-slope").value) : null;
+
+function overlayLayers() {
+  const out = [];
+  if (ui("show-cost").checked) {
+    out.push(new BitmapLayer({id: "cost", image: "/layers/cost.png", bounds: boxBounds(),
+                              opacity: Math.pow(0.75, 2.2)}));
+  }
+  const limit = blockLimit();
+  if (limit !== null) {
+    out.push(new BitmapLayer({id: "blocked", image: `/layers/blocked.png?max_cell_slope_deg=${limit}`,
+                              bounds: boxBounds()}));
+  }
+  return out;
+}
+
+async function refreshBlockInfo() {
+  const limit = blockLimit();
+  ui("block-value").textContent = ui("block-slope").value;
+  ui("block-slope").disabled = limit === null;
+  if (limit === null) { ui("block-info").textContent = "Block disabled: only the 20° edge limit applies"; return; }
+  const res = await fetch(`/layers/blocked?max_cell_slope_deg=${limit}`);
+  if (!res.ok) { ui("block-info").textContent = `Error ${res.status} loading the block mask`; return; }
+  const r = await res.json();
+  ui("block-info").textContent = `${(r.blocked_fraction * 100).toFixed(1)} % of the box blocked`;
+}
+
+async function showCostLegend() {
+  const on = ui("show-cost").checked;
+  ui("cost-legend").hidden = !on;
+  if (on && !ui("cost-min").textContent) {
+    ui("cost-min").textContent = "loading…";
+    const res = await fetch("/layers/cost");
+    if (!res.ok) { ui("cost-min").textContent = `error ${res.status}`; return; }
+    const L = await res.json();
+    ui("cost-min").textContent = L.vmin.toFixed(3);
+    ui("cost-max").textContent = L.vmax.toFixed(3) + "+";
+  }
+}
+
 // Vector layers from the /plan FeatureCollection (coordinates in Mars metres).
 function planLayers() {
   if (!planFC) return [];
@@ -126,6 +183,7 @@ async function requestPlan() {
     stations: [{id: "S1", x: cx + 300, y: cy, score: 5, service_time_min: 10}],
     energy_budget_wh: 2813, gravity_m_s2: 3.71, margin: 0.10,
     apollo_speed_uses_signed_slope: true, service_energy_wh_per_min: null,
+    max_cell_slope_deg: blockLimit(),
   };
   try {
     const res = await fetch("/plan", {method: "POST",
@@ -154,6 +212,7 @@ function layers() {
     // value to 2.2 to make the slider linear: 0.3 on the slider = 30 % slope.
     tileLayer("slope", "/" + L.slope.url, 3, ui("show-slope").checked,
               Math.pow(Number(ui("slope-opacity").value), 2.2)),
+    ...overlayLayers(),
     ...planLayers(),
   ];
 }
@@ -187,13 +246,17 @@ async function main() {
   ui("status").textContent = `Box ${SIZE_M} × ${SIZE_M} m · Mars equirectangular (m)`;
 }
 
-for (const id of ["show-ortho", "show-hillshade", "show-slope", "slope-opacity"]) {
+for (const id of ["show-ortho", "show-hillshade", "show-slope", "slope-opacity",
+                  "show-cost", "block-on", "block-slope"]) {
   ui(id).addEventListener("input", () => deckgl && deckgl.setProps({layers: layers()}));
 }
+ui("show-cost").addEventListener("input", showCostLegend);
+ui("block-on").addEventListener("input", refreshBlockInfo);
+ui("block-slope").addEventListener("input", refreshBlockInfo);
 
 ui("plan-btn").addEventListener("click", requestPlan);
 
-main().catch(err => { ui("status").textContent = "Error: " + err.message; console.error(err); });
+main().then(refreshBlockInfo).catch(err => { ui("status").textContent = "Error: " + err.message; console.error(err); });
 </script>
 </body>
 </html>

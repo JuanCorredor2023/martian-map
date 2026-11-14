@@ -15,9 +15,11 @@ Output layout (shared contract with the graph code):
     nodata cell at either end, or |alpha| above the slope limit).
 """
 
+import warnings
+
 import numpy as np
 
-from .metabolic import G_MARS, TOTAL_MASS_KG
+from .metabolic import G_MARS, J_PER_WH, TOTAL_MASS_KG
 
 # (d_row, d_col) for k = 0..7. Row grows southwards (north-up raster).
 NEIGHBOURS = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)]
@@ -88,3 +90,17 @@ def edge_costs(dem, cell_size_m=1.0, mass_kg=TOTAL_MASS_KG, g_mps2=G_MARS,
         alpha_out[k] = np.where(valid, alpha, np.nan)
 
     return time_s, energy_j, alpha_out
+
+
+def cell_cost_wh(energy_j, cell_size_m):
+    """Display summary: mean Wh to cross one cell, over its valid outgoing edges.
+
+    NaN where the cell has no valid edge. Planning must use the directed edges.
+    """
+    lengths = np.array([cell_size_m * (np.sqrt(2) if dr and dc else 1.0)
+                        for dr, dc in NEIGHBOURS], dtype=np.float32)
+    per_metre = energy_j / lengths[:, None, None]          # NaN edges stay NaN
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)    # all-NaN cells -> NaN
+        mean_j = np.nanmean(per_metre, axis=0)
+    return (mean_j * cell_size_m / J_PER_WH).astype(np.float32)
