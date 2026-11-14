@@ -12,13 +12,16 @@ import json
 import os
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
+
+from .plan import PlanRequest, feature, feature_collection
 
 REPO = Path(__file__).resolve().parents[1]
 DATA = Path(os.environ.get("MARTIAN_DATA", REPO / "data"))
 BASE = DATA / "base"
 TILES = DATA / "tiles"
+E2 = DATA / "e2"
 WEB = REPO / "web"
 
 app = FastAPI(title="Mars EVA planner", version="0.1.0")
@@ -51,6 +54,42 @@ def layers():
         "grid": _read_json(BASE / "grid.json"),
         "tiles": _read_json(TILES / "tiles.json"),
     }
+
+
+def _fixed_test_route():
+    """Curiosity's trajectory (E2, Juan) used as a fixed route to test the whole
+    pipeline before the planner is connected (guide section 38)."""
+    route = _read_json(E2 / "trajectory.geojson")["features"][0]
+    return route["geometry"]["coordinates"], route["properties"]
+
+
+@app.post("/plan")
+def plan(req: PlanRequest):
+    """Plan an EVA. For now it returns a FIXED test route, not a planned one."""
+    try:
+        req.check_inside(_read_json(BASE / "grid.json")["bbox"])
+    except ValueError as err:
+        raise HTTPException(status_code=422, detail=str(err))
+
+    coords, props = _fixed_test_route()
+    warnings = ["fixed test route (Curiosity trajectory): the planner is not connected yet"]
+    if req.service_energy_wh_per_min is None:
+        warnings.append("service_energy_wh_per_min is null: the plan cannot be labelled "
+                        "energy-feasible")
+
+    features = [feature("LineString", coords, kind="route", source="curiosity_trajectory_e2",
+                        length_m=props.get("length_m"), energy_wh=None, time_s=None)]
+    features += [feature("Point", [s.x, s.y], kind="station", id=s.id, score=s.score,
+                         service_time_min=s.service_time_min) for s in req.stations]
+    features.append(feature("Point", list(req.start), kind="start"))
+
+    crs_wkt = (BASE / "crs.wkt").read_text(encoding="utf-8").strip()
+    return feature_collection(
+        features, crs_wkt,
+        model="santee_2001", units={"coordinates": "m", "energy": "Wh", "time": "s"},
+        energy_budget_wh=req.energy_budget_wh,
+        energy_usable_wh=req.energy_usable_j / 3600.0,
+        feasible=None, warnings=warnings)
 
 
 # Static files go last so they do not shadow the API routes.
