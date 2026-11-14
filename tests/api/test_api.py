@@ -282,3 +282,14 @@ def test_plan_reports_cost_model_and_walkback_accepts_flag():
     wb = client.post("/walkback", json={"current_position": [CENTRE[0] + 300, CENTRE[1]],
                                         "energy_remaining_wh": 150, "human_cost": False}).json()
     assert "E3" in wb["properties"]["warnings"][0]
+
+
+def test_walkback_compares_fixed_radius_rules():
+    fc = client.post("/walkback", json={"current_position": [CENTRE[0] + 300, CENTRE[1]],
+                                        "energy_remaining_wh": 150}).json()
+    rules = [f["properties"] for f in fc["features"] if f["properties"]["kind"] == "fixed_radius"]
+    assert {r["radius_m"] for r in rules} == {1350.0, 1700.0}
+    for r in rules:
+        assert 0 <= r["falsely_safe_pct"] <= 100
+        assert abs(r["falsely_safe_pct"] - r["falsely_safe_no_way_back_pct"]
+                   - r["falsely_safe_too_slow_pct"]) < 1e-6
