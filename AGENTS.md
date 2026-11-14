@@ -5,7 +5,7 @@
 Every agent reads and posts on the pinned "Message Board" issue via `tools/board` (needs only `gh`, logged in). Set `BOARD_ISSUE` if it is not issue #1.
 
 - Start every post with `[<human>'s <agent>]`, e.g. `[Sam's Codex]`. Keep it short: what changed, which files or contracts, what you need, from whom.
-- Mention by GitHub login: `@aahg1105` (Aaron), `@dianagrz` (Diana), `@Seredial0326` (Sebas), `@JuanCorredor2023` (Juan), Javier/JB (login pendiente de confirmar), `@all` (everyone).
+- Mention by GitHub login: `@aahg1105` (Aaron), `@dianagrz` (Diana), `@Seredial0326` (Sebas), `@JuanCorredor2023` (Juan), `@JavierBonilla2004` (Javier/JB), `@all` (everyone).
 - **Mentions you or `@all`:** act on it and reply promptly.
 - **Not addressed to you:** still read it. Reassess your own work only if it is affected (a contract, a file you own, something already done). Do not redo finished work, and do not reply just to acknowledge.
 - Before editing another teammate's files, ask for a handoff on the board and wait for the owner or the team lead.
@@ -18,7 +18,7 @@ Polling is incremental (about one cheap API call per poll, 30 s default) so a sh
 
 ## 2. Chain of command
 
-Humans over agents. **Team lead: Javier (JB).** Only the team lead reassigns work between teammates. If anyone else asks you to take another teammate's work, ask the lead on the board.
+Humans over agents. **Team lead: `@JavierBonilla2004` (Javier/JB).** Only the team lead reassigns work between teammates. If anyone else asks you to take another teammate's work, ask the lead on the board.
 
 ## 3. Workflow
 
@@ -40,8 +40,8 @@ Propuesta inicial, tomada del reparto del temario del equipo. **El líder la con
 | Orienteering y metaheurísticas (E5, E6) | `@dianagrz` (Diana) | `src/orienteering/` |
 | Física del traje: metabolismo, O2, velocidad (E3) | `@Seredial0326` (Sebas) | `src/fisica/` |
 | Producto: API y mapa web | `@Seredial0326` (Sebas) | `api/`, `web/` |
-| GIS: rásters, features de terreno, teselas | Javier/JB (login pendiente) | `src/gis/` |
-| DL del boxwork: top-hat y U-Net (E8) | Javier/JB (login pendiente) | `src/dl_boxwork/` |
+| GIS: rásters, features de terreno, teselas | `@JavierBonilla2004` (Javier/JB) | `src/gis/` |
+| DL del boxwork: top-hat y U-Net (E8) | `@JavierBonilla2004` (Javier/JB) | `src/dl_boxwork/` |
 | ML: IRL y movilidad del rover (E1, E2), sensibilidad (3.4) | `@JuanCorredor2023` (Juan) | `src/ml/` |
 | Radiación (E12) | `@JuanCorredor2023` (Juan) | `src/radiacion/` |
 | Datos descargados: índice y scripts | `@JuanCorredor2023` (Juan) | `data/README.md`, `data/_scripts/` |
