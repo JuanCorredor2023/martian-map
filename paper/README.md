@@ -34,5 +34,5 @@ Besides the demo, the team will submit a scientific paper. This folder collects 
 | E5 · orienteering · E6 benchmark | to do | Diana |
 | E8 · boxwork top-hat and U-Net | to do | JB |
 | E9 · BoulderNet and distillation | to do | Aaron |
-| E12 · radiation dose | to do | Juan |
+| E12 · radiation dose and SEP alert | [notes/E12_radiation_dose.md](notes/E12_radiation_dose.md) | Juan |
 | Product: API, HUD and manual stations | [notes/product_api_hud.md](notes/product_api_hud.md) | Sebas |
