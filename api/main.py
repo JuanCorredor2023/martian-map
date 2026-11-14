@@ -18,10 +18,12 @@ from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import guide
 from . import planner
 from . import radiation as rad
 from . import walkback as wb
-from .plan import PlanRequest, WalkbackRequest, feature, feature_collection
+from .plan import (PlanRequest, ReturnHomeRequest, WalkbackRequest, feature,
+                   feature_collection)
 from .raster_layers import blocked_layer, cost_layer, sand_layer
 from . import stations as st
 
@@ -33,6 +35,7 @@ E2 = DATA / "e2"
 STATIONS = DATA / "stations"
 E12 = DATA / "e12"
 E8 = DATA / "e8"
+PLANS = DATA / "plans"
 WEB = REPO / "web"
 
 app = FastAPI(title="Mars EVA planner", version="0.1.0")
@@ -157,6 +160,30 @@ def radiation():
     return {**rad.summary(E12), "curve": rad.dose_curve(E12)}
 
 
+@app.get("/plan/last")
+def plan_last():
+    """The last live plan, for the guide screen (web/guide.html)."""
+    saved = guide.load_plan(PLANS)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="no plan yet: plan an EVA in the HUD first")
+    return saved
+
+
+@app.post("/guide/return_home")
+def return_home(req: ReturnHomeRequest):
+    """Fastest way back to the habitat from the astronaut's position (E4 reversed
+    Dijkstra on time, no new planning)."""
+    limit = req.max_cell_slope_deg if req.max_cell_slope_deg else None
+    try:
+        out = guide.return_home(str(BASE), limit, req.position, req.habitat)
+    except ValueError as err:
+        raise HTTPException(status_code=422, detail=str(err))
+    crs_wkt = (BASE / "crs.wkt").read_text(encoding="utf-8").strip()
+    return feature_collection(
+        [feature("LineString", out.pop("coordinates"), kind="return_home", **out)], crs_wkt,
+        units={"coordinates": "m", "energy": "Wh", "time": "s"})
+
+
 def _box_centre():
     b = _read_json(BASE / "grid.json")["bbox"]
     return ((b["xmin"] + b["xmax"]) / 2, (b["ymin"] + b["ymax"]) / 2)
@@ -226,15 +253,18 @@ def _plan_live(req):
                             "walkable cell of the main connected area")
     if req.service_energy_wh_per_min is None:
         warnings.append(f"service power assumed {info['service_power_w']:.0f} W (E4 default)")
-    fc["features"] += [feature("Point", [s.x, s.y], kind="station", id=s.id, score=s.score,
-                               service_time_min=s.service_time_min) for s in req.stations]
+    fc["features"] += [feature("Point", [s.x, s.y], kind="station", id=s.id, type=s.type,
+                               score=s.score, service_time_min=s.service_time_min)
+                       for s in req.stations]
     fc["properties"] = dict(
         model="santee_2001", source="E4_walkback (live)",
+        habitat=list(req.start),
         units={"coordinates": "m", "energy": "Wh", "time": "s"},
         energy_budget_wh=req.energy_budget_wh, energy_usable_wh=p["usable_wh"],
         feasible=p["feasible"], max_cell_slope_deg=req.max_cell_slope_deg,
         max_duration_min=req.max_duration_min, o2_budget_l=req.o2_budget_l,
         warnings=warnings)
+    guide.save_plan(PLANS, req.model_dump(), fc)        # the guide screen loads it
     return fc
 
 

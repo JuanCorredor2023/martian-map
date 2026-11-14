@@ -213,3 +213,20 @@ def test_sand_layer():
 def test_check_data_script_runs():
     from api import check_data
     assert check_data.main() in (0, 1)
+
+
+def test_guide_saved_plan_and_return_home(tmp_path, monkeypatch):
+    import api.main as main
+    monkeypatch.setattr(main, "PLANS", tmp_path)               # never touch the real saved plan
+    assert client.get("/plan/last").status_code == 404
+    st = [{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5, "type": "ridge"}]
+    client.post("/plan", json=plan_body(stations=st))
+    saved = client.get("/plan/last").json()
+    station = next(f for f in saved["plan"]["features"] if f["properties"]["kind"] == "station")
+    assert station["properties"]["type"] == "ridge"            # the guide card needs the type
+    home = client.post("/guide/return_home", json={"position": [8143217.5, -284993.2],
+                                                   "habitat": CENTRE}).json()["features"][0]
+    p = home["properties"]
+    assert 600 < p["time_s"] < 1200 and len(p["t_s"]) == len(home["geometry"]["coordinates"])
+    assert p["t_s"][-1] == pytest.approx(p["time_s"], abs=1.0)  # profile ends at the habitat
+    assert client.post("/guide/return_home", json={"position": [0, 0], "habitat": CENTRE}).status_code == 422

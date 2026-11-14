@@ -268,7 +268,7 @@ function planLayers() {
       id: "points", data: points,
       getPosition: f => toWorld(...f.geometry.coordinates),
       getFillColor: f => f.properties.kind === "start" ? [255, 255, 255] : [255, 122, 69],
-      getLineColor: [17, 17, 17], stroked: true, lineWidthMinPixels: 1.5,
+      getLineColor: [17, 17, 17], stroked: true, lineWidthUnits: "pixels", getLineWidth: 1.5,
       getRadius: 7, radiusUnits: "pixels",
     }),
   ];
@@ -303,7 +303,7 @@ function stationLayers() {
       id: "stations", data: stations,
       getPosition: s => toWorld(s.x, s.y),
       getFillColor: s => TYPE_COLORS[s.type] || [200, 200, 200],
-      getLineColor: [17, 17, 17], stroked: true, lineWidthMinPixels: 1.5,
+      getLineColor: [17, 17, 17], stroked: true, lineWidthUnits: "pixels", getLineWidth: 1.5,
       getRadius: s => 4 + scoreOf(s), radiusUnits: "pixels",       // size follows the score
       updateTriggers: {getRadius: key, getFillColor: key, getPosition: key},
     }),
@@ -430,7 +430,7 @@ function wbLayers() {
   if (astronaut) pts.push({xy: astronaut, color: [255, 64, 200], r: 7});
   out.push(new ScatterplotLayer({id: "wb-points", data: pts,
     getPosition: d => toWorld(...d.xy), getFillColor: d => d.color, getRadius: d => d.r,
-    radiusUnits: "pixels", stroked: true, getLineColor: [0, 0, 0], lineWidthMinPixels: 2}));
+    radiusUnits: "pixels", stroked: true, getLineColor: [0, 0, 0], lineWidthUnits: "pixels", getLineWidth: 2}));
   return out;
 }
 
@@ -595,7 +595,7 @@ async function requestPlan() {
   const start = baseXY || [X0 + SIZE_M / 2, Y0 - SIZE_M / 2];
   const body = {
     start,
-    stations: stations.map(s => ({id: s.id, x: s.x, y: s.y, score: scoreOf(s),
+    stations: stations.map(s => ({id: s.id, x: s.x, y: s.y, type: s.type, score: scoreOf(s),
                                   service_time_min: s.service_time_min})),
     energy_budget_wh: Number(ui("budget-wh").value) || 1000, gravity_m_s2: 3.71,
     margin: (Number(ui("margin-pct").value) || 0) / 100,
@@ -615,7 +615,8 @@ async function requestPlan() {
       ? ` · ${route.energy_wh.toFixed(0)} Wh · ${(route.time_s / 60).toFixed(0)} min · ${route.o2_l.toFixed(0)} L O₂` : "";
     ui("plan-info").innerHTML =
       `${p.source || "route"}: ${route.length_m.toFixed(0)} m${facts} · usable ${p.energy_usable_wh.toFixed(0)} Wh` +
-      p.warnings.map(w => `<div class="warn">⚠ ${w}</div>`).join("");
+      p.warnings.map(w => `<div class="warn">⚠ ${w}</div>`).join("") +
+      (route.used_wh ? `<div style="margin-top:6px"><a href="/guide.html" target="_blank">Open guide mode (arm tablet) ↗</a></div>` : "");
     if (playTimer) togglePlay();
     setupProfile();
     deckgl.setProps({layers: layers()});
