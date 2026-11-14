@@ -108,6 +108,15 @@ def stations_save(body: st.StationSet):
     return {"saved": len(body.stations), "path": path.as_posix()}
 
 
+@app.get("/stations/candidates")
+def stations_candidates():
+    """Suggested stations (python -m api.candidates). The HUD loads them unsaved."""
+    path = STATIONS / "candidates.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="run: python -m api.candidates")
+    return _read_json(path)
+
+
 @app.get("/stations/stations_manual.gpkg")
 def stations_download():
     path = STATIONS / "stations_manual.gpkg"

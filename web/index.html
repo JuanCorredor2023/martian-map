@@ -30,6 +30,7 @@
             margin: 4px 0; font-size: 12px; }
   .st-row button { width: auto; padding: 0 4px; margin: 0; background: transparent; color: var(--muted); }
   a { color: var(--accent); }
+  button.secondary { background: #2a323d; color: var(--text); font-weight: 500; }
   #readout { bottom: 16px; left: 16px; font-variant-numeric: tabular-nums; }
   h1 { font-size: 14px; margin: 0 0 10px; letter-spacing: 0.02em; }
   h1 span { color: var(--accent); }
@@ -92,6 +93,8 @@
   <hr>
   <div class="muted">Stations · id · type · service (min) · score</div>
   <div id="station-list"></div>
+  <button id="load-candidates" class="secondary">Load suggested stations (unsaved)</button>
+  <div id="unsaved" class="warn" hidden>Unsaved changes: nothing reaches E5 until you save</div>
   <button id="save-stations">Save for E5 (.gpkg)</button>
   <div id="stations-msg" class="muted"></div>
 </div>
@@ -208,6 +211,9 @@ const TYPE_PREFIX = {ridge: "R", hollow: "H", contact: "C", curiosity: "Q"};
 let rubricMeta = {}, rubric = {}, stations = [];
 
 const scoreOf = s => Number(rubric[s.type] ?? 0);
+const isUnsure = s => s.confidence === "low" || s.confidence === "approximate";
+let dirty = false;
+function markDirty(on = true) { dirty = on; ui("unsaved").hidden = !on; }
 const rgb = t => `rgb(${(TYPE_COLORS[t] || [200, 200, 200]).join(",")})`;
 
 function nextId(type) {
@@ -231,7 +237,7 @@ function stationLayers() {
     new TextLayer({
       id: "station-labels", data: stations,
       getPosition: s => toWorld(s.x, s.y),
-      getText: s => `${s.id}: ${scoreOf(s)}`,
+      getText: s => `${s.id}${isUnsure(s) ? "?" : ""}: ${scoreOf(s)}`,
       getColor: [255, 255, 255], getSize: 12, getPixelOffset: [0, -16],
       fontWeight: 600, outlineWidth: 3, outlineColor: [0, 0, 0], fontSettings: {sdf: true},
       updateTriggers: {getText: key, getPosition: key},
@@ -250,7 +256,7 @@ function renderRubric() {
     Object.assign(input, {type: "number", min: 0, max: 99, step: 1, value: rubric[type] ?? meta.score});
     input.addEventListener("input", () => {
       rubric[type] = Math.max(0, Number(input.value) || 0);
-      renderStations(); redraw();
+      markDirty(); renderStations(); redraw();
     });
     ui("rubric").append(dot, name, input);
   }
@@ -262,16 +268,18 @@ function renderStations() {
   stations.forEach((s, i) => {
     const row = document.createElement("div");
     row.className = "st-row";
-    const id = document.createElement("b"); id.textContent = s.id; id.style.color = rgb(s.type);
+    const id = document.createElement("b"); id.textContent = s.id + (isUnsure(s) ? "?" : "");
+    id.style.color = rgb(s.type);
+    id.title = [s.source, s.confidence && `confidence: ${s.confidence}`, s.note].filter(Boolean).join("\n");
     const type = document.createElement("select");
     for (const [t, meta] of Object.entries(rubricMeta)) type.add(new Option(meta.label, t, false, t === s.type));
-    type.addEventListener("input", () => { s.type = type.value; renderStations(); redraw(); });
+    type.addEventListener("input", () => { s.type = type.value; markDirty(); renderStations(); redraw(); });
     const service = document.createElement("input");
     Object.assign(service, {type: "number", min: 0, step: 1, value: s.service_time_min});
-    service.addEventListener("input", () => { s.service_time_min = Math.max(0, Number(service.value) || 0); });
+    service.addEventListener("input", () => { s.service_time_min = Math.max(0, Number(service.value) || 0); markDirty(); });
     const score = document.createElement("span"); score.textContent = scoreOf(s);
     const del = document.createElement("button"); del.textContent = "✕"; del.title = "Remove";
-    del.addEventListener("click", () => { stations.splice(i, 1); renderStations(); redraw(); });
+    del.addEventListener("click", () => { stations.splice(i, 1); markDirty(); renderStations(); redraw(); });
     row.append(id, type, service, score, del);
     list.append(row);
   });
@@ -282,7 +290,7 @@ function addStationAt(worldCoord) {
   if (x < X0 || x > X0 + SIZE_M || y > Y0 || y < Y0 - SIZE_M) return;   // outside the box
   const type = ui("new-type").value;
   stations.push({id: nextId(type), type, x, y, service_time_min: 10, note: ""});
-  renderStations(); redraw();
+  markDirty(); renderStations(); redraw();
 }
 
 async function loadStations() {
@@ -298,9 +306,23 @@ async function saveStations() {
   const res = await fetch("/stations", {method: "POST", headers: {"Content-Type": "application/json"},
                                         body: JSON.stringify({rubric, stations})});
   const out = await res.json();
+  if (res.ok) markDirty(false);
   ui("stations-msg").innerHTML = res.ok
     ? `Saved ${out.saved} stations · <a href="/stations/stations_manual.gpkg">download .gpkg</a>`
     : `<span class="warn">Error: ${JSON.stringify(out.detail)}</span>`;
+}
+
+async function loadCandidates() {
+  const res = await fetch("/stations/candidates");
+  if (!res.ok) { ui("stations-msg").innerHTML = `<span class="warn">${(await res.json()).detail}</span>`; return; }
+  const {candidates} = await res.json();
+  const have = new Set(stations.map(s => s.id));
+  const added = candidates.filter(c => !have.has(c.id))
+    .map(c => ({service_time_min: 10, ...c, note: c.note || ""}));
+  stations.push(...added);
+  ui("stations-msg").textContent = `Loaded ${added.length} suggestions. Review them on the ortho; ` +
+    `ids with "?" are low confidence or approximate. Hover an id for its source.`;
+  markDirty(); renderStations(); redraw();
 }
 
 const redraw = () => deckgl && deckgl.setProps({layers: layers()});
@@ -392,6 +414,8 @@ ui("block-slope").addEventListener("input", refreshBlockInfo);
 
 ui("plan-btn").addEventListener("click", requestPlan);
 ui("save-stations").addEventListener("click", saveStations);
+ui("load-candidates").addEventListener("click", loadCandidates);
+window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 
 main().then(refreshBlockInfo).then(loadStations).catch(err => { ui("status").textContent = "Error: " + err.message; console.error(err); });
 </script>

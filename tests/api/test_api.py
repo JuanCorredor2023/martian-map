@@ -111,3 +111,21 @@ def test_stations_reject_invalid(bad, tmp_path, monkeypatch):
     import api.main as main
     monkeypatch.setattr(main, "STATIONS", tmp_path)
     assert client.post("/stations", json=station_set(**bad)).status_code == 422
+
+
+def test_candidates_endpoint(tmp_path, monkeypatch):
+    import json as _json
+    import api.main as main
+    monkeypatch.setattr(main, "STATIONS", tmp_path)
+    assert client.get("/stations/candidates").status_code == 404
+    (tmp_path / "candidates.json").write_text(_json.dumps(
+        {"candidates": [{"id": "R0", "type": "ridge", "x": CENTRE[0], "y": CENTRE[1]}]}))
+    assert client.get("/stations/candidates").json()["candidates"][0]["id"] == "R0"
+
+
+def test_curiosity_drill_targets_match_places():
+    from api.candidates import curiosity_targets
+    t = {c["id"]: c for c in curiosity_targets()}
+    ridge, hollow = t["R0"], t["H0"]
+    d = ((ridge["x"] - hollow["x"]) ** 2 + (ridge["y"] - hollow["y"]) ** 2) ** 0.5
+    assert 8 < d < 12                      # NASA: drilled ridge ~10 m from the drilled hollow
