@@ -48,6 +48,8 @@ Reparto según la guía de trabajo del equipo (`docs/guia_trabajo_equipo.md`, de
 
 ## 5. Plan de trabajo y contratos
 
+Qué significa cada código (E1…E12): `docs/enfoques.md`, resumen del plan original (`docs/plan_enfoques_E1-E12.pdf`) con las correcciones encontradas al descargar los datos.
+
 Lee `docs/guia_trabajo_equipo.md` antes de empezar: dice qué hace cada persona de la hora 0 a la 48, qué archivo recibe de quién, a quién se lo entrega y las horas de corte con su plan B. El MVP (E1 + E2 mínimo + E3 + E4 + E5) se cierra en la hora 24 y el código se congela en la hora 40.
 
 Contratos ya fijados (cualquier cambio se publica primero en el issue de contratos y lo confirma quien consume el archivo):
