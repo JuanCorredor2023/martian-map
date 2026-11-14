@@ -1,6 +1,6 @@
 # E3 · Metabolic and O2 cost of walking under Mars gravity
 
-Owner: Sebas (`@Seredial0326`) · Issue: #6 · PRs: #21, #26 · Status: done for the MVP (E1 weights still to be combined, hours 20–24) · Last update: 2026-11-14
+Owner: Sebas (`@Seredial0326`) · Issue: #6 · PRs: #21, #26 · Status: done for the MVP (E1 weights still to be combined, hours 20–24) · Last update: 2026-11-14 (boxwork resolution limitation added)
 
 ## Question
 How much energy, time and metabolic O2 does a suited astronaut spend on each move across the 1 m base grid, under Mars gravity? The answer is the cost the planner uses: E4 (return energy R(v) and walkback) and E5 (orienteering) plan on it.
@@ -80,6 +80,7 @@ The minimum edge energy on the real DEM (338.75 J for a 1 m move) equals the ana
 - **Speed convention.** Signed or |alpha| Apollo speed changes the downhill costs (c_min,h 338.75 against 351.00 J/m). We use signed; a sensitivity run with |alpha| is still to do.
 - **Negative result: the Apollo regression breaks on steep climbs.** V = 0.75 − 0.01·alpha reaches 0 at +75°. Without a slope limit, the real DEM has 107 climbing edges at or above 75°; their time is negative and 91 of them gave negative energy, which breaks Dijkstra (non-negative weights). The regression was fitted on gentle slopes and must not be extrapolated; hence the guard.
 - **Cross-slope is not modelled.** Santee only sees the slope along the move. The 30° cell block is a design choice, not a physiological threshold.
+- **The DEM does not see the boxwork.** The base grid note shows that the 1 m DEM does not resolve the 1–3 m ridges that the 0.25 m orthophoto shows clearly, so inside the boxwork the metabolic cost misses the up-and-down of crossing ridges and is probably an underestimate. This matches E2: terrain features from the DEM do not explain the route inside the boxwork (AUC about 0.53). The fix has to come from the image (E8 `sand.tif`, ridge/hollow masks) and the E1 weights.
 - **No terrain factor.** Santee 2001 has no surface factor (eta); sand and boulders will come from E8 and E9 and from the E1 weights.
 - **O2 is a metabolic equivalence** (20.1 kJ/L, 1–7 % uncertainty), not a PLSS tank reading. Time spent at stations is not included yet.
 

@@ -17,17 +17,38 @@ import geopandas as gpd
 from pydantic import BaseModel, Field, field_validator, model_validator
 from shapely.geometry import Point
 
-# Default rubric (team decision, 2026-11-14). The reasons are design
-# assumptions to be checked against the literature review.
+# Default rubric (team decision, 2026-11-14), backed by the literature review in
+# docs/research/station_value_rubric.md. Scores encode an expert ORDER of
+# priorities (Apollo/BASALT practice), not measured values; the HUD edits them
+# live and the paper reports their sensitivity.
+RUBRIC_VERSION = "2026-11-14"
 DEFAULT_RUBRIC = {
-    "ridge":     {"label": "Boxwork ridge", "score": 5,
-                  "why": "ridge cements: record of late groundwater (clays assumed)"},
-    "hollow":    {"label": "Hollow between ridges", "score": 4,
-                  "why": "hollow fill (carbonates assumed); loose sand is a hazard"},
-    "contact":   {"label": "Contact between units", "score": 3,
-                  "why": "geologic diversity, stratigraphic context"},
-    "curiosity": {"label": "Curiosity measurement site", "score": 3,
-                  "why": "ground truth from the rover (drill or long stop)"},
+    "ridge": {
+        "label": "Boxwork ridge", "score": 5,
+        "why": ("Ridge cement: late groundwater in the sulfate interval; the drilled ridge "
+                "(Nevado Sajama) has clays + Fe oxides and was chosen for the mission's last "
+                "SAM TMAH organics run (preliminary, n = 1)"),
+        "sources": ["Siebach2014", "Hausrath2026", "JPL2026"],
+    },
+    "hollow": {
+        "label": "Hollow between ridges", "score": 4,
+        "why": ("Hollow bedrock: abundant siderite, no clays, less altered (reduced end-member "
+                "of the pair; preliminary, n = 1). Sand and slip are costed in E3/E4, not here"),
+        "sources": ["Hausrath2026", "Siebach2026"],
+    },
+    "contact": {
+        "label": "Contact between units", "score": 4,
+        "why": ("Contact between units: brackets environmental change and relative timing "
+                "(clay-free Chenapau / clay-bearing Altadena; Altadena / layered sulfate); "
+                "explicit final-phase target of Curiosity's boxwork campaign"),
+        "sources": ["NASA-blog-4804", "Herd2025", "Siebach2026"],
+    },
+    "curiosity": {
+        "label": "Curiosity measurement site", "score": 3,
+        "why": ("Curiosity drill or long stop: ground truth and calibration for the E8 maps; "
+                "little new science because it is already measured"),
+        "sources": ["MSR-STM2025", "Brady2019"],
+    },
 }
 
 LAYER = "stations"
@@ -82,8 +103,12 @@ def save(station_set, out_dir, crs_wkt):
     if path.exists():
         path.unlink()                                 # overwrite the whole file
     gdf.to_file(path, layer=LAYER, driver="GPKG")
-    (out_dir / "stations_rubric.json").write_text(
-        json.dumps({"rubric": station_set.rubric}, indent=2), encoding="utf-8")
+    (out_dir / "stations_rubric.json").write_text(json.dumps({
+        "rubric": station_set.rubric,
+        "default_rubric_version": RUBRIC_VERSION,
+        "sources": {t: v["sources"] for t, v in DEFAULT_RUBRIC.items()},
+        "review": "docs/research/station_value_rubric.md",
+    }, indent=2), encoding="utf-8")
     return path
 
 
