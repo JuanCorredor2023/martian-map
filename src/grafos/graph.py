@@ -69,9 +69,37 @@ class Graph:
 
     @classmethod
     def from_base_dir(cls, base_dir):
-        """Load data/base/edges_e3.npz + grid.json + crs.wkt."""
+        """Load data/base/edges_e3.npz + grid.json + crs.wkt.
+
+        If edges_e3.npz is missing, compute the E3 costs in memory from
+        dem_1m.tif and slope_deg.tif with fisica.edge_cost (same defaults as
+        src/fisica/build_cost_layers.py, ~3 s)."""
         base = Path(base_dir)
-        return cls.from_npz(base / "edges_e3.npz", base / "grid.json", base / "crs.wkt")
+        for name in ("grid.json", "crs.wkt", "dem_1m.tif"):
+            if not (base / name).exists():
+                raise FileNotFoundError(
+                    f"{base / name} not found: download the base grid "
+                    "(gh release download base-grid-v2, see the board) into data/base/")
+        if (base / "edges_e3.npz").exists():
+            return cls.from_npz(base / "edges_e3.npz", base / "grid.json", base / "crs.wkt")
+
+        import sys
+        import rasterio
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from fisica.edge_cost import NEIGHBOURS, edge_costs
+        print(f"{base / 'edges_e3.npz'} not found: computing E3 edge costs in memory")
+        with rasterio.open(base / "dem_1m.tif") as src:
+            dem = src.read(1).astype(np.float64)
+        with rasterio.open(base / "slope_deg.tif") as src:
+            slope = src.read(1)
+        t, e, _ = edge_costs(dem, cell_slope_deg=slope)
+        g = json.loads((base / "grid.json").read_text(encoding="utf-8"))
+        return cls({"energy_j": e, "time_s": t}, NEIGHBOURS,
+                   transform=tuple(g["grid_1m"]["affine"]),
+                   crs_wkt=(base / "crs.wkt").read_text(encoding="utf-8").strip())
+
+    def inside(self, row, col):
+        return 0 <= row < self.height and 0 <= col < self.width
 
     def _sources_targets(self, name):
         w = self._edges[name]
@@ -124,21 +152,19 @@ class Graph:
                                          connection="strong")
         return labels, np.bincount(labels)
 
-    def snap(self, row, col, mask=None, max_radius=50):
-        """Nearest cell (Chebyshev rings) with outgoing edges and inside `mask`
+    def snap(self, row, col, mask=None):
+        """Nearest cell (Euclidean) with outgoing edges and inside `mask`
         (bool array over the grid, e.g. the largest component). Returns (row, col)."""
+        from scipy.ndimage import distance_transform_edt
         ok = (self.out_degree() > 0).reshape(self.shape)
         if mask is not None:
             ok &= mask
-        for r in range(max_radius + 1):
-            r0, r1 = max(row - r, 0), min(row + r + 1, self.height)
-            c0, c1 = max(col - r, 0), min(col + r + 1, self.width)
-            rr, cc = np.nonzero(ok[r0:r1, c0:c1])
-            if len(rr):
-                rr, cc = rr + r0, cc + c0
-                i = np.argmin((rr - row) ** 2 + (cc - col) ** 2)
-                return int(rr[i]), int(cc[i])
-        raise ValueError(f"no walkable cell within {max_radius} cells of ({row}, {col})")
+        if ok[row, col]:
+            return int(row), int(col)
+        if not ok.any():
+            raise ValueError("no walkable cell in the grid")
+        _, (rr, cc) = distance_transform_edt(~ok, return_indices=True)
+        return int(rr[row, col]), int(cc[row, col])
 
     # --------------------------------------------------------- shortest paths
     def costs_from(self, source, weight="energy_j", limit=np.inf, predecessors=False):

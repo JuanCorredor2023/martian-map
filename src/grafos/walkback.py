@@ -15,11 +15,16 @@ cell is reachable-and-returnable iff g(v) + R(v) <= usable, where g = forward
 Dijkstra. Multi-resource labels (energy + time/O2) are a later step.
 """
 
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 
-from .graph import Graph, follow
+if __package__ in (None, ""):          # run as a script: make `grafos` importable
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from grafos.graph import Graph, follow  # noqa: E402
 
 J_PER_WH = 3600.0
 
@@ -90,3 +95,9 @@ def check_walkback(graph, path, rv_j, usable_j):
         "feasible": bool(len(bad) == 0),
         "first_violation": int(bad[0]) if len(bad) else None,
     }
+
+
+if __name__ == "__main__":
+    # This file is a library; running it is the same as running build_rv.py.
+    from grafos.build_rv import main
+    main()

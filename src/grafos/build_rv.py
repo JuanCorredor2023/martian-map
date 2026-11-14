@@ -1,11 +1,16 @@
 """Build R(v) and an E4 round trip with walkback on the real grid.
 
-Run from the repo root (needs data/base/edges_e3.npz, see src/fisica/build_cost_layers.py):
-    python src/grafos/build_rv.py data/base data/e4 --budget-wh 1000 --margin 0.1
-        [--habitat X Y] [--goal X Y]
+Run from the repo root:
+    python src/grafos/build_rv.py --habitat X Y [--budget-wh 1000] [--margin 0.1]
+        [--goal X Y] [--base-dir data/base] [--out-dir data/e4]
 
-Habitat defaults to the box centre, snapped to the nearest cell of the largest
-strongly connected component. Coordinates are metres in the DEM's CRS.
+--habitat is required (user input, metres in the DEM's CRS; the box spans
+x 8142537.49 .. 8144537.49, y -285463.08 .. -283463.08). If it falls on a
+blocked cell (slope > 30 deg) or outside the main connected area, it is moved
+to the nearest valid cell and the move is reported.
+
+Uses data/base/edges_e3.npz if present; otherwise computes the E3 costs in
+memory from dem_1m.tif and slope_deg.tif (~3 s).
 
 Writes to OUT_DIR:
     rv.tif         R(v): energy (Wh) to return to the habitat, float32, NaN = cannot return
@@ -59,15 +64,29 @@ def route_geojson(graph, prof, habitat_xy, goal_xy, crs_wkt, **props):
             "features": [line] + pts}
 
 
+def place(graph, main_cc, xy, label):
+    """User (x, y) -> valid (row, col); exits with a clear message if outside the box."""
+    r, c = (int(v) for v in graph.xy_to_cell(*xy))
+    if not graph.inside(r, c):
+        sys.exit(f"error: {label} {xy} is outside the study box")
+    sr, sc = graph.snap(r, c, mask=main_cc)
+    if (sr, sc) != (r, c):
+        print(f"warning: {label} cell ({r}, {c}) is blocked or outside the main connected "
+              f"area; moved {np.hypot(sr - r, sc - c):.1f} m to ({sr}, {sc})")
+    return sr, sc
+
+
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("base_dir")
-    ap.add_argument("out_dir")
+    repo = Path(__file__).resolve().parents[2]
+    ap = argparse.ArgumentParser(description="R(v) and E4 walkback round trip.")
+    ap.add_argument("--habitat", type=float, nargs=2, metavar=("X", "Y"), required=True,
+                    help="habitat position, metres in the DEM's CRS")
     ap.add_argument("--budget-wh", type=float, default=1000.0)
     ap.add_argument("--margin", type=float, default=0.10)
-    ap.add_argument("--habitat", type=float, nargs=2, metavar=("X", "Y"))
     ap.add_argument("--goal", type=float, nargs=2, metavar=("X", "Y"),
                     help="default: the safe cell farthest (in energy) from the habitat")
+    ap.add_argument("--base-dir", default=str(repo / "data" / "base"))
+    ap.add_argument("--out-dir", default=str(repo / "data" / "e4"))
     args = ap.parse_args()
 
     base, out = Path(args.base_dir), Path(args.out_dir)
@@ -79,11 +98,7 @@ def main():
     print(f"graph: {graph.n:,} nodes, {graph.csr().nnz:,} arcs; largest SCC "
           f"{100 * sizes.max() / graph.n:.1f}% ({time.time() - t0:.1f}s)")
 
-    if args.habitat:
-        r, c = graph.xy_to_cell(*args.habitat)
-    else:
-        r, c = graph.height // 2, graph.width // 2
-    hr, hc = graph.snap(int(r), int(c), mask=main_cc)
+    hr, hc = place(graph, main_cc, args.habitat, "habitat")
     habitat = int(graph.node(hr, hc))
     habitat_xy = [float(v) for v in graph.cell_to_xy(hr, hc)]
 
@@ -104,8 +119,7 @@ def main():
                  np.where(reach, safe, np.nan).reshape(graph.shape), profile)
 
     if args.goal:
-        gr, gc = graph.xy_to_cell(*args.goal)
-        gr, gc = graph.snap(int(gr), int(gc), mask=main_cc)
+        gr, gc = place(graph, main_cc, args.goal, "goal")
         goal = int(graph.node(gr, gc))
     else:
         total = np.where(safe, wb.g_j + wb.rv_j, -np.inf)
