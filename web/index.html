@@ -96,6 +96,17 @@
   <input type="range" id="block-slope" min="15" max="60" step="1" value="30">
   <div class="muted" id="block-info"></div>
   <hr>
+  <div class="muted"><b style="color:var(--text)">EVA limits</b></div>
+  <div class="row"><span class="muted">Energy budget (Wh)</span>
+    <input type="number" id="budget-wh" min="50" step="50" value="1000" style="width:70px"></div>
+  <div class="row"><span class="muted">Margin (%)</span>
+    <input type="number" id="margin-pct" min="0" max="90" step="5" value="10" style="width:70px"></div>
+  <div class="row"><span class="muted">Max EVA duration (min)</span>
+    <input type="number" id="max-min" min="0" step="10" value="120" style="width:70px"></div>
+  <div class="row"><span class="muted">O₂ budget (L, 0 = none)</span>
+    <input type="number" id="o2-l" min="0" step="10" value="0" style="width:70px"></div>
+  <div class="muted" style="font-size:11px">xEMU design budget is 2813 Wh for an 8 h EVA; in this 2 × 2 km box
+    energy rarely binds, duration does.</div>
   <button id="plan-btn">Plan EVA</button>
   <div id="plan-info" class="muted"></div>
   <div id="profile" hidden>
@@ -576,7 +587,10 @@ async function requestPlan() {
     start,
     stations: stations.map(s => ({id: s.id, x: s.x, y: s.y, score: scoreOf(s),
                                   service_time_min: s.service_time_min})),
-    energy_budget_wh: 2813, gravity_m_s2: 3.71, margin: 0.10,
+    energy_budget_wh: Number(ui("budget-wh").value) || 1000, gravity_m_s2: 3.71,
+    margin: (Number(ui("margin-pct").value) || 0) / 100,
+    max_duration_min: Number(ui("max-min").value) > 0 ? Number(ui("max-min").value) : null,
+    o2_budget_l: Number(ui("o2-l").value) > 0 ? Number(ui("o2-l").value) : null,
     apollo_speed_uses_signed_slope: true, service_energy_wh_per_min: null,
     max_cell_slope_deg: blockLimit(),
   };
@@ -669,6 +683,12 @@ ui("save-stations").addEventListener("click", saveStations);
 ui("load-candidates").addEventListener("click", loadCandidates);
 ui("sep-btn").addEventListener("click", simulateSEP);
 ui("play-btn").addEventListener("click", togglePlay);
+// Before a plan exists, the walkback energy is the usable budget from the EVA limits.
+const syncBudget = () => { if (!routeProf) ui("wb-energy").value =
+  Math.round((Number(ui("budget-wh").value) || 0) * (1 - (Number(ui("margin-pct").value) || 0) / 100)); };
+ui("budget-wh").addEventListener("input", syncBudget);
+ui("margin-pct").addEventListener("input", syncBudget);
+syncBudget();
 ui("route-pos").addEventListener("input", e => showRouteIdx(Number(e.target.value), false));
 ui("route-pos").addEventListener("change", e => showRouteIdx(Number(e.target.value), true));
 // Only one map-click mode at a time.
