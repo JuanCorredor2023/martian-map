@@ -12,10 +12,11 @@ import json
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.staticfiles import StaticFiles
 
 from .plan import PlanRequest, feature, feature_collection
+from .raster_layers import blocked_layer, cost_layer
 
 REPO = Path(__file__).resolve().parents[1]
 DATA = Path(os.environ.get("MARTIAN_DATA", REPO / "data"))
@@ -56,6 +57,30 @@ def layers():
     }
 
 
+@app.get("/layers/cost.png")
+def cost_png():
+    """E3 cost per cell (display only), coloured with the legend from /layers/cost."""
+    return Response(cost_layer(str(BASE))[0], media_type="image/png")
+
+
+@app.get("/layers/cost")
+def cost_legend():
+    return cost_layer(str(BASE))[1]
+
+
+@app.get("/layers/blocked.png")
+def blocked_png(max_cell_slope_deg: float = Query(30.0, ge=0, le=90)):
+    """Cells blocked because their steepest slope exceeds the limit (red)."""
+    return Response(blocked_layer(str(BASE), round(max_cell_slope_deg, 1))[0],
+                    media_type="image/png")
+
+
+@app.get("/layers/blocked")
+def blocked_stats(max_cell_slope_deg: float = Query(30.0, ge=0, le=90)):
+    fraction = blocked_layer(str(BASE), round(max_cell_slope_deg, 1))[1]
+    return {"max_cell_slope_deg": max_cell_slope_deg, "blocked_fraction": fraction}
+
+
 def _fixed_test_route():
     """Curiosity's trajectory (E2, Juan) used as a fixed route to test the whole
     pipeline before the planner is connected (guide section 38)."""
@@ -89,6 +114,7 @@ def plan(req: PlanRequest):
         model="santee_2001", units={"coordinates": "m", "energy": "Wh", "time": "s"},
         energy_budget_wh=req.energy_budget_wh,
         energy_usable_wh=req.energy_usable_j / 3600.0,
+        max_cell_slope_deg=req.max_cell_slope_deg,
         feasible=None, warnings=warnings)
 
 

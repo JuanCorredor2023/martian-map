@@ -72,3 +72,15 @@ def test_cell_slope_block_and_disable():
     assert np.isfinite(e_off[:, 2, 2]).all()                      # demo toggle: block disabled
     _, e_40, _ = edge_costs(dem, cell_slope_deg=cell_slope, max_cell_slope_deg=40)
     assert np.isfinite(e_40[:, 2, 2]).all()                       # demo slider: higher limit
+
+
+def test_slope_limit_guard_keeps_costs_positive():
+    with pytest.raises(ValueError):
+        edge_costs(np.zeros((3, 3)), max_slope_deg=75)            # speed would reach 0
+    with pytest.warns(UserWarning):
+        edge_costs(np.zeros((3, 3)), max_slope_deg=40)            # allowed, but extrapolated
+    rng = np.random.default_rng(1)
+    dem = rng.normal(0, 3.0, (30, 30))                            # very steep random terrain
+    with pytest.warns(UserWarning):
+        t, e, _ = edge_costs(dem, max_slope_deg=74.9)
+    assert (e[np.isfinite(e)] > 0).all() and (t[np.isfinite(t)] > 0).all()

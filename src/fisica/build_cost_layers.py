@@ -25,17 +25,7 @@ import rasterio
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fisica.edge_cost import (DEFAULT_MAX_CELL_SLOPE_DEG, DEFAULT_MAX_SLOPE_DEG,  # noqa: E402
-                              NEIGHBOURS, edge_costs)
-from fisica.metabolic import J_PER_WH  # noqa: E402
-
-
-def cell_cost_wh(energy_j, cell_size_m):
-    """Mean Wh per metre-of-cell over valid outgoing edges, NaN if none."""
-    lengths = np.array([cell_size_m * (np.sqrt(2) if dr and dc else 1.0)
-                        for dr, dc in NEIGHBOURS], dtype=np.float32)
-    per_metre = energy_j / lengths[:, None, None]      # NaN edges stay NaN
-    mean_j = np.nanmean(per_metre, axis=0)
-    return (mean_j * cell_size_m / J_PER_WH).astype(np.float32)
+                              NEIGHBOURS, cell_cost_wh, edge_costs)
 
 
 def main():
@@ -64,10 +54,7 @@ def main():
     time_s, energy_j, alpha = edge_costs(dem, cell_size_m=cell, max_slope_deg=args.max_slope,
                                          cell_slope_deg=cell_slope, max_cell_slope_deg=max_cell)
 
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)   # all-NaN cells -> NaN
-        layer = cell_cost_wh(energy_j, cell)
+    layer = cell_cost_wh(energy_j, cell)
 
     profile.update(dtype="float32", count=1, nodata=np.nan, compress="deflate")
     with rasterio.open(out / "costo_e3.tif", "w", **profile) as dst:

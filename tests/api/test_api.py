@@ -55,3 +55,22 @@ def test_plan_returns_fixed_route_in_mars_metres():
 ])
 def test_plan_rejects_invalid_requests(bad):
     assert client.post("/plan", json=plan_body(**bad)).status_code == 422
+
+
+def test_cost_layer_png_and_legend():
+    res = client.get("/layers/cost.png")
+    assert res.status_code == 200 and res.content[:8] == b"\x89PNG\r\n\x1a\n"
+    legend = client.get("/layers/cost").json()
+    assert legend["vmin_j_per_m"] == pytest.approx(338.75, abs=0.1)   # guide c_min,h
+
+
+def test_blocked_mask_follows_the_limit():
+    frac = lambda v: client.get("/layers/blocked", params={"max_cell_slope_deg": v}).json()["blocked_fraction"]
+    assert frac(30) == pytest.approx(0.12, abs=0.02)                  # JB: 12 % > 30 deg
+    assert frac(15) > frac(30) > frac(60)
+    assert client.get("/layers/blocked.png", params={"max_cell_slope_deg": 120}).status_code == 422
+
+
+def test_plan_accepts_disabled_block():
+    fc = client.post("/plan", json=plan_body(max_cell_slope_deg=None)).json()
+    assert fc["properties"]["max_cell_slope_deg"] is None

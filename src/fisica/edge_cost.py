@@ -15,15 +15,20 @@ Output layout (shared contract with the graph code):
     nodata cell at either end, or |alpha| above the slope limit).
 """
 
+import warnings
+
 import numpy as np
 
-from .metabolic import G_MARS, TOTAL_MASS_KG
+from .metabolic import G_MARS, J_PER_WH, TOTAL_MASS_KG
 
 # (d_row, d_col) for k = 0..7. Row grows southwards (north-up raster).
 NEIGHBOURS = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)]
 #              N        NE       E       SE      S       SW       W        NW
 
 DEFAULT_MAX_SLOPE_DEG = 20.0   # CSRM limit; the model is extrapolated beyond it
+EXTRAPOLATION_SLOPE_DEG = 25.0  # above this we warn: far outside the validated range
+SPEED_ZERO_SLOPE_DEG = 75.0     # Apollo speed 0.75 - 0.01*alpha reaches 0 here, so
+                                # time and energy turn negative and break Dijkstra
 DEFAULT_MAX_CELL_SLOPE_DEG = 30.0   # team decision: block cells whose steepest
                                     # slope (slope_deg.tif) exceeds this; None disables
 
@@ -57,12 +62,20 @@ def edge_costs(dem, cell_size_m=1.0, mass_kg=TOTAL_MASS_KG, g_mps2=G_MARS,
 
     dem: 2-D float array of elevations in metres, NaN = nodata.
     max_slope_deg: limit on the slope ALONG the move (edge removed above it).
+        Must stay below 75 deg (Apollo speed hits 0); keep it around 20-25 deg.
     cell_slope_deg: optional steepest-slope raster (slope_deg.tif). Cells above
         max_cell_slope_deg are blocked (no edge in or out); this covers the
         cross-slope risk that Santee does not model. Pass max_cell_slope_deg=None
         (or no raster) to disable the block.
     Returns (time_s, energy_j, alpha_deg), each float32 of shape (8, rows, cols).
     """
+    if max_slope_deg >= SPEED_ZERO_SLOPE_DEG:
+        raise ValueError(f"max_slope_deg must be < {SPEED_ZERO_SLOPE_DEG} deg: the Apollo "
+                         "speed becomes <= 0 and edge costs turn negative")
+    if max_slope_deg > EXTRAPOLATION_SLOPE_DEG:
+        warnings.warn(f"max_slope_deg = {max_slope_deg} deg is far outside the validated "
+                      "range (about +/-20 deg); costs are an extrapolation", stacklevel=2)
+
     dem = np.asarray(dem, dtype=np.float64)
     shape = (len(NEIGHBOURS),) + dem.shape
     time_s = np.full(shape, np.nan, dtype=np.float32)
@@ -88,3 +101,17 @@ def edge_costs(dem, cell_size_m=1.0, mass_kg=TOTAL_MASS_KG, g_mps2=G_MARS,
         alpha_out[k] = np.where(valid, alpha, np.nan)
 
     return time_s, energy_j, alpha_out
+
+
+def cell_cost_wh(energy_j, cell_size_m):
+    """Display summary: mean Wh to cross one cell, over its valid outgoing edges.
+
+    NaN where the cell has no valid edge. Planning must use the directed edges.
+    """
+    lengths = np.array([cell_size_m * (np.sqrt(2) if dr and dc else 1.0)
+                        for dr, dc in NEIGHBOURS], dtype=np.float32)
+    per_metre = energy_j / lengths[:, None, None]          # NaN edges stay NaN
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)    # all-NaN cells -> NaN
+        mean_j = np.nanmean(per_metre, axis=0)
+    return (mean_j * cell_size_m / J_PER_WH).astype(np.float32)
