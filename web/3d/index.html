@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Mars EVA Planner · 3D</title>
+<link rel="icon" href="data:,">   <!-- no favicon: stops the browser asking for /favicon.ico (404) -->
 <!-- three.js is vendored (web/3d/vendor/README.md): the page needs no internet. -->
 <script type="importmap">
 {"imports": {"three": "./vendor/three/build/three.module.js",
@@ -22,15 +23,28 @@
   #view { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
   .panel { position: absolute; background: var(--panel); border: 1px solid var(--border);
            border-radius: 8px; padding: 12px 14px; backdrop-filter: blur(4px); }
-  #info { top: 16px; left: 16px; width: 250px; }
+  /* The panel never grows past the pane: it scrolls, and leaves the readout visible. */
+  #info { top: 16px; left: 16px; width: 250px; max-height: calc(100% - 100px); overflow-y: auto;
+          box-sizing: border-box; }
   h1 { font-size: 14px; margin: 0 0 8px; letter-spacing: 0.02em; }
   h1 span { color: var(--accent); }
+  summary .back { float: right; }
   a { color: var(--accent); }
   .muted { color: var(--muted); font-size: 12px; }
   .warn { color: #f2c94c; font-size: 12px; margin-top: 6px; }
   hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
   summary { cursor: pointer; margin: 6px 0; }
   details[open] summary { margin-bottom: 8px; }
+  #relief { display: block; width: 100%; margin: 6px 0 0; accent-color: var(--accent); }
+  #plan-facts { margin: 4px 0; font-variant-numeric: tabular-nums; }
+  .key { white-space: nowrap; margin-right: 8px; }
+  .key i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; margin-right: 4px;
+           vertical-align: middle; }
+  #plan-box button { margin-top: 8px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px;
+                     background: #1c222b; color: var(--text); font: inherit; cursor: pointer; }
+  #plan-box button:hover:not(:disabled) { background: #262e3a; }
+  #plan-box button:disabled { opacity: 0.5; cursor: default; }
+  #plan-default-note { margin-top: 4px; }
   #readout { bottom: 16px; left: 16px; font-variant-numeric: tabular-nums; }
   #compass { top: 16px; right: 16px; width: 44px; height: 44px; padding: 6px; border-radius: 50%;
              cursor: pointer; }
@@ -54,8 +68,25 @@
 
 <div id="info" class="panel">
   <h1>Mars EVA Planner <span>· 3D</span></h1>
-  <div class="muted" id="relief-label">Relief at true scale</div>
-  <!-- Closed by main.js on small screens so the panel does not cover the map. -->
+  <label class="muted" id="relief-label" for="relief">Relief at true scale</label>
+  <input type="range" id="relief" min="1" max="5" step="0.5" value="1" disabled>
+  <hr>
+  <!-- Both sections are closed by main.js on small screens so the panel does not cover the map. -->
+  <details id="plan-box" open>
+    <!-- The link to the 2D planner shares this line: no extra row in the closed panel. -->
+    <summary class="muted">Plan<a class="back" href="/">← 2D planner</a></summary>
+    <div class="muted" id="plan-source">Waiting for the terrain…</div>
+    <div id="plan-facts"></div>
+    <div class="muted" id="plan-key"></div>
+    <div id="plan-warnings"></div>
+    <button id="plan-reload" disabled>Reload plan</button>
+    <!-- Shown only while there is no plan. The page never plans by itself (api.js). -->
+    <div id="plan-default-box" hidden>
+      <button id="plan-default">Plan with default settings</button>
+      <div class="muted" id="plan-default-note">Saved stations, default limits, start at the box centre.
+        The result becomes the last plan for the 2D planner and the guide screen.</div>
+    </div>
+  </details>
   <details id="about" open>
     <summary class="muted">About this view</summary>
     <div class="muted">Gale boxwork, 2 × 2 km.<br>
@@ -69,8 +100,6 @@
     <hr>
     <div class="muted" id="quality-label"></div>
   </details>
-  <hr>
-  <div class="muted"><a href="/">← 2D planner</a></div>
 </div>
 
 <div id="compass" class="panel" title="North (click to face north)">

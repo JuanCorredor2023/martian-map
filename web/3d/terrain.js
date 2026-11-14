@@ -97,6 +97,24 @@ export class Terrain {
            fi * ((1 - fj) * at(p + n) + fj * at(p + n + 1));
   }
 
+  // Height of the drawn mesh at a scene position. Like heightAt, but linear inside each
+  // of the two triangles of a cell (see _geometry), so anything laid on the ground sits
+  // on the triangles exactly. Bilinear and triangles differ by decimetres at scarps,
+  // which is enough to bury a line drawn 0.3 m above the ground.
+  surfaceAt(X, Z, k = this.k) {
+    const {n, step, first, half, z, detail} = this;
+    const gj = Math.min(n - 1, Math.max(0, (X + half - first) / step));
+    const gi = Math.min(n - 1, Math.max(0, (Z + half - first) / step));
+    const j0 = Math.min(n - 2, Math.floor(gj)), i0 = Math.min(n - 2, Math.floor(gi));
+    const fj = gj - j0, fi = gi - i0, p = i0 * n + j0;
+    const at = q => z[q] + (k - 1) * detail[q];
+    // a = north-west corner, b = south-west, c = north-east, d = south-east; the two
+    // triangles are a-b-c and b-d-c (the diagonal joins b and c).
+    const a = at(p), b = at(p + n), c = at(p + 1), d = at(p + n + 1);
+    return fi + fj <= 1 ? a + fi * (b - a) + fj * (c - a)
+                        : d + (1 - fi) * (c - d) + (1 - fj) * (b - d);
+  }
+
   // Real elevation (metres, DEM datum) of a shown height.
   elevation(Y) { return Y + this.zRef; }
 
