@@ -26,7 +26,7 @@ Why EVA planning on Mars needs terrain-aware, energy-aware routes; the boxwork a
 - 3.7 Boxwork ridges and hollows (top-hat, U-Net) → *E8 note*
 - 3.8 Boulder density (BoulderNet, distillation) → *E9 note*
 - 3.9 Radiation dose along the EVA timeline → *E12 note*
-- 3.10 Product: API and HUD → *product note*
+- 3.10 Product: API and HUD; manual stations and their rubric → [product](notes/product_api_hud.md)
 
 ## 4. Results
 - MVP route versus the three baselines → *E4/E5 notes, results table*

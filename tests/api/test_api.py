@@ -74,3 +74,40 @@ def test_blocked_mask_follows_the_limit():
 def test_plan_accepts_disabled_block():
     fc = client.post("/plan", json=plan_body(max_cell_slope_deg=None)).json()
     assert fc["properties"]["max_cell_slope_deg"] is None
+
+
+def station_set(**overrides):
+    body = {"rubric": {"ridge": 5, "hollow": 4, "contact": 3, "curiosity": 3},
+            "stations": [{"id": "R1", "type": "ridge", "x": CENTRE[0], "y": CENTRE[1]},
+                         {"id": "H1", "type": "hollow", "x": CENTRE[0] + 50, "y": CENTRE[1],
+                          "service_time_min": 15, "note": "dark sand"}]}
+    body.update(overrides)
+    return body
+
+
+def test_stations_roundtrip_gpkg(tmp_path, monkeypatch):
+    import geopandas as gpd
+    import api.main as main
+    monkeypatch.setattr(main, "STATIONS", tmp_path)          # never touch the real file
+    assert client.get("/stations").json()["stations"] == []
+    rubric = {"ridge": 7, "hollow": 4, "contact": 3, "curiosity": 3}  # edited live
+    assert client.post("/stations", json=station_set(rubric=rubric)).json()["saved"] == 2
+    gdf = gpd.read_file(tmp_path / "stations_manual.gpkg", layer="stations")
+    assert list(gdf["score"]) == [7.0, 4.0]                  # score comes from the rubric
+    assert "Mars" in gdf.crs.to_wkt()
+    back = client.get("/stations").json()
+    assert back["rubric"]["ridge"] == 7 and back["stations"][1]["note"] == "dark sand"
+    assert client.get("/stations/stations_manual.gpkg").status_code == 200
+
+
+@pytest.mark.parametrize("bad", [
+    {"stations": [{"id": "X", "type": "crater", "x": CENTRE[0], "y": CENTRE[1]}]},
+    {"stations": [{"id": "X", "type": "ridge", "x": 0.0, "y": 0.0}]},
+    {"rubric": {"ridge": -1, "hollow": 4, "contact": 3, "curiosity": 3}},
+    {"stations": [{"id": "X", "type": "ridge", "x": CENTRE[0], "y": CENTRE[1]},
+                  {"id": "X", "type": "hollow", "x": CENTRE[0], "y": CENTRE[1]}]},
+])
+def test_stations_reject_invalid(bad, tmp_path, monkeypatch):
+    import api.main as main
+    monkeypatch.setattr(main, "STATIONS", tmp_path)
+    assert client.post("/stations", json=station_set(**bad)).status_code == 422

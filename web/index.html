@@ -19,6 +19,17 @@
   .panel { position: absolute; background: var(--panel); border: 1px solid var(--border);
            border-radius: 8px; padding: 12px 14px; backdrop-filter: blur(4px); }
   #layers { top: 16px; left: 16px; width: 230px; }
+  #stations { top: 16px; right: 16px; width: 300px; overflow-x: hidden; max-height: calc(100% - 64px); overflow-y: auto; }
+  #stations select, #stations input[type=number] { background: #1c222b; color: var(--text);
+            border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font: inherit; }
+  #stations input[type=number] { width: 52px; }
+  .st-row select, .st-row input[type=number] { width: 100%; box-sizing: border-box; min-width: 0; }
+  .grid { display: grid; grid-template-columns: 14px 1fr auto; gap: 4px 8px; align-items: center; margin: 6px 0; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #111; }
+  .st-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) 46px 22px 20px; gap: 6px; align-items: center;
+            margin: 4px 0; font-size: 12px; }
+  .st-row button { width: auto; padding: 0 4px; margin: 0; background: transparent; color: var(--muted); }
+  a { color: var(--accent); }
   #readout { bottom: 16px; left: 16px; font-variant-numeric: tabular-nums; }
   h1 { font-size: 14px; margin: 0 0 10px; letter-spacing: 0.02em; }
   h1 span { color: var(--accent); }
@@ -71,6 +82,20 @@
   <div class="muted" id="status">Loading layers…</div>
 </div>
 
+<div id="stations" class="panel">
+  <h1>Science stations</h1>
+  <label><input type="checkbox" id="add-mode"> Click the map to add a</label>
+  <select id="new-type"></select>
+  <hr>
+  <div class="muted">Rubric: score of each station type (edit live)</div>
+  <div id="rubric" class="grid"></div>
+  <hr>
+  <div class="muted">Stations · id · type · service (min) · score</div>
+  <div id="station-list"></div>
+  <button id="save-stations">Save for E5 (.gpkg)</button>
+  <div id="stations-msg" class="muted"></div>
+</div>
+
 <div id="readout" class="panel muted">Move the cursor over the map</div>
 
 <script>
@@ -84,7 +109,7 @@
 // indices match without any offset. World y grows southwards (flipY), like
 // raster rows and XYZ tiles.
 // ---------------------------------------------------------------------------
-const {Deck, OrthographicView, TileLayer, BitmapLayer, PathLayer, ScatterplotLayer} = deck;
+const {Deck, OrthographicView, TileLayer, BitmapLayer, PathLayer, ScatterplotLayer, TextLayer} = deck;
 
 let S, X0, Y0, SIZE_M;
 const toWorld = (x, y) => [(x - X0) / S, (Y0 - y) / S];       // Mars metres -> world
@@ -155,7 +180,7 @@ async function showCostLegend() {
 function planLayers() {
   if (!planFC) return [];
   const byKind = k => planFC.features.filter(f => f.properties.kind === k);
-  const points = [...byKind("start"), ...byKind("station")];
+  const points = byKind("start");                 // stations are drawn from the HUD state
   return [
     new PathLayer({
       id: "route", data: byKind("route"),
@@ -173,14 +198,122 @@ function planLayers() {
   ];
 }
 
+// ---------------------------------------------------------------------------
+// Manual science stations (guide section 24): the score of a station is the
+// rubric score of its type, so every value traces back to an editable rule.
+// ---------------------------------------------------------------------------
+const TYPE_COLORS = {ridge: [255, 214, 10], hollow: [64, 160, 255],
+                     contact: [180, 120, 255], curiosity: [0, 220, 140]};
+const TYPE_PREFIX = {ridge: "R", hollow: "H", contact: "C", curiosity: "Q"};
+let rubricMeta = {}, rubric = {}, stations = [];
+
+const scoreOf = s => Number(rubric[s.type] ?? 0);
+const rgb = t => `rgb(${(TYPE_COLORS[t] || [200, 200, 200]).join(",")})`;
+
+function nextId(type) {
+  const prefix = TYPE_PREFIX[type] || "S";
+  let n = 1;
+  while (stations.some(s => s.id === prefix + n)) n++;
+  return prefix + n;
+}
+
+function stationLayers() {
+  const key = JSON.stringify(rubric) + stations.map(s => s.id + s.type).join();
+  return [
+    new ScatterplotLayer({
+      id: "stations", data: stations,
+      getPosition: s => toWorld(s.x, s.y),
+      getFillColor: s => TYPE_COLORS[s.type] || [200, 200, 200],
+      getLineColor: [17, 17, 17], stroked: true, lineWidthMinPixels: 1.5,
+      getRadius: s => 4 + scoreOf(s), radiusUnits: "pixels",       // size follows the score
+      updateTriggers: {getRadius: key, getFillColor: key, getPosition: key},
+    }),
+    new TextLayer({
+      id: "station-labels", data: stations,
+      getPosition: s => toWorld(s.x, s.y),
+      getText: s => `${s.id}: ${scoreOf(s)}`,
+      getColor: [255, 255, 255], getSize: 12, getPixelOffset: [0, -16],
+      fontWeight: 600, outlineWidth: 3, outlineColor: [0, 0, 0], fontSettings: {sdf: true},
+      updateTriggers: {getText: key, getPosition: key},
+    }),
+  ];
+}
+
+function renderRubric() {
+  ui("rubric").innerHTML = "";
+  for (const [type, meta] of Object.entries(rubricMeta)) {
+    const dot = document.createElement("span");
+    dot.className = "dot"; dot.style.background = rgb(type);
+    const name = document.createElement("span");
+    name.textContent = meta.label; name.title = meta.why;
+    const input = document.createElement("input");
+    Object.assign(input, {type: "number", min: 0, max: 99, step: 1, value: rubric[type] ?? meta.score});
+    input.addEventListener("input", () => {
+      rubric[type] = Math.max(0, Number(input.value) || 0);
+      renderStations(); redraw();
+    });
+    ui("rubric").append(dot, name, input);
+  }
+}
+
+function renderStations() {
+  const list = ui("station-list");
+  list.innerHTML = stations.length ? "" : '<div class="muted">No stations yet</div>';
+  stations.forEach((s, i) => {
+    const row = document.createElement("div");
+    row.className = "st-row";
+    const id = document.createElement("b"); id.textContent = s.id; id.style.color = rgb(s.type);
+    const type = document.createElement("select");
+    for (const [t, meta] of Object.entries(rubricMeta)) type.add(new Option(meta.label, t, false, t === s.type));
+    type.addEventListener("input", () => { s.type = type.value; renderStations(); redraw(); });
+    const service = document.createElement("input");
+    Object.assign(service, {type: "number", min: 0, step: 1, value: s.service_time_min});
+    service.addEventListener("input", () => { s.service_time_min = Math.max(0, Number(service.value) || 0); });
+    const score = document.createElement("span"); score.textContent = scoreOf(s);
+    const del = document.createElement("button"); del.textContent = "✕"; del.title = "Remove";
+    del.addEventListener("click", () => { stations.splice(i, 1); renderStations(); redraw(); });
+    row.append(id, type, service, score, del);
+    list.append(row);
+  });
+}
+
+function addStationAt(worldCoord) {
+  const [x, y] = toMars(worldCoord[0], worldCoord[1]);
+  if (x < X0 || x > X0 + SIZE_M || y > Y0 || y < Y0 - SIZE_M) return;   // outside the box
+  const type = ui("new-type").value;
+  stations.push({id: nextId(type), type, x, y, service_time_min: 10, note: ""});
+  renderStations(); redraw();
+}
+
+async function loadStations() {
+  rubricMeta = await (await fetch("/stations/rubric")).json();
+  const saved = await (await fetch("/stations")).json();
+  rubric = saved.rubric;
+  stations = saved.stations;
+  for (const [t, meta] of Object.entries(rubricMeta)) ui("new-type").add(new Option(meta.label, t));
+  renderRubric(); renderStations(); redraw();
+}
+
+async function saveStations() {
+  const res = await fetch("/stations", {method: "POST", headers: {"Content-Type": "application/json"},
+                                        body: JSON.stringify({rubric, stations})});
+  const out = await res.json();
+  ui("stations-msg").innerHTML = res.ok
+    ? `Saved ${out.saved} stations · <a href="/stations/stations_manual.gpkg">download .gpkg</a>`
+    : `<span class="warn">Error: ${JSON.stringify(out.detail)}</span>`;
+}
+
+const redraw = () => deckgl && deckgl.setProps({layers: layers()});
+
 async function requestPlan() {
   const btn = ui("plan-btn");
   btn.disabled = true;
-  // Box centre as start; one demo station 300 m east. Values are illustrative.
+  // Box centre as start (illustrative); stations and scores come from the panel.
   const cx = X0 + SIZE_M / 2, cy = Y0 - SIZE_M / 2;
   const body = {
     start: [cx, cy],
-    stations: [{id: "S1", x: cx + 300, y: cy, score: 5, service_time_min: 10}],
+    stations: stations.map(s => ({id: s.id, x: s.x, y: s.y, score: scoreOf(s),
+                                  service_time_min: s.service_time_min})),
     energy_budget_wh: 2813, gravity_m_s2: 3.71, margin: 0.10,
     apollo_speed_uses_signed_slope: true, service_energy_wh_per_min: null,
     max_cell_slope_deg: blockLimit(),
@@ -214,6 +347,7 @@ function layers() {
               Math.pow(Number(ui("slope-opacity").value), 2.2)),
     ...overlayLayers(),
     ...planLayers(),
+    ...stationLayers(),
   ];
 }
 
@@ -232,6 +366,8 @@ async function main() {
     views: new OrthographicView({id: "map", flipY: true}),
     initialViewState: {target: [centre, centre, 0], zoom: 1.5, minZoom: -1, maxZoom: 8},
     controller: true,
+    onClick: info => { if (ui("add-mode").checked && info.coordinate) addStationAt(info.coordinate); },
+    getCursor: ({isDragging}) => isDragging ? "grabbing" : (ui("add-mode").checked ? "crosshair" : "grab"),
     layers: layers(),
     onHover: info => {
       if (!info.coordinate) return;
@@ -255,8 +391,9 @@ ui("block-on").addEventListener("input", refreshBlockInfo);
 ui("block-slope").addEventListener("input", refreshBlockInfo);
 
 ui("plan-btn").addEventListener("click", requestPlan);
+ui("save-stations").addEventListener("click", saveStations);
 
-main().then(refreshBlockInfo).catch(err => { ui("status").textContent = "Error: " + err.message; console.error(err); });
+main().then(refreshBlockInfo).then(loadStations).catch(err => { ui("status").textContent = "Error: " + err.message; console.error(err); });
 </script>
 </body>
 </html>
