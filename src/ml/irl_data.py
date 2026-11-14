@@ -100,6 +100,27 @@ def drives():
     return pd.DataFrame(rows)
 
 
+def coarse_features(phi, factor):
+    """Features on cells of factor x factor m: the mean of the 1 m cells inside each one."""
+    f, h, w = phi.shape
+    return phi.reshape(f, h // factor, factor, w // factor, factor).mean(axis=(2, 4))
+
+
+def coarse_path(path, factor):
+    """A 1 m route on cells of factor x factor m, without consecutive repeats (still 8-connected)."""
+    p = path // factor
+    keep = np.r_[True, (np.diff(p, axis=0) != 0).any(axis=1)]
+    return p[keep]
+
+
+def coarse_table(table, factor):
+    """Same rows with each path moved to the coarse grid (length in coarse-cell units)."""
+    out = table.copy()
+    out["path"] = [coarse_path(p, factor) for p in table.path]
+    out["length_m"] = [step_length(p) * factor for p in out.path]
+    return out
+
+
 def window_demo(phi, path, name, margin=MARGIN_M):
     """Demo with the features of the box around path plus margin, clipped to the grid."""
     n_rows, n_cols = phi.shape[1:]
@@ -110,7 +131,30 @@ def window_demo(phi, path, name, margin=MARGIN_M):
 
 
 def demos(phi, table, margin=MARGIN_M):
-    return [window_demo(phi, r.path, f"sol{r.sol}", margin) for r in table.itertuples()]
+    return [window_demo(phi, r.path, f"sol{r.sol}_{i}", margin) for i, r in enumerate(table.itertuples())]
+
+
+def add_arguments(ap):
+    """Command-line options shared by fit_irl.py and validate_irl.py."""
+    ap.add_argument("--piece-m", type=float, default=None,
+                    help="cut the route into pieces of about this many metres (default: one per sol)")
+    ap.add_argument("--cell", type=int, default=1, help="cell size in metres (1 = base grid)")
+    ap.add_argument("--margin", type=int, default=MARGIN_M, help="window margin in metres")
+    ap.add_argument("--whole-box", action="store_true", help="every window is the whole box")
+    ap.add_argument("--chunk", type=int, default=16, help="demonstrations per GPU batch")
+
+
+def setup(args):
+    """(tag, features on the chosen grid, table, demos) for the chosen demonstrations."""
+    phi, _, _ = feature_stack()
+    table = drives() if args.piece_m is None else pieces(args.piece_m)
+    if args.cell > 1:
+        phi = coarse_features(phi, args.cell)
+        table = coarse_table(table, args.cell)
+    margin = 10 ** 6 if args.whole_box else -(-args.margin // args.cell)   # metres -> cells
+    tag = ("per_sol" if args.piece_m is None else f"piece{int(args.piece_m)}m") + \
+        f"_cell{args.cell}m_" + ("box" if args.whole_box else f"margin{args.margin}m")
+    return tag, phi, table, demos(phi, table, margin)
 
 
 if __name__ == "__main__":
