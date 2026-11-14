@@ -32,6 +32,17 @@ The HUD walks the planned route vertex by vertex, with a slider and play at ×30
 - On pause, the walkback lines are recomputed from that point with the energy left.
 - Example, habitat at the box centre to Nevado Sajama: 1,334 m, 197 Wh, 40 min, 35 L O2 with 10 min of service, against 2,532 Wh usable. Energy does not bind in this box, as E3 and E4 found.
 
+### Guide mode, block 1 (#43, `web/guide.html`, `api/guide.py`)
+The app has two stages: **plan** in the habitat (the HUD) and **guide** during the walk, on the arm tablet.
+- Each live plan is saved (`data/plans/last_plan.json`, `GET /plan/last`), and the guide screen loads it.
+- Layout: portrait, large buttons for gloves, high contrast.
+- Next maneuver: a card with a spoken announcement at 80 m and 20 m (browser `speechSynthesis`). Maneuvers come from the route geometry: heading change over ±8–15 m, at least 40°, events 25 m apart. They read "bear", "turn" or "sharp" left/right. The turnaround at the goal is announced as the arrival.
+- "Can I make it back": energy left after returning (usable − used − R(v)) and time back against the 30 min limit.
+- **Return home:** the fastest path from the current position to the habitat, from E4's reversed Dijkstra on time with predecessors (`POST /guide/return_home`), with no new planning. Example: 14.2 min, 664 m, 69 Wh from Nevado Sajama, computed in 0.6 s.
+- A station card on arrival shows the rubric type, why it matters and tasks per type.
+- The walk is simulated (play, ×30/×60/×180). The screen says so: there is no GPS on Mars; a real suit would use beacons and motion sensors.
+- Still to do (block 2): off-route detection with recalculation, and the SEP alert driving the return.
+
 ### Walkback: the red line and the energy-safe area (`api/walkback.py`, `POST /walkback`)
 **Provisional:** E4 (Aaron) owns R(v); until his `rv.tif` arrives, the HUD computes the fields itself from the same E3 directed costs.
 - R_T(v) and R_E(v): minimum time and energy from v back to the base, from Dijkstra runs from the base on the **reversed** graph that keep each original arc's cost (guide section 20). Cached per base and cell-block limit. Run time is under 1 s per field on the 4 M-node, 25 M-edge graph (`scipy.sparse.csgraph.dijkstra`).

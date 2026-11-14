@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EVA Guide</title>
+<script src="https://unpkg.com/deck.gl@9.1.14/dist.min.js"></script>
+<style>
+  /* Arm-tablet screen: portrait, big touch targets (gloves), high contrast. */
+  :root { --bg: #000; --panel: #11151b; --text: #fff; --muted: #b8c2cc; --accent: #ff8c3a;
+          --good: #3ddc84; --warn: #ffcc00; --bad: #ff453a; --border: #2c343e; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+               font: 16px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #app { max-width: 520px; height: 100%; margin: 0 auto; display: flex; flex-direction: column; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin: 8px; }
+  #maneuver { display: flex; gap: 14px; align-items: center; min-height: 96px; }
+  #arrow { font-size: 64px; line-height: 1; width: 72px; text-align: center; }
+  #man-text { font-size: 24px; font-weight: 700; }
+  #man-dist { font-size: 18px; color: var(--muted); }
+  #map { position: relative; flex: 1; margin: 0 8px; border-radius: 14px; overflow: hidden;
+         border: 1px solid var(--border); min-height: 200px; }
+  .meter { margin: 6px 0; }
+  .meter-label { display: flex; justify-content: space-between; font-size: 15px; }
+  .track { height: 16px; background: #222a33; border-radius: 8px; overflow: hidden; margin-top: 4px; }
+  .fill { height: 100%; border-radius: 8px; }
+  #controls { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 8px; }
+  button { font: inherit; font-size: 18px; font-weight: 700; min-height: 60px; border-radius: 14px;
+           border: 2px solid var(--border); background: #1d242d; color: var(--text); cursor: pointer; }
+  #home-btn { background: var(--bad); border-color: var(--bad); grid-column: span 3; min-height: 68px; font-size: 22px; }
+  #status { font-size: 14px; color: var(--muted); margin: 0 12px 8px; min-height: 18px; }
+  #station-card { position: fixed; inset: auto 0 0 0; max-width: 520px; margin: 0 auto; z-index: 10;
+                  background: #0b2a3a; border: 2px solid #36d1ff; border-radius: 16px 16px 0 0; padding: 16px; }
+  #station-card h2 { margin: 0 0 6px; font-size: 22px; }
+  #station-card ul { margin: 8px 0 12px; padding-left: 22px; font-size: 17px; }
+  .muted { color: var(--muted); }
+  .note { font-size: 13px; color: var(--muted); margin: 0 12px 10px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="maneuver" class="card" aria-live="polite">
+    <div id="arrow">↑</div>
+    <div><div id="man-text">Loading plan…</div><div id="man-dist"></div></div>
+  </div>
+  <div id="map"></div>
+  <div class="card">
+    <div class="meter">
+      <div class="meter-label"><span>Energy left after returning</span><span id="e-val"></span></div>
+      <div class="track"><div id="e-fill" class="fill"></div></div>
+    </div>
+    <div class="meter">
+      <div class="meter-label"><span>Time back to the habitat (limit 30 min)</span><span id="t-val"></span></div>
+      <div class="track"><div id="t-fill" class="fill"></div></div>
+    </div>
+  </div>
+  <div id="controls">
+    <button id="walk-btn">▶ Walk</button>
+    <button id="speed-btn">×60</button>
+    <button id="voice-btn">🔊 On</button>
+    <button id="home-btn">🏠 Return home</button>
+  </div>
+  <div id="status"></div>
+  <div class="note">Simulated walk: there is no GPS on Mars. A real suit would locate itself with
+    habitat/rover beacons and motion sensors.</div>
+</div>
+
+<div id="station-card" hidden>
+  <h2 id="st-title"></h2>
+  <div id="st-why" class="muted"></div>
+  <ul id="st-tasks"></ul>
+  <button id="st-done" style="width:100%">Done, continue</button>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Guide mode (#43). Loads the last plan saved by the HUD, walks it (simulated),
+// announces the next maneuver by voice, shows whether there is enough energy
+// and time to get back, and gives the fastest way home on demand.
+// Same coordinate convention as the HUD: 1 world unit = tile_z0_m / 256 m.
+// ---------------------------------------------------------------------------
+const {Deck, OrthographicView, TileLayer, BitmapLayer, PathLayer, ScatterplotLayer} = deck;
+const ui = id => document.getElementById(id);
+let S, X0, Y0, deckgl, tiles, plan, rubric = {};
+let route = null;          // {coords, t, used, rv, rvTime, usable, events, kind}
+let idx = 0, timer = null, speed = 60, voiceOn = true, cardOpen = false;
+const spoken = new Set(), visited = new Set();
+const toWorld = (x, y) => [(x - X0) / S, (Y0 - y) / S];
+
+const TASKS = {
+  ridge: ["Photograph the ridge wall and its central fracture", "Sample the ridge cement (clays + Fe oxides)"],
+  hollow: ["Image the hollow floor", "Sample bedrock under the sand (siderite)", "Watch your footing: loose sand"],
+  contact: ["Photograph both sides of the contact", "Sample each unit near the contact"],
+  curiosity: ["Find and photograph Curiosity's drill hole", "Compare the rock with the rover's data"],
+};
+
+function say(text) {
+  if (!voiceOn || !("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text); u.lang = "en-US"; u.rate = 1.0;
+  speechSynthesis.speak(u);
+}
+
+// --- maneuvers from the route geometry -------------------------------------
+function cumulativeDistance(c) {
+  const d = [0];
+  for (let i = 1; i < c.length; i++) d.push(d[i - 1] + Math.hypot(c[i][0] - c[i - 1][0], c[i][1] - c[i - 1][1]));
+  return d;
+}
+
+function headingAt(c, d, i, span) {
+  // Heading (rad, east = 0, counter-clockwise) over +-span metres, robust to 1 m staircases.
+  let a = i, b = i;
+  while (a > 0 && d[i] - d[a] < span) a--;
+  while (b < c.length - 1 && d[b] - d[i] < span) b++;
+  return Math.atan2(c[b][1] - c[a][1], c[b][0] - c[a][0]);
+}
+
+function buildEvents(c, d, turnIndex, goalName, endText) {
+  const ev = [];
+  let last = -1e9;
+  for (let i = 0; i < c.length; i++) {
+    if (d[i] - last < 25 || d[i] < 10 || d[d.length - 1] - d[i] < 10) continue;
+    // the turnaround at the goal is announced as the arrival, not as a sharp turn
+    if (turnIndex != null && Math.abs(d[i] - d[turnIndex]) < 25) continue;
+    let ahead = i; while (ahead < c.length - 1 && d[ahead] - d[i] < 15) ahead++;
+    let behind = i; while (behind > 0 && d[i] - d[behind] < 15) behind--;
+    const hin = headingAt(c, d, behind, 8), hout = headingAt(c, d, ahead, 8);
+    let delta = (hout - hin) * 180 / Math.PI;
+    delta = ((delta + 540) % 360) - 180;                     // -180..180, + = left
+    if (Math.abs(delta) < 40) continue;
+    const side = delta > 0 ? "left" : "right";
+    const kind = Math.abs(delta) > 135 ? "Sharp " + side : Math.abs(delta) > 70 ? "Turn " + side : "Bear " + side;
+    const arrow = Math.abs(delta) > 135 ? (delta > 0 ? "↶" : "↷") : delta > 0 ? (Math.abs(delta) > 70 ? "←" : "↖") : (Math.abs(delta) > 70 ? "→" : "↗");
+    ev.push({i, dist: d[i], text: kind, arrow}); last = d[i];
+  }
+  if (turnIndex != null && turnIndex > 0 && turnIndex < c.length - 1) {
+    ev.push({i: turnIndex, dist: d[turnIndex], text: goalName, arrow: "⚑", goal: true});
+  }
+  ev.push({i: c.length - 1, dist: d[c.length - 1], text: endText, arrow: "⌂", end: true});
+  return ev.sort((a, b) => a.dist - b.dist);
+}
+
+// --- loading ---------------------------------------------------------------
+async function init() {
+  const meta = await (await fetch("/layers")).json();
+  tiles = meta.tiles; S = tiles.tile_z0_m / 256; X0 = meta.grid.bbox.xmin; Y0 = meta.grid.bbox.ymax;
+  const rub = await fetch("/stations/rubric"); if (rub.ok) rubric = await rub.json();
+  const res = await fetch("/plan/last");
+  if (!res.ok) { ui("man-text").textContent = "No plan yet"; ui("man-dist").textContent = "Plan an EVA in the HUD first."; return; }
+  plan = await res.json();
+  const f = plan.plan.features.find(x => x.properties.kind === "route");
+  const goalSt = plan.plan.features.find(x => x.properties.kind === "goal");
+  const goalName = goalSt && goalSt.properties.station ? `Arrive at station ${goalSt.properties.station}` : "Arrive at the goal";
+  const p = f.properties;
+  setRoute({coords: f.geometry.coordinates, t: p.t_s, used: p.used_wh, rv: p.rv_wh, rvTime: p.rv_time_s,
+            usable: p.usable_wh, turnIndex: p.turn_index, goalName, kind: "plan"});
+  deckgl = new Deck({parent: ui("map"), views: new OrthographicView({flipY: true}),
+                     initialViewState: {target: [...toWorld(...route.coords[0]), 0], zoom: 4.5},
+                     controller: true, layers: layers()});
+  update(0);
+}
+
+function setRoute(r) {
+  r.d = cumulativeDistance(r.coords);
+  r.events = buildEvents(r.coords, r.d, r.turnIndex, r.goalName, "Arrive at the habitat");
+  route = r; idx = 0; spoken.clear();
+}
+
+// --- drawing ---------------------------------------------------------------
+function tileLayer(id, url, maxZoom) {
+  return new TileLayer({id, data: url, minZoom: 0, maxZoom, tileSize: 256,
+    extent: [0, 0, 2000 / S, 2000 / S],
+    renderSubLayers: props => { const {left, bottom, right, top} = props.tile.bbox;
+      return new BitmapLayer(props, {data: null, image: props.data, bounds: [left, bottom, right, top]}); }});
+}
+
+function layers() {
+  const stations = plan.plan.features.filter(f => f.properties.kind === "station");
+  const out = [tileLayer("ortho", "/" + tiles.layers.ortho.url, 5)];
+  if (route) {
+    const done = route.coords.slice(0, idx + 1), todo = route.coords.slice(idx);
+    const color = route.kind === "home" ? [255, 69, 58] : [54, 209, 255];
+    out.push(new PathLayer({id: "todo", data: [todo], getPath: p => p.map(c => toWorld(...c)),
+      getColor: color, getWidth: 6, widthUnits: "pixels", capRounded: true, jointRounded: true}));
+    out.push(new PathLayer({id: "done", data: [done], getPath: p => p.map(c => toWorld(...c)),
+      getColor: [140, 140, 140], getWidth: 4, widthUnits: "pixels"}));
+    out.push(new ScatterplotLayer({id: "me", data: [route.coords[idx]], getPosition: c => toWorld(...c),
+      getFillColor: [255, 255, 255], getLineColor: [0, 0, 0], stroked: true, lineWidthUnits: "pixels", getLineWidth: 3,
+      getRadius: 10, radiusUnits: "pixels"}));
+  }
+  out.push(new ScatterplotLayer({id: "stations", data: stations, getPosition: f => toWorld(...f.geometry.coordinates),
+    getFillColor: [255, 214, 10], getRadius: 7, radiusUnits: "pixels", stroked: true,
+    getLineColor: [0, 0, 0], lineWidthUnits: "pixels", getLineWidth: 2}));
+  return out;
+}
+
+function meter(fillId, valId, frac, text, good) {
+  ui(fillId).style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
+  ui(fillId).style.background = good ? "var(--good)" : frac > 0 ? "var(--warn)" : "var(--bad)";
+  ui(valId).textContent = text;
+}
+
+function update(i) {
+  idx = i;
+  const r = route, here = r.coords[i];
+  // next maneuver
+  const next = r.events.find(e => e.dist > r.d[i] + 1) || r.events[r.events.length - 1];
+  const togo = Math.max(0, next.dist - r.d[i]);
+  ui("arrow").textContent = next.arrow;
+  ui("man-text").textContent = next.text;
+  ui("man-dist").textContent = togo < 5 ? "now" : `in ${Math.round(togo / 10) * 10} m`;
+  for (const th of [80, 20]) {
+    const key = `${r.kind}-${next.i}-${th}`;
+    if (togo <= th && togo > (th === 80 ? 20 : 0) && !spoken.has(key)) {
+      spoken.add(key);
+      say(th === 80 ? `In ${Math.round(togo / 10) * 10} meters, ${next.text.toLowerCase()}` : next.text);
+    }
+  }
+  // can I make it back?
+  const used = r.used[i], need = r.rv ? r.rv[i] : 0, left = r.usable - used - need;
+  meter("e-fill", "e-val", left / r.usable, `${left.toFixed(0)} of ${r.usable.toFixed(0)} Wh`, left > 0.25 * r.usable);
+  const back = r.rvTime ? r.rvTime[i] : r.t[r.t.length - 1] - r.t[i];
+  meter("t-fill", "t-val", 1 - back / 1800, `${(back / 60).toFixed(1)} min`, back <= 1500);
+  // station arrival card
+  for (const f of plan.plan.features.filter(f => f.properties.kind === "station")) {
+    const id = f.properties.id, [sx, sy] = f.geometry.coordinates;
+    if (!visited.has(id) && Math.hypot(sx - here[0], sy - here[1]) < 12 && r.kind === "plan") {
+      visited.add(id); openStationCard(f.properties); break;
+    }
+  }
+  if (deckgl) deckgl.setProps({layers: layers(),
+    viewState: {target: [...toWorld(...here), 0], zoom: deckgl.viewState?.zoom ?? 4.5}});
+  if (i >= r.coords.length - 1) {
+    stop();
+    ui("status").textContent = "Arrived at the habitat.";
+    say("You have arrived at the habitat.");
+  }
+}
+
+function openStationCard(p) {
+  stop(); cardOpen = true;
+  const type = (Object.entries(rubric).find(([k]) => k === p.type) || [])[1];
+  ui("st-title").textContent = `Station ${p.id}${type ? " · " + type.label : ""} · ${p.service_time_min ?? 10} min`;
+  ui("st-why").textContent = type ? type.why : "";
+  ui("st-tasks").innerHTML = (TASKS[p.type] || ["Document the site"]).map(t => `<li>${t}</li>`).join("");
+  ui("station-card").hidden = false;
+  say(`Arrived at station ${p.id}. ${type ? type.label : ""}.`);
+}
+
+// --- simulated walk ----------------------------------------------------------
+function stop() { if (timer) { clearInterval(timer); timer = null; } ui("walk-btn").textContent = "▶ Walk"; }
+
+function walk() {
+  if (timer) { stop(); return; }
+  if (cardOpen) return;
+  ui("walk-btn").textContent = "❚❚ Pause";
+  timer = setInterval(() => {
+    const target = route.t[idx] + speed * 0.2;
+    let i = idx; while (i < route.t.length - 1 && route.t[i] < target) i++;
+    update(i);
+  }, 200);
+}
+
+async function returnHome() {
+  stop();
+  ui("status").textContent = "Computing the fastest way home…";
+  const here = route.coords[idx], usedSoFar = route.used[idx], usable = route.usable;
+  const res = await fetch("/guide/return_home", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({position: here, habitat: plan.plan.properties.habitat,
+                          max_cell_slope_deg: plan.plan.properties.max_cell_slope_deg})});
+  const out = await res.json();
+  if (!res.ok) { ui("status").textContent = `Error: ${out.detail}`; return; }
+  const f = out.features[0], p = f.properties;
+  setRoute({coords: f.geometry.coordinates, t: p.t_s, used: p.used_wh.map(v => v + usedSoFar),
+            rv: null, rvTime: p.t_s.map(v => p.time_s - v), usable, turnIndex: null, goalName: "", kind: "home"});
+  ui("status").textContent = `Way home: ${(p.time_s / 60).toFixed(1)} min, ${p.length_m.toFixed(0)} m, ${p.energy_wh.toFixed(0)} Wh.`;
+  say(`Returning home. ${Math.round(p.time_s / 60)} minutes.`);
+  update(0);
+}
+
+ui("walk-btn").addEventListener("click", walk);
+ui("speed-btn").addEventListener("click", () => {
+  speed = speed === 30 ? 60 : speed === 60 ? 180 : 30; ui("speed-btn").textContent = `×${speed}`; });
+ui("voice-btn").addEventListener("click", () => {
+  voiceOn = !voiceOn; ui("voice-btn").textContent = voiceOn ? "🔊 On" : "🔇 Off"; if (!voiceOn) speechSynthesis.cancel(); });
+ui("home-btn").addEventListener("click", returnHome);
+ui("st-done").addEventListener("click", () => { ui("station-card").hidden = true; cardOpen = false; walk(); });
+
+init().catch(err => { ui("man-text").textContent = "Error"; ui("man-dist").textContent = err.message; console.error(err); });
+</script>
+</body>
+</html>

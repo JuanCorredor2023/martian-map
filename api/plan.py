@@ -13,6 +13,7 @@ class Station(BaseModel):
     id: str
     x: float
     y: float
+    type: Optional[str] = None            # rubric type (ridge, hollow, ...), for the guide cards
     score: float = Field(ge=0)
     service_time_min: float = Field(default=0.0, ge=0)
 
@@ -74,4 +75,11 @@ class WalkbackRequest(BaseModel):
     energy_remaining_wh: float = Field(ge=0)
     emergency_return_time_s: float = Field(default=1800.0, gt=0)
     base: Optional[Tuple[float, float]] = None
+    max_cell_slope_deg: Optional[float] = Field(default=30.0, ge=0, le=90)
+
+
+class ReturnHomeRequest(BaseModel):
+    """POST /guide/return_home: fastest way back from the astronaut's position."""
+    position: Tuple[float, float]
+    habitat: Tuple[float, float]
     max_cell_slope_deg: Optional[float] = Field(default=30.0, ge=0, le=90)
