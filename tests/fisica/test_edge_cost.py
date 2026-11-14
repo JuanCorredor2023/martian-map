@@ -84,3 +84,16 @@ def test_slope_limit_guard_keeps_costs_positive():
     with pytest.warns(UserWarning):
         t, e, _ = edge_costs(dem, max_slope_deg=74.9)
     assert (e[np.isfinite(e)] > 0).all() and (t[np.isfinite(t)] > 0).all()
+
+
+def test_models_agree_on_definitions():
+    from fisica.edge_cost import model_power
+    from fisica.metabolic import G_EARTH, G_MARS, pandolf_cf_power
+    a = np.array([0.0, 10.0, -10.0]); v = 0.75 - 0.01 * a
+    pan = model_power("pandolf_cf", 124.2, v, a, G_MARS)
+    for i in range(3):
+        assert pan[i] == pytest.approx(pandolf_cf_power(75, 49.2, v[i], a[i]), rel=1e-9)
+    scaled = model_power("pandolf_cf_scaled", 124.2, v, a, G_MARS)
+    assert np.allclose(scaled, pan * G_MARS / G_EARTH)
+    with pytest.raises(ValueError):
+        model_power("pandolf", 124.2, v, a, G_MARS)

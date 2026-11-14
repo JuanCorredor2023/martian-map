@@ -61,3 +61,19 @@ def test_uphill_downhill_asymmetry():
     _, e_up = segment_cost(1.0, 10)
     _, e_down = segment_cost(1.0, -10)
     assert e_up != pytest.approx(e_down)
+
+
+def test_pandolf_cf_branch_reference_values():
+    from fisica.metabolic import pandolf_cf_power
+    assert pandolf_cf_power(75, 47.8, 0.75, 0) == pytest.approx(315.87, abs=0.01)   # guide section 6
+    up = pandolf_cf_power(75, 47.8, 0.65, 10)
+    assert up == pytest.approx(pandolf_cf_power(75, 47.8, 0.65, 10, eta=1.0))      # no CF uphill
+    assert pandolf_cf_power(75, 47.8, 0.85, -10) > 0
+
+
+def test_sensitivity_toy_route_matches_nominal_and_scales():
+    from fisica.sensitivity import NOMINAL, toy_route
+    e, t = toy_route(NOMINAL)
+    assert e == pytest.approx(2215.5, abs=0.1) and t == pytest.approx(1.91, abs=0.01)
+    e_heavy, t_heavy = toy_route({**NOMINAL, "mass_kg": 150.0})
+    assert e_heavy > e and t_heavy == pytest.approx(t)       # mass changes energy, never time
