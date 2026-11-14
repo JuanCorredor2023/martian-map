@@ -161,3 +161,12 @@ def test_walkback_rejects_bad_requests():
                                           "energy_remaining_wh": 10}).status_code == 422
     assert client.post("/walkback", json={"current_position": CENTRE,
                                           "energy_remaining_wh": -1}).status_code == 422
+
+
+def test_walkback_boundaries_are_few_closed_rings():
+    body = {"current_position": [CENTRE[0] + 300, CENTRE[1]], "energy_remaining_wh": 150}
+    fc = client.post("/walkback", json=body).json()
+    for f in fc["features"][:2]:
+        rings = f["geometry"]["coordinates"]
+        assert 1 <= len(rings) <= 3                        # not thousands of fragments
+        assert all(r[0] == r[-1] for r in rings)           # closed along scarps and box edge

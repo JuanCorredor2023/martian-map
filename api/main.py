@@ -159,9 +159,9 @@ def walkback(req: WalkbackRequest):
     if req.base is None:
         warnings.append("base not set: using the box centre (illustrative)")
     features = [
-        feature("MultiLineString", g.contour(r_t, req.emergency_return_time_s),
+        feature("MultiLineString", g.contour(r_t, req.emergency_return_time_s, base_node),
                 kind="emergency_time_boundary", threshold_s=req.emergency_return_time_s),
-        feature("MultiLineString", g.contour(combined, e_rem_j),
+        feature("MultiLineString", g.contour(combined, e_rem_j, pos_node),
                 kind="energy_safe_boundary", energy_remaining_wh=req.energy_remaining_wh),
         feature("Point", list(base_xy), kind="base"),
         feature("Point", list(req.current_position), kind="current_position"),

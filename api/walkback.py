@@ -21,8 +21,10 @@ from pathlib import Path
 import contourpy
 import numpy as np
 import rasterio
+from scipy import ndimage
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
+from shapely.geometry import LineString
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -71,19 +73,49 @@ class Grid:
         row, col = self.cell(x, y)
         return row * self.shape[1] + col
 
-    def contour(self, field, level):
-        """MultiLineString coordinates (metres, DEM CRS) of field == level."""
-        f = np.where(np.isfinite(field), field, np.nan)
-        lines = contourpy.contour_generator(z=f, line_type="Separate").lines(level)
+    def region(self, field, level, seed_node):
+        """Cells with field <= level that are connected to seed_node, holes filled.
+
+        Blocked or unreachable cells (inf) are outside. Small blocked islands
+        inside the region are filled, because the boundary we want to show is
+        how far the astronaut can go, not every single steep cell.
+        """
+        inside = np.isfinite(field) & (field <= level)
+        labels, _ = ndimage.label(inside, structure=np.ones((3, 3)))
+        seed = labels.flat[seed_node]
+        if seed == 0:
+            return np.zeros(self.shape, bool)
+        region = ndimage.binary_fill_holes(labels == seed)
+        # Display smoothing (about 2 m): close small notches, then remove thin
+        # fringes, so the line follows scarps instead of every steep cell.
+        k = np.ones((3, 3), bool)
+        smooth = ndimage.binary_opening(ndimage.binary_closing(region, k, iterations=2), k,
+                                        iterations=2)
+        smooth.flat[seed_node] = True              # never smooth away the seed itself
+        labels, _ = ndimage.label(smooth, structure=np.ones((3, 3)))
+        return ndimage.binary_fill_holes(labels == labels.flat[seed_node])
+
+    def boundary(self, mask, simplify_m=2.0, min_length_m=40.0):
+        """Outer boundary of a boolean region as MultiLineString coordinates
+        (metres, DEM CRS), closed along the box edge and simplified."""
+        f = np.zeros((self.shape[0] + 2, self.shape[1] + 2))
+        f[1:-1, 1:-1] = mask                                    # one-cell outside border
+        lines = contourpy.contour_generator(z=f, line_type="Separate").lines(0.5)
         a, e, c, b, d, fy = (self.transform.a, self.transform.e, self.transform.c,
                              self.transform.b, self.transform.d, self.transform.f)
         out = []
         for line in lines:
-            cols, rows = line[:, 0] + 0.5, line[:, 1] + 0.5     # cell centres
+            cols, rows = line[:, 0] - 0.5, line[:, 1] - 0.5     # undo padding, cell centres
             xs = c + cols * a + rows * b
             ys = fy + cols * d + rows * e
-            out.append(np.round(np.column_stack([xs, ys]), 2).tolist())
+            simple = LineString(np.column_stack([xs, ys])).simplify(simplify_m)
+            if simple.length < min_length_m:                    # slivers of a few cells
+                continue
+            out.append(np.round(np.asarray(simple.coords), 2).tolist())
         return out
+
+    def contour(self, field, level, seed_node):
+        return self.boundary(self.region(field, level, seed_node))
 
 
 @lru_cache(maxsize=2)

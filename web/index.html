@@ -347,12 +347,18 @@ function wbLayers() {
   if (wbFC) {
     const lines = kind => wbFC.features.filter(f => f.properties.kind === kind)
       .flatMap(f => f.geometry.coordinates);
-    out.push(new PathLayer({id: "energy-boundary", data: lines("energy_safe_boundary"),
-      getPath: l => l.map(([x, y]) => toWorld(x, y)), getColor: [54, 209, 255],
-      getWidth: 2, widthUnits: "pixels"}));
-    out.push(new PathLayer({id: "red-line", data: lines("emergency_time_boundary"),
-      getPath: l => l.map(([x, y]) => toWorld(x, y)), getColor: [255, 59, 48],
-      getWidth: 3, widthUnits: "pixels"}));
+    // Each line is drawn twice: a dark casing underneath so it stays readable
+    // over the red/orange slope layer, then the coloured line on top.
+    const outline = (id, data, color, width) => [
+      new PathLayer({id: id + "-casing", data, getPath: l => l.map(([x, y]) => toWorld(x, y)),
+                     getColor: [0, 0, 0, 200], getWidth: width + 3, widthUnits: "pixels",
+                     jointRounded: true, capRounded: true}),
+      new PathLayer({id, data, getPath: l => l.map(([x, y]) => toWorld(x, y)),
+                     getColor: color, getWidth: width, widthUnits: "pixels",
+                     jointRounded: true, capRounded: true}),
+    ];
+    out.push(...outline("energy-boundary", lines("energy_safe_boundary"), [54, 209, 255], 2.5));
+    out.push(...outline("red-line", lines("emergency_time_boundary"), [255, 59, 48], 3));
   }
   const pts = [];
   if (baseXY) pts.push({xy: baseXY, color: [255, 255, 255], r: 9});
