@@ -1,28 +1,46 @@
-﻿"""Genera data/base/grid.json: la ficha de la malla base (contrato del issue #2)."""
+﻿"""Build data/base/grid.json: the base-grid spec (contract in issue #2).
+
+Run from the data/ folder:  python ../src/gis/grid.py
+"""
 import json
+
 import rasterio
 
-d = rasterio.open("base/dem_1m.tif")
-o = rasterio.open("base/orto_color_025.tif")
-t, to = d.transform, o.transform
-grid = {
-    "crs_wkt": "data/base/crs.wkt (en el repo: docs/contratos/crs.wkt)",
-    "crs_proj4": d.crs.to_proj4(),
-    "caja": {"xmin": t.c, "ymin": t.f + t.e * d.height, "xmax": t.c + t.a * d.width, "ymax": t.f},
-    "caja_margen_64m": {"xmin": t.c - 64, "ymin": t.f + t.e * d.height - 64, "xmax": t.c + t.a * d.width + 64, "ymax": t.f + 64},
-    "malla_1m": {"archivo": "data/base/dem_1m.tif", "celda_m": t.a, "columnas": d.width, "filas": d.height,
-                  "origen_x": t.c, "origen_y": t.f, "affine": list(t)[:6]},
-    "malla_025m": {"archivo": "data/base/orto_color_025.tif", "celda_m": to.a, "columnas": o.width, "filas": o.height,
-                    "affine": list(to)[:6]},
-    "dtype": "float32",
-    "nodata": "NaN",
-    "notas": [
-        "Origen = esquina superior izquierda de la celda (0, 0). Fila 0 = norte.",
-        "Centro de la celda (fila, col): x = origen_x + (col + 0.5) * celda; y = origen_y - (fila + 0.5) * celda.",
-        "Para recortar: gdalwarp -te xmin ymin xmax ymax -tr 1 1 (sin -tap).",
-        "Cada celda de 1 m equivale a 4 x 4 celdas de 0.25 m.",
-    ],
-}
+with rasterio.open("base/dem_1m.tif") as dem, rasterio.open("base/ortho_color_025.tif") as ortho:
+    t, to = dem.transform, ortho.transform
+    xmin, ymax = t.c, t.f
+    xmax, ymin = t.c + t.a * dem.width, t.f + t.e * dem.height
+    grid = {
+        "crs_wkt": "data/base/crs.wkt (repo: docs/contracts/crs.wkt)",
+        "crs_proj4": dem.crs.to_proj4(),
+        "bbox": {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax},
+        "bbox_margin_64m": {"xmin": xmin - 64, "ymin": ymin - 64, "xmax": xmax + 64, "ymax": ymax + 64},
+        "grid_1m": {
+            "file": "data/base/dem_1m.tif",
+            "cell_size_m": t.a,
+            "width": dem.width,
+            "height": dem.height,
+            "origin_x": xmin,
+            "origin_y": ymax,
+            "affine": list(t)[:6],
+        },
+        "grid_025m": {
+            "file": "data/base/ortho_color_025.tif",
+            "cell_size_m": to.a,
+            "width": ortho.width,
+            "height": ortho.height,
+            "affine": list(to)[:6],
+        },
+        "dtype": "float32",
+        "nodata": "NaN",
+        "notes": [
+            "Origin = top-left corner of cell (0, 0). Row 0 = north.",
+            "Center of cell (row, col): x = origin_x + (col + 0.5) * cell; y = origin_y - (row + 0.5) * cell.",
+            "To crop: gdalwarp -te xmin ymin xmax ymax -tr 1 1 (never -tap).",
+            "One 1 m cell = 4 x 4 cells of 0.25 m.",
+        ],
+    }
+
 with open("base/grid.json", "w", encoding="utf-8") as f:
-    json.dump(grid, f, indent=2, ensure_ascii=False)
-print(json.dumps(grid, indent=2, ensure_ascii=False))
+    json.dump(grid, f, indent=2)
+print(json.dumps(grid, indent=2))
