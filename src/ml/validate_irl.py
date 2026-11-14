@@ -75,7 +75,7 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     t0 = time.perf_counter()
 
-    tag, phi, table, demos = irl_data.setup(args)
+    tag, phi, table, demos, _ = irl_data.setup(args)
     print(f"{tag}: {len(demos)} demonstrations, device {device}", flush=True)
     n_f = len(irl_data.FEATURES)
     w_init = np.r_[3.0, np.full(n_f - 1, 0.5)]
@@ -96,7 +96,8 @@ def main():
             nll = dict(zip(ev.names, ev.nll))
             for d, r in test:
                 rows.append({"model": model, "block": b, "name": d.name, "sol": r.sol,
-                             "length_m": r.length_m, "nll": float(nll[d.name])} | route_metrics(w, d, args.cell))
+                             "length_m": d.length_m * args.cell, "nll": float(nll[d.name])}
+                            | route_metrics(w, d, args.cell))
         for k, s in sets.items():
             m = (s.block == b).to_numpy()
             rr, cc = s.row[m].to_numpy() // args.cell, s.col[m].to_numpy() // args.cell

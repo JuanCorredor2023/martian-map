@@ -16,7 +16,7 @@ ones behind Curiosity's route either. So:
 5. Fit the distance-only control (all terrain prices held at 0): it must
    explain the routes worse than the terrain model.
 
-Outputs: data/e1/toy_check.json and data/e1/toy_check.png (review image).
+Outputs: data/e1/toy_check.json and paper/figures/e1_fig1_toy_check.png.
 
 Usage:  python src/ml/irl_toy_check.py
 """
@@ -150,7 +150,7 @@ def main():
     (common.E1_OUTPUT / "toy_check.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     figure(report, *keep)
     print(f"mean w_fit {np.round(fits.mean(0), 3)} +- {np.round(fits.std(0, ddof=1), 3)}")
-    print(f"wrote {common.E1_OUTPUT / 'toy_check.json'} and toy_check.png")
+    print(f"wrote {common.E1_OUTPUT / 'toy_check.json'} and paper/figures/e1_fig1_toy_check.png")
 
 
 def figure(report, phi_full, demos, offsets, info):
@@ -185,7 +185,7 @@ def figure(report, phi_full, demos, offsets, info):
     ax[2].set_title("(c) Fit progress, repeat 0")
     ax[2].legend()
     fig.tight_layout()
-    fig.savefig(common.E1_OUTPUT / "toy_check.png", dpi=120)
+    fig.savefig(common.REPO / "paper" / "figures" / "e1_fig1_toy_check.png", dpi=120)
     plt.close(fig)
 
 

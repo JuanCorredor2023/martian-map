@@ -66,10 +66,10 @@ def main():
     common.E1_OUTPUT.mkdir(parents=True, exist_ok=True)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     t0 = time.perf_counter()
-    tag, phi, table, demos = irl_data.setup(args)
+    tag, phi, table, demos, scale = irl_data.setup(args)
     batches = irl.make_batches(demos, chunk=args.chunk, device=device)
     # Route length in metres (NLL per metre). On coarse cells a move is `cell` metres long.
-    total_m = float(table.length_m.sum())
+    total_m = float(sum(d.length_m for d in demos)) * args.cell
     print(f"{tag}: {len(demos)} demonstrations, {total_m:.0f} m, device {device}", flush=True)
 
     n_f = len(irl_data.FEATURES)
@@ -83,7 +83,7 @@ def main():
     nll_fit, nll_dist = dict(zip(ev_fit.names, ev_fit.nll)), dict(zip(ev_dist.names, ev_dist.nll))
 
     report = {
-        "tag": tag, "options": vars(args), "features": irl_data.FEATURES,
+        "tag": tag, "options": vars(args), "features": irl_data.FEATURES, "feature_scale_p99": scale,
         "n_demos": len(demos), "route_m": total_m, "l2": L2, "w0_min": irl.W0_MIN,
         "price_unit": f"per {args.cell} m of route", "device": device,
         "terrain": describe(w_fit, ev_fit, total_m) | {
@@ -91,7 +91,7 @@ def main():
         "distance_only": describe(w_dist, ev_dist, total_m) | {
             "fit": {k: info_dist[k] for k in ("success", "message", "n_eval", "seconds")}},
         "preference_check_at_distance_only": preference_check(ev_dist),
-        "per_demo": [{"name": d.name, "sol": int(r.sol), "block": int(r.block), "length_m": float(r.length_m),
+        "per_demo": [{"name": d.name, "sol": int(r.sol), "block": int(r.block), "length_m": d.length_m * args.cell,
                       "nll_terrain": float(nll_fit[d.name]), "nll_distance_only": float(nll_dist[d.name])}
                      for d, r in zip(demos, table.itertuples())],
     }

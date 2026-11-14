@@ -145,8 +145,12 @@ def add_arguments(ap):
 
 
 def setup(args):
-    """(tag, features on the chosen grid, table, demos) for the chosen demonstrations."""
-    phi, _, _ = feature_stack()
+    """(tag, features on the chosen grid, table, demos, feature scales) for the chosen demonstrations.
+
+    Route lengths for NLL per metre come from the demos (demo.length_m * cell),
+    not from the table: a demo that touches its goal earlier is cut there.
+    """
+    phi, scale, _ = feature_stack()
     table = drives() if args.piece_m is None else pieces(args.piece_m)
     if args.cell > 1:
         phi = coarse_features(phi, args.cell)
@@ -154,7 +158,7 @@ def setup(args):
     margin = 10 ** 6 if args.whole_box else -(-args.margin // args.cell)   # metres -> cells
     tag = ("per_sol" if args.piece_m is None else f"piece{int(args.piece_m)}m") + \
         f"_cell{args.cell}m_" + ("box" if args.whole_box else f"margin{args.margin}m")
-    return tag, phi, table, demos(phi, table, margin)
+    return tag, phi, table, demos(phi, table, margin), scale
 
 
 if __name__ == "__main__":
