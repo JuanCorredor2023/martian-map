@@ -9,6 +9,9 @@
 // Mouse: drag = rotate, right-drag or Shift+drag = move, wheel = zoom.
 // Touch: one finger = rotate, two fingers = move, pinch = zoom, twist = turn.
 // (leftDrag: 'pan' swaps the two drags: map style.)
+// flyTo() moves the camera to a given pose with an eased flight (station cards now,
+// rover photo poses later). While `enabled` is false (route rehearsal) the controls
+// leave the camera alone.
 import * as THREE from 'three';
 import * as M from './camera_math.js';
 
@@ -19,6 +22,10 @@ const MIN_DISTANCE = 4;            // m: closest approach to the zoom point
 const CLEARANCE = 2;               // m: the camera stays this far above the ground
 const MAX_RANGE = 7000;            // m: horizontal distance from the box centre
 const MAX_ALTITUDE = 9000;         // m above the reference height
+const MIN_POSE_HEIGHT = 0.3;       // m: lowest eye of a flyTo() pose
+const MAX_POSE_PITCH = 89.5 * Math.PI / 180;       // a pose may look up; gestures may not
+
+const ease = f => f * f * (3 - 2 * f);
 
 export class TerrainControls {
   constructor(camera, dom, terrain, scene, {leftDrag = 'rotate'} = {}) {
@@ -33,6 +40,8 @@ export class TerrainControls {
     this._gesture = null;
     this._zoom = {log: 0, ndc: [0, 0], pivot: null};
     this._groundY = terrain.heightAt(0, 0);        // height used when a ray misses the terrain
+    this._clearance = CLEARANCE;   // lower only while the camera rests on a flyTo() pose
+    this._flight = null;           // {from, to, t, seconds} while flying
     this._changed = true;
 
     // Small ring on the ground at the point being rotated around.
@@ -62,7 +71,63 @@ export class TerrainControls {
     this.yaw = yaw;
     this.pitch = M.clampPitch(pitch);
     this._zoom.log = 0;
+    this._flight = null;
+    this._clearance = CLEARANCE;
     this._apply();
+  }
+
+  // The whole state of the view, to put it back later exactly as it is now.
+  pose() {
+    return {position: [...this.position], yaw: this.yaw, pitch: this.pitch, fov: this.camera.fov,
+            clearance: this._clearance};
+  }
+
+  restore(pose) {
+    this.cancel();
+    Object.assign(this, {position: [...pose.position], yaw: pose.yaw, pitch: pose.pitch, _clearance: pose.clearance});
+    this.camera.fov = pose.fov;
+    this.camera.updateProjectionMatrix();
+    this._apply();
+  }
+
+  // Eased flight (about a second) to a pose: Mars position (x, y), eye height above the
+  // shown ground there, heading, pitch (below the horizon; negative looks up) and
+  // vertical field of view in degrees. A pose may be lower than the gestures allow and
+  // may look above the horizon (a rover camera does both); the next gesture brings the
+  // usual limits back. Any gesture stops the flight where it is.
+  flyTo({x, y, eyeHeight = CLEARANCE, heading = this.yaw, pitch = this.pitch, fov = this.camera.fov,
+         seconds = 1}) {
+    const [X, Z] = this.terrain.toLocal(x, y), height = Math.max(MIN_POSE_HEIGHT, eyeHeight);
+    this._zoom.log = 0;
+    this._clearance = Math.min(CLEARANCE, height / 2);
+    this._flight = {
+      from: {position: [...this.position], yaw: this.yaw, pitch: this.pitch, fov: this.camera.fov},
+      to: {position: [X, this.terrain.surfaceAt(X, Z) + height, Z], yaw: heading,
+           pitch: Math.max(-MAX_POSE_PITCH, Math.min(MAX_POSE_PITCH, pitch)), fov},
+      t: 0, seconds};
+    if (!(seconds > 0)) this._fly(1);
+    this._changed = true;
+  }
+
+  // Fly to where a ground point [X, Y, Z] (scene metres) is seen from `distance` metres
+  // away. If the ground rises behind the point, the camera goes over it and tilts so
+  // that the point stays at the centre.
+  flyToLook(point, distance, {yaw = this.yaw, pitch = this.pitch, fov, seconds} = {}) {
+    const eye = M.along(point, M.basis(yaw, M.clampPitch(pitch)).forward, -distance);
+    const ground = this.terrain.surfaceAt(eye[0], eye[2]), height = Math.max(CLEARANCE, eye[1] - ground);
+    const [x, y] = this.terrain.toMars(eye[0], eye[2]);
+    this.flyTo({x, y, eyeHeight: height, heading: yaw, fov, seconds,
+                pitch: Math.atan2(ground + height - point[1], Math.hypot(eye[0] - point[0], eye[2] - point[2]))});
+  }
+
+  // Drop whatever is going on: gestures, wheel easing and flights.
+  cancel() {
+    this._pointers.clear();
+    this._gesture = null;
+    this._zoom.log = 0;
+    this._flight = null;
+    this.dom.style.cursor = 'grab';
+    this._showMarker(null);
   }
 
   // Look at a ground point from `distance` metres away.
@@ -104,7 +169,9 @@ export class TerrainControls {
 
   // Call once per frame with the seconds elapsed. Returns true when the view changed.
   update(dt) {
-    if (this.autoRotate && !this._gesture) {
+    if (!this.enabled) return false;
+    if (this._flight) this._fly(this._flight.t + dt / this._flight.seconds);
+    if (this.autoRotate && !this._gesture && !this._flight) {
       const centre = [0, this.terrain.heightAt(0, 0), 0];
       this._turn(centre, {yaw: this.yaw + 0.2 * dt, pitch: this.pitch});
     }
@@ -127,6 +194,7 @@ export class TerrainControls {
     try { this.dom.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
     this._pointers.set(e.pointerId, {x: e.clientX, y: e.clientY});
     this._zoom.log = 0;
+    this._limits();
     this._begin(e);
   }
 
@@ -184,6 +252,7 @@ export class TerrainControls {
   _wheel(e) {
     if (!this.enabled) return;
     e.preventDefault();
+    this._limits();
     const pixels = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
     const ndc = this._ndc({x: e.clientX, y: e.clientY}), z = this._zoom;
     // Keep the same zoom point while the wheel keeps turning over the same spot.
@@ -197,6 +266,30 @@ export class TerrainControls {
   }
 
   // ---- internals ---------------------------------------------------------------
+
+  // A gesture starts: stop any flight, and if the camera rests on a flyTo() pose that is
+  // lower or looks higher than the gestures allow, bring it within their limits where it
+  // stands (otherwise the first rotation would swing it around a far pivot).
+  _limits() {
+    this._flight = null;
+    if (this._clearance === CLEARANCE && this.pitch >= M.MIN_PITCH) return;
+    this._clearance = CLEARANCE;
+    this.pitch = M.clampPitch(this.pitch);
+    this._apply();
+  }
+
+  // Flight at fraction t of its way (1 = arrived).
+  _fly(t) {
+    const f = this._flight, {from, to} = f, e = ease(Math.min(1, t));
+    f.t = t;
+    this.position = from.position.map((v, i) => v + (to.position[i] - v) * e);
+    this.yaw = from.yaw + M.angleDelta(to.yaw, from.yaw) * e;       // the short way round
+    this.pitch = from.pitch + (to.pitch - from.pitch) * e;
+    this.camera.fov = from.fov + (to.fov - from.fov) * e;
+    this.camera.updateProjectionMatrix();
+    if (t >= 1) { this.yaw = to.yaw; this._flight = null; }
+    this._apply();
+  }
 
   _turn(pivot, to) {
     const target = {yaw: to.yaw, pitch: M.clampPitch(to.pitch)};
@@ -243,9 +336,10 @@ export class TerrainControls {
   }
 
   _apply() {
+    if (!this.enabled) return;                                    // the rehearsal owns the camera
     const p = this.position, half = this.terrain.half;
     if (Math.abs(p[0]) <= half && Math.abs(p[2]) <= half) {       // never under the ground
-      p[1] = Math.max(p[1], this.terrain.heightAt(p[0], p[2]) + CLEARANCE);
+      p[1] = Math.max(p[1], this.terrain.heightAt(p[0], p[2]) + this._clearance);
     }
     const {right, up, forward} = M.basis(this.yaw, this.pitch);
     this.camera.position.set(p[0], p[1], p[2]);

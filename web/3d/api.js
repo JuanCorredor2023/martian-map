@@ -7,6 +7,11 @@
 //                         user asks (button, or ?plan=default): the server saves every
 //                         plan it makes as the last plan, and the guide screen loads
 //                         that one, so the page must never plan on its own.
+//   loadRubric()          GET /stations/rubric: the type labels of the station cards.
+//   requestWalkback()     POST /walkback: the 30 min line and the energy-safe boundary
+//                         from a position. The server computes and answers; it saves
+//                         nothing (api/main.py walkback(): return fields cached in
+//                         memory, no file is written), so the rehearsal may ask freely.
 // Whatever comes back is drawn as is (plan_model.js). With no plan the page keeps
 // working with the terrain alone and says why.
 import { featureCollectionOf } from './plan_model.js';
@@ -97,4 +102,30 @@ export async function requestDefaultPlan({start, fetchFn = fetch} = {}) {
             stationTypes: stationTypes(saved, body)};
   }
   return nothing(`default request: ${res.ok ? 'the answer has no features' : res.error}`, false, saved, body);
+}
+
+// Station rubric {type: {label, score, why}}, or {} when the server does not answer.
+export async function loadRubric({fetchFn = fetch} = {}) {
+  const res = await request(fetchFn, '/stations/rubric');
+  return res.ok && res.body && typeof res.body === 'object' ? res.body : {};
+}
+
+// Body of POST /walkback for a point of a plan, as the 2D planner sends it on pause
+// (requestWalkback in web/index.html), with the limits the plan was made with.
+//   properties  the plan's own properties (max_cell_slope_deg, human_cost, habitat)
+//   base        the habitat [x, y], or null for the server's default (the box centre)
+export function walkbackRequest({x, y, energyLeftWh, base = null, properties = {}}) {
+  const body = {current_position: [x, y], energy_remaining_wh: Math.max(0, energyLeftWh),
+                emergency_return_time_s: 1800, base: base ? [base[0], base[1]] : null};
+  if (properties.max_cell_slope_deg !== undefined) body.max_cell_slope_deg = properties.max_cell_slope_deg;
+  if (typeof properties.human_cost === 'boolean') body.human_cost = properties.human_cost;
+  return body;
+}
+
+// Returns {fc, error}: the FeatureCollection of the answer, or why there is none.
+export async function requestWalkback(body, {fetchFn = fetch} = {}) {
+  const res = await request(fetchFn, '/walkback', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                  body: JSON.stringify(body)});
+  const fc = res.ok ? featureCollectionOf(res.body) : null;
+  return {fc, error: fc ? null : (res.ok ? 'the answer has no features' : res.error)};
 }

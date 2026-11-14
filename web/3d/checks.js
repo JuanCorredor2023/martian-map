@@ -158,4 +158,120 @@ export function routeCheck({terrain, overlays, markers, plan, setRelief}) {
   return out;
 }
 
-export const CHECKS = {shading: shadingCheck, route: routeCheck};
+// ?check=rehearse : does the rehearsal camera walk the route as it should, and does
+// leaving the rehearsal put everything back?
+//
+// Enters the rehearsal and walks the whole route on the real terrain in steps of 0.1 s
+// of plan time (under 0.1 m), in first person: height of the eye above the drawn ground
+// under it, largest move of the camera in one step, fastest turn of the heading per
+// metre walked (the turn on the spot at a stop is reported apart), and distance of the
+// camera from the true route (against every segment of it). Then the chase view every
+// second; then real playback at x60 through update(), to see it pause at each stop
+// with its card; then exit, twice, comparing camera, relief and scene with before.
+// Nothing is asked from the server (the walkback lines on pause are switched off).
+export function rehearseCheck({terrain, scene, camera, controls, rehearsal, plan}) {
+  const round = (v, d = 3) => Number(v.toFixed(d));
+  const model = rehearsal.model, route = plan && plan.model && plan.model.routes.find(r => r.kind === 'route');
+  const out = {check: 'rehearse', quality: terrain.quality, mesh_step_m: terrain.step, source: plan && plan.source};
+  if (!model || !route) return {...out, error: 'no route to rehearse'};
+  const snapshot = () => ({
+    position: camera.position.toArray(), quaternion: camera.quaternion.toArray(), fov: camera.fov, near: camera.near,
+    k: terrain.k, yaw: controls.yaw, pitch: controls.pitch, enabled: controls.enabled,
+    children: scene.children.map(o => o.name || o.type).join(' '),
+    label: document.getElementById('relief-label').textContent, slider: document.getElementById('relief').disabled,
+    player: document.getElementById('player').hidden, card: document.getElementById('card').hidden});
+  const before = snapshot(), walkbackOnPause = rehearsal.walkbackOnPause, DEG = Math.PI / 180;
+  const turnOf = (a, b) => { let d = Math.abs(a - b) % (2 * Math.PI); return (d > Math.PI ? 2 * Math.PI - d : d) / DEG; };
+  rehearsal.walkbackOnPause = false;
+  rehearsal.enter();
+  out.route = {vertices: route.coords.length, length_m: round(model.length, 1), duration_s: round(model.duration, 1),
+               time_base: model.assumedSpeed === null ? 'profile t_s' : `assumed ${model.assumedSpeed} m/s`,
+               stops: model.stops.map(s => ({vertex: s.index, station: s.station && s.station.id,
+                                             arrive_s: round(s.arrive, 1), wait_s: round(s.waitS, 1)}))};
+  out.while_rehearsing = {relief_k: terrain.k, relief_label: document.getElementById('relief-label').textContent,
+                          slider_disabled: document.getElementById('relief').disabled, near_m: camera.near,
+                          fov_deg: camera.fov, controls_enabled: controls.enabled};
+
+  // First person, every 0.1 s of plan time.
+  const first = {steps: 0, eye_min_m: Infinity, eye_max_m: 0, max_move_m: 0, max_turn_deg_per_m: 0,
+                 max_turn_on_the_spot_deg: 0, max_off_route_m: 0};
+  const c = route.coords;
+  let prev = null;
+  for (let time = model.start; ; time = Math.min(model.end, time + 0.1)) {
+    rehearsal.seek(time);
+    const s = rehearsal.state, p = camera.position, eye = p.y - terrain.surfaceAt(p.x, p.z);
+    first.eye_min_m = Math.min(first.eye_min_m, eye); first.eye_max_m = Math.max(first.eye_max_m, eye);
+    const [x, y] = terrain.toMars(p.x, p.z);
+    let off = Infinity;
+    for (let i = 1; i < c.length; i++) {
+      const ax = c[i - 1][0], ay = c[i - 1][1], dx = c[i][0] - ax, dy = c[i][1] - ay, len2 = dx * dx + dy * dy;
+      const f = len2 > 0 ? Math.min(1, Math.max(0, ((x - ax) * dx + (y - ay) * dy) / len2)) : 0;
+      off = Math.min(off, Math.hypot(x - ax - dx * f, y - ay - dy * f));
+    }
+    first.max_off_route_m = Math.max(first.max_off_route_m, off);
+    if (prev) {
+      const walked = s.distance - prev.distance, turn = turnOf(rehearsal.pose.yaw, prev.yaw);
+      first.max_move_m = Math.max(first.max_move_m, p.distanceTo(prev.p));
+      const atStop = s.standing || prev.standing ||
+        model.stops.some(stop => [stop.arrive, stop.leave].some(t => t > prev.time - 1e-9 && t < s.time + 1e-9));
+      if (atStop || walked < 1e-9) first.max_turn_on_the_spot_deg = Math.max(first.max_turn_on_the_spot_deg, turn);
+      else first.max_turn_deg_per_m = Math.max(first.max_turn_deg_per_m, turn / walked);
+    }
+    prev = {p: p.clone(), yaw: rehearsal.pose.yaw, distance: s.distance, standing: s.standing, time: s.time};
+    first.steps++;
+    if (time >= model.end) break;
+  }
+  out.first_person = Object.fromEntries(Object.entries(first).map(([key, v]) => [key, round(v)]));
+
+  // Chase view, every second.
+  rehearsal.setChase(true);
+  const chase = {steps: 0, camera_min_above_ground_m: Infinity, to_walker_min_m: Infinity, to_walker_max_m: 0, walker_shown: true};
+  for (let time = model.start; time <= model.end; time += 1) {
+    rehearsal.seek(time);
+    const p = camera.position, w = rehearsal.walker.position;
+    chase.camera_min_above_ground_m = Math.min(chase.camera_min_above_ground_m, p.y - terrain.surfaceAt(p.x, p.z));
+    chase.to_walker_min_m = Math.min(chase.to_walker_min_m, p.distanceTo(w));
+    chase.to_walker_max_m = Math.max(chase.to_walker_max_m, p.distanceTo(w));
+    chase.walker_shown = chase.walker_shown && rehearsal.walker.visible && scene.children.includes(rehearsal.walker);
+    chase.steps++;
+  }
+  out.chase = Object.fromEntries(Object.entries(chase).map(([key, v]) => [key, typeof v === 'number' ? round(v) : v]));
+  rehearsal.setChase(false);
+
+  // Real playback: x60, 60 updates per second of screen time, pressing play again at each stop.
+  rehearsal.seek(model.start);
+  rehearsal.speed = 60;
+  const playback = {updates: 0, pauses: [], needs_render_while_paused: 0};
+  rehearsal.update(0);
+  playback.needs_render_while_paused += rehearsal.update(1 / 60) ? 1 : 0;      // paused, nothing touched: no frame
+  rehearsal.play();
+  while (playback.updates < 1e5) {
+    rehearsal.update(1 / 60);
+    playback.updates++;
+    if (rehearsal.playing) continue;
+    const s = rehearsal.state, card = document.querySelector('#card .card-title');
+    playback.pauses.push({time_s: round(s.time, 1), vertex: round(s.at, 2), distance_m: round(s.distance, 1),
+                          card: document.getElementById('card').hidden ? null : card && card.textContent,
+                          text: document.getElementById('rh-progress').textContent});
+    if (s.time >= model.end) break;
+    rehearsal.play();
+  }
+  out.playback_x60 = playback;
+
+  // Leave, and do it all once more: nothing may be left behind.
+  rehearsal.exit();
+  const after1 = snapshot();
+  rehearsal.enter(); rehearsal.setChase(true); rehearsal.seek((model.start + model.end) / 2); rehearsal.exit();
+  const after2 = snapshot();
+  rehearsal.walkbackOnPause = walkbackOnPause;
+  const same = after => ({
+    camera_moved_m: round(Math.hypot(...after.position.map((v, i) => v - before.position[i])), 9),
+    camera_turned: round(Math.max(...after.quaternion.map((v, i) => Math.abs(v - before.quaternion[i]))), 9),
+    rest_equal: ['fov', 'near', 'k', 'yaw', 'pitch', 'enabled', 'children', 'label', 'slider', 'player', 'card']
+      .every(key => after[key] === before[key])});
+  out.after_exit = {once: same(after1), twice: same(after2), relief_k: after2.k, fov_deg: after2.fov, near_m: after2.near,
+                    scene: after2.children, listeners_left: rehearsal._listeners.length};
+  return out;
+}
+
+export const CHECKS = {shading: shadingCheck, route: routeCheck, rehearse: rehearseCheck};

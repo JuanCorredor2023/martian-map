@@ -16,6 +16,8 @@ import * as THREE from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { ROUTE_COLOR, RETURN_COLOR, UNKNOWN_COLOR, densify, offsetSideways, splitAtTurn } from './plan_model.js';
 
 const MAX_STEP = 1;                // m between route vertices
@@ -29,7 +31,7 @@ const css = ([r, g, b]) => new THREE.Color(`rgb(${r}, ${g}, ${b})`);
 // Scene [X, Z, X, Z, ...] of a path in Mars metres, with one more point wherever a
 // segment crosses a mesh column, a mesh row or the diagonal of a cell. Between two
 // consecutive points the path stays on one triangle, where the ground is a plane.
-function drape(terrain, x, y) {
+export function drape(terrain, x, y) {
   const {half, first, step} = terrain, out = [];
   let [X0, Z0] = terrain.toLocal(x[0], y[0]);
   out.push(X0, Z0);
@@ -158,5 +160,66 @@ export class RouteOverlay {
       this.group.add(line);
     }
     this.legs.push(leg);
+  }
+}
+
+// Any other lines on the ground (the walkback boundaries of the rehearsal): sets of
+// polylines in Mars metres, each set with its colour and width, draped on the mesh like
+// the route. One object per set, however many separate lines it has.
+export class GroundLines {
+  constructor(terrain, scene, name) {
+    this.terrain = terrain;
+    this.lift = LIFT;
+    this.sets = [];                // [{ground: [Float64Array of scene X, Z, ...], mesh}]
+    this.group = new THREE.Group();
+    this.group.name = name;
+    this._size = [1, 1];
+    scene.add(this.group);
+  }
+
+  // sets: [{lines: [[[x, y], ...], ...], color: [r, g, b], width}] (width in CSS pixels).
+  set(sets) {
+    this.clear();
+    for (const {lines, color, width} of sets) {
+      const ground = lines.filter(line => line.length > 1)
+                          .map(line => drape(this.terrain, line.map(c => c[0]), line.map(c => c[1])));
+      if (!ground.length) continue;
+      const mesh = new LineSegments2(new LineSegmentsGeometry(),
+                                     new LineMaterial({color: css(color), linewidth: width, worldUnits: false}));
+      mesh.material.resolution.set(...this._size);
+      mesh.frustumCulled = false;
+      this.group.add(mesh);
+      this.sets.push({ground, mesh});
+    }
+    this.refresh();
+  }
+
+  // Re-place every vertex on the ground as it is shown now.
+  refresh() {
+    const {terrain} = this;
+    for (const {ground, mesh} of this.sets) {
+      const pairs = [];                        // segments: start and end of each, one after another
+      for (const g of ground) {
+        for (let i = 0; i + 3 < g.length; i += 2) {
+          pairs.push(g[i], terrain.surfaceAt(g[i], g[i + 1]) + this.lift, g[i + 1],
+                     g[i + 2], terrain.surfaceAt(g[i + 2], g[i + 3]) + this.lift, g[i + 3]);
+        }
+      }
+      const geometry = new LineSegmentsGeometry();
+      geometry.setPositions(pairs);
+      mesh.geometry.dispose();
+      mesh.geometry = geometry;
+    }
+  }
+
+  setResolution(width, height) {
+    this._size = [width, height];
+    for (const {mesh} of this.sets) mesh.material.resolution.set(width, height);
+  }
+
+  clear() {
+    for (const {mesh} of this.sets) { mesh.geometry.dispose(); mesh.material.dispose(); }
+    this.group.clear();
+    this.sets = [];
   }
 }
