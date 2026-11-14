@@ -18,6 +18,16 @@
   #map { position: absolute; inset: 0; }
   .panel { position: absolute; background: var(--panel); border: 1px solid var(--border);
            border-radius: 8px; padding: 12px 14px; backdrop-filter: blur(4px); }
+  .budget { display: flex; height: 14px; border-radius: 4px; overflow: hidden; gap: 2px;
+            background: #1c222b; margin: 6px 0 2px; }
+  .budget div { height: 100%; }
+  .seg-used { background: #8a94a3; } .seg-rv { background: #f2a33a; } .seg-free { background: #4c9be8; }
+  .keyrow { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+  .keyrow i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 3px; }
+  .player { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+  .player button { width: auto; margin: 0; padding: 4px 10px; }
+  .player select { background: #1c222b; color: var(--text); border: 1px solid var(--border);
+                   border-radius: 4px; padding: 3px; }
   #layers { top: 16px; left: 16px; width: 230px; max-height: calc(100% - 96px); overflow-y: auto; overflow-x: hidden; }
   #rad-chart { display: block; margin: 6px 0 2px; overflow: visible; }
   #rad-chart .axis { stroke: rgba(255,255,255,0.25); stroke-width: 1; }
@@ -86,8 +96,23 @@
   <input type="range" id="block-slope" min="15" max="60" step="1" value="30">
   <div class="muted" id="block-info"></div>
   <hr>
-  <button id="plan-btn">Plan EVA (test route)</button>
+  <button id="plan-btn">Plan EVA</button>
   <div id="plan-info" class="muted"></div>
+  <div id="profile" hidden>
+    <div class="muted" style="margin-top:8px"><b style="color:var(--text)">Route profile</b> · energy budget</div>
+    <div class="budget" role="img" aria-label="Energy budget at the current point">
+      <div id="bar-used" class="seg-used"></div><div id="bar-rv" class="seg-rv"></div><div id="bar-free" class="seg-free"></div>
+    </div>
+    <div class="keyrow"><span><i class="seg-used"></i>used</span><span><i class="seg-rv"></i>needed to return</span>
+      <span><i class="seg-free"></i>free</span></div>
+    <div id="profile-info" class="muted" style="margin-top:4px"></div>
+    <input type="range" id="route-pos" min="0" max="0" value="0">
+    <div class="player">
+      <button id="play-btn" class="secondary">▶ Play</button>
+      <select id="play-speed"><option value="30">×30</option><option value="60" selected>×60</option>
+        <option value="180">×180</option></select>
+    </div>
+  </div>
   <hr>
   <div class="muted"><b style="color: var(--text)">Walkback</b> · <span style="color:#ff3b30">━</span> 30 min return
     · <span style="color:#36d1ff">━</span> energy-safe area</div>
@@ -473,6 +498,74 @@ function simulateSEP() {
     (real alarm ${ev.alarm_delay_min.toFixed(0)} min after onset).</span></div>`;
 }
 
+// ---------------------------------------------------------------------------
+// Route profile (guide section 32): walk the planned route vertex by vertex.
+// The energy bar shows used, needed-to-return (R(v) from E4) and free energy
+// against the usable budget; it can only shrink as the astronaut walks. On
+// pause, the walkback lines are recomputed from that point with the energy left.
+// ---------------------------------------------------------------------------
+let routeProf = null, routeIdx = 0, playTimer = null;
+
+function routeFeature() {
+  return planFC && planFC.features.find(f => f.properties.kind === "route");
+}
+
+function setupProfile() {
+  const f = routeFeature();
+  routeProf = f && f.properties.used_wh ? {coords: f.geometry.coordinates, ...f.properties} : null;
+  ui("profile").hidden = !routeProf;
+  if (!routeProf) return;
+  ui("route-pos").max = routeProf.coords.length - 1;
+  ui("route-pos").value = 0;
+  showRouteIdx(0, true);
+}
+
+function showRouteIdx(i, settle) {
+  const r = routeProf; routeIdx = i;
+  const used = r.used_wh[i], rv = r.rv_wh[i], usable = r.usable_wh;
+  const free = Math.max(0, usable - used - rv);
+  const pct = v => `${Math.max(0, 100 * v / usable)}%`;
+  ui("bar-used").style.width = pct(used); ui("bar-rv").style.width = pct(rv); ui("bar-free").style.width = pct(free);
+  const t = r.t_s[i], mm = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+  const dose = radInfo ? (t / 3600) * radInfo.background_ugy_h : null;
+  ui("profile-info").innerHTML =
+    `${mm(t)} of ${mm(r.t_s[r.t_s.length - 1])} · ${i >= r.turn_index ? "returning" : "outbound"}<br>` +
+    `Energy used ${used.toFixed(1)} Wh · return needs ${rv.toFixed(1)} Wh · free ${free.toFixed(0)} of ${usable.toFixed(0)} Wh<br>` +
+    `O₂ used ${r.o2_used_l[i].toFixed(1)} L (metabolic equivalent) · back in ${(r.rv_time_s[i] / 60).toFixed(1)} min` +
+    (dose !== null ? ` · dose ${dose.toFixed(2)} µGy` : "");
+  astronaut = r.coords[i];
+  ui("wb-energy").value = Math.round(usable - used);
+  redraw();
+  if (settle) requestWalkback();
+}
+
+function headingLayer() {
+  if (!routeProf) return [];
+  const c = routeProf.coords, i = routeIdx, j = Math.min(c.length - 1, i + 12);
+  if (j === i) return [];
+  const [x0, y0] = toWorld(...c[i]), [x1, y1] = toWorld(...c[j]);
+  const angle = -Math.atan2(y1 - y0, x1 - x0) * 180 / Math.PI;   // world y grows down
+  return [new TextLayer({id: "heading", data: [{p: c[i]}], getPosition: d => toWorld(...d.p),
+    getText: () => "➤", getAngle: angle, getSize: 22, getColor: [255, 255, 255],
+    characterSet: ["➤"], outlineWidth: 4, outlineColor: [0, 0, 0], fontSettings: {sdf: true},
+    getPixelOffset: [0, 0], updateTriggers: {getAngle: angle}})];
+}
+
+function togglePlay() {
+  if (playTimer) { clearInterval(playTimer); playTimer = null; ui("play-btn").textContent = "▶ Play"; showRouteIdx(routeIdx, true); return; }
+  ui("play-btn").textContent = "❚❚ Pause";
+  const tick = 200;                                   // ms per frame
+  playTimer = setInterval(() => {
+    const r = routeProf, speed = Number(ui("play-speed").value);
+    const target = r.t_s[routeIdx] + speed * tick / 1000;
+    let i = routeIdx;
+    while (i < r.t_s.length - 1 && r.t_s[i] < target) i++;
+    ui("route-pos").value = i;
+    showRouteIdx(i, false);
+    if (i >= r.t_s.length - 1) togglePlay();
+  }, tick);
+}
+
 async function requestPlan() {
   const btn = ui("plan-btn");
   btn.disabled = true;
@@ -494,9 +587,13 @@ async function requestPlan() {
     planFC = await res.json();
     const route = planFC.features.find(f => f.properties.kind === "route").properties;
     const p = planFC.properties;
+    const facts = route.energy_wh != null
+      ? ` · ${route.energy_wh.toFixed(0)} Wh · ${(route.time_s / 60).toFixed(0)} min · ${route.o2_l.toFixed(0)} L O₂` : "";
     ui("plan-info").innerHTML =
-      `Route ${route.length_m.toFixed(0)} m · usable budget ${p.energy_usable_wh.toFixed(0)} Wh` +
+      `${p.source || "route"}: ${route.length_m.toFixed(0)} m${facts} · usable ${p.energy_usable_wh.toFixed(0)} Wh` +
       p.warnings.map(w => `<div class="warn">⚠ ${w}</div>`).join("");
+    if (playTimer) togglePlay();
+    setupProfile();
     deckgl.setProps({layers: layers()});
   } catch (err) {
     ui("plan-info").innerHTML = `<div class="warn">Error: ${err.message}</div>`;
@@ -518,6 +615,7 @@ function layers() {
     ...planLayers(),
     ...stationLayers(),
     ...wbLayers(),
+    ...headingLayer(),
   ];
 }
 
@@ -570,6 +668,9 @@ ui("plan-btn").addEventListener("click", requestPlan);
 ui("save-stations").addEventListener("click", saveStations);
 ui("load-candidates").addEventListener("click", loadCandidates);
 ui("sep-btn").addEventListener("click", simulateSEP);
+ui("play-btn").addEventListener("click", togglePlay);
+ui("route-pos").addEventListener("input", e => showRouteIdx(Number(e.target.value), false));
+ui("route-pos").addEventListener("change", e => showRouteIdx(Number(e.target.value), true));
 // Only one map-click mode at a time.
 document.querySelectorAll(".click-mode").forEach(box => box.addEventListener("input", () => {
   if (box.checked) document.querySelectorAll(".click-mode").forEach(o => { if (o !== box) o.checked = false; });
