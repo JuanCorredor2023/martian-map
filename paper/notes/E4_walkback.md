@@ -1,6 +1,6 @@
 # E4 · Graph, return-energy layer R(v) and walkback routes
 
-Owner: Aaron (`@aahg1105`) · Issue: #7 · PRs: (this PR) · Status: in progress (MVP block done; baselines #8 next) · Last update: 2026-11-14
+Owner: Aaron (`@aahg1105`) · Issues: #7, #8 · PRs: #39 (E4), baselines PR · Status: E4 and baselines done · Last update: 2026-11-14
 
 ## Question
 From any cell of the study box, what is the minimum metabolic energy needed to walk back to the habitat, R(v)? And what is the best round trip habitat → goal → habitat such that, at every point, what has been used plus what is still needed to get home fits the budget, now with energy, EVA duration and oxygen as limits at the same time?
@@ -49,6 +49,69 @@ All numbers come from `src/grafos/paper_figures.py` → `data/e4/summary.json` (
 ![Safe area vs budget](../figures/e4_fig2_safe_area.png)
 *Figure 2. Fraction of the grid that is reachable and returnable as a function of the usable energy budget.*
 
+## Baselines (issue #8)
+**Question.** How often does a simple planning rule call a round trip safe when, under the E3 cost, it does not fit the budget, and how much energy does it waste?
+
+**Methods.** All four methods move on the same graph (E3 arcs, 20° per move, cells > 30° blocked), so only the cost model and the safety rule change. Code: `src/grafos/baselines.py`.
+
+| Method | Route | "Safe" if |
+|---|---|---|
+| B1 A\*-slope | Shortest distance, A\* with the octile heuristic, under the slope limits; back along the same path | 2 × path length × flat-ground energy (389.6 J/m from E3) ≤ budget |
+| B2 fixed radius | Same route as B1 | Straight-line distance ≤ r, with r = budget / (2 × 389.6 J/m) (Apollo-style walkback radius) |
+| B3 linear O2 | Shortest E3 time out and back | 293 W × time ≤ budget, i.e. constant O2 rate (~0.87 L/min, ISS EMU planning rate [NASA-Mars-mass]) |
+| MVP (E4) | Minimum E3 energy out and back | Exact: g(goal) + R(goal) ≤ budget |
+
+- **Ground truth:** for every route, its E3 energy. A **false safe** is a goal that the method calls safe while its own route needs more than the budget. This is the dangerous error.
+- **Budgets relative to the habitat:** because the habitat is a user input, budgets are fractions (25 / 50 / 75 %) of the most expensive exact round trip from that habitat.
+- **Habitats and goals:**
+  - Habitats: the box centre plus 20 random habitats in the main component (seed 8).
+  - Goals: the 13 manual stations (Sebas, `stations-v1`) plus 2,000 random cells.
+  - In total there are 42,273 evaluations per method and budget level.
+
+**Results** (`src/grafos/evaluate_baselines.py --n-habitats 20` → `data/baselines/baselines_summary.json`):
+
+| Budget (of farthest loop) | Method | Said safe | False safe (% of "safe") | Goals impossible for any route but called safe |
+|---|---|---|---|---|
+| 25 % | B1 A\*-slope | 10,977 | 3,735 (34.0 %) | 3,160 |
+| | B2 radius | 16,819 | 9,577 (56.9 %) | 9,002 |
+| | B3 linear O2 | 10,387 | 2,662 (25.6 %) | 2,570 |
+| | MVP | 7,817 | 0 (0 %) | 0 |
+| 50 % | B1 A\*-slope | 29,862 | 8,280 (27.7 %) | 7,115 |
+| | B2 radius | 39,766 | 18,184 (45.7 %) | 17,019 |
+| | B3 linear O2 | 28,682 | 6,129 (21.4 %) | 5,935 |
+| | MVP | 22,747 | 0 (0 %) | 0 |
+| 75 % | B1 A\*-slope | 42,036 | 6,643 (15.8 %) | 5,347 |
+| | B2 radius | 42,273 | 6,880 (16.3 %) | 5,584 |
+| | B3 linear O2 | 41,641 | 5,196 (12.5 %) | 4,952 |
+| | MVP | 36,689 | 0 (0 %) | 0 |
+
+- **None of the baselines is too cautious.** No baseline ever rejected a goal that the exact plan can do. The flat-ground and constant-rate calibrations always underestimate the real E3 cost.
+- **Real / estimated energy** (median, with the 99th percentile that would be needed as a safety factor to avoid every false safe):
+
+  | Method | Median | Safety factor needed (p99) |
+  |---|---|---|
+  | B1 | 1.29 | 1.42 |
+  | B2 | 1.55 | 4.05 |
+  | B3 | 1.21 | 1.32 |
+
+  A fixed radius would need a margin of about 4× to be safe everywhere.
+- **Wasted energy of the baseline routes vs the MVP route** (median): 3.9 % for B1/B2 (shortest distance is not cheapest) and 0.5 % for B3 (fastest is almost cheapest).
+- **Stations only** (273 evaluations per level, `levels_stations_only`): at the 50 % budget, B2 calls all 273 safe and 86 of them are false safe (31.5 %). B1 has 57/244 false safe (23.4 %), B3 40/236 (16.9 %), and the MVP 0/198.
+- **Figure 3** (habitat = box centre, 281 Wh = 50 %):
+  - The exact safe region covers 45.3 % of the grid.
+  - B2 declares 83.1 % of the grid safe, and 45.5 % of that cannot be done.
+  - B1 declares 60.3 % (24.8 % of it impossible) and B3 57.4 % (21.0 % impossible).
+  - The red areas are where the terrain rises away from the habitat, which is exactly where a symmetric rule fails (`src/grafos/paper_figures.py` → `summary.json: baselines_map`).
+
+![Baselines vs exact safe region](../figures/e4_fig3_baselines_map.png)
+*Figure 3. What each baseline declares safe compared with the exact safe region of E4, habitat at the box centre, usable budget 281 Wh. Green: safe for both. Red: baseline says safe, no route fits. Blue: baseline too cautious (none).*
+
+**Deliverable routes** to the reference station R0 (Nevado Sajama, the drilled ridge), from the box centre at the 50 % budget: `data/baselines/b1_astar_slope.geojson`, `b2_fixed_radius.geojson`, `b3_linear_o2.geojson` and `mvp_e4.geojson`. Each carries the real E3 energy, the exact R(v) and the slack per vertex, plus the baseline's own estimate and verdict. The per-goal table for the results table (#16) is `data/baselines/baselines_goals.csv`.
+
+**Limitations of the baselines.**
+- They are calibrated on E3's own flat-ground numbers, the most favourable choice for them. A real planner with a different metabolic model would be off by a different amount.
+- Only energy is the limit here. Duration and O2 limits are in the MVP (`labels.py`) but were not added to this comparison.
+
 ## Checks
 - **E3 contract** (checked on the real DEM before use): `NEIGHBOURS` points to `dem[r + dr, c + dc]` with N = row − 1. There are 0 finite arcs leaving the grid, and all energies with the default limits are positive (339–1,428 J per arc).
 - **Unit tests** in `tests/grafos/`, 15 of them on synthetic DEMs:
@@ -72,7 +135,8 @@ All numbers come from `src/grafos/paper_figures.py` → `data/e4/summary.json` (
 - **E5 (Diana):** `Graph.cost_matrix(nodes, "energy_j")` gives the directed station-to-station matrix (one Dijkstra per station). `check_walkback(graph, path, rv_j, usable_j)` validates a tour and returns the first point of no return.
 - **E12 (Juan):** read `data/e4/rv_time_s.tif` (minimum return time in seconds, same habitat and snap) instead of a separate Dijkstra. Agreed on the board on 2026-11-14. The route profile carries `t_s` per vertex.
 - **API/HUD (Sebas):** `rv.tif` (Wh), `safe.tif` and `e4_route.geojson`, with per-vertex `used_wh`, `rv_wh`, `t_s`, `o2_used_l` and `slack_wh`. The planner takes energy, duration and O2 limits, which need new fields in `/plan` (contract change in #2).
-- **Baselines (#8):** the same graph with other weights (fixed radius, slope threshold, linear O2).
+- **Results table (Juan, #16):** `data/baselines/baselines_summary.json` (false-safe counts per method and budget level) and `baselines_goals.csv` (one row per habitat × budget × goal × method).
+- **Demo (Sebas):** Figure 3 is the one-picture argument: a fixed radius calls almost half of its "safe" area impossible at a 50 % budget.
 
 ## Reproduce
 ```powershell
@@ -80,9 +144,15 @@ gh release download base-grid-v2 --dir data; Expand-Archive data\base_grid_v2.zi
 python src/fisica/build_cost_layers.py data/base/dem_1m.tif data/base --slope-raster data/base/slope_deg.tif   # optional, ~3 s
 python src/grafos/build_rv.py --habitat 8143537.99 -284463.58 --budget-wh 1000 --margin 0.1
 python src/grafos/build_rv.py --habitat 8143537.99 -284463.58 --max-duration-min 420 --o2-budget-l 330 --service-min 30
+gh release download stations-v1 --dir data/stations           # 13 manual stations (Sebas)
+python src/grafos/evaluate_baselines.py --habitat 8143537.99 -284463.58   # one habitat, ~10 s
+python src/grafos/evaluate_baselines.py --n-habitats 20                    # paper table, ~4 min
 python src/grafos/paper_figures.py
 python -m pytest tests/grafos
 ```
 
 ## Outputs
-`data/e4/`: `rv.tif` (Wh), `rv_time_s.tif` (s), `g.tif` (Wh), `safe.tif`, `e4_route.geojson` and `summary.json`. Not in git; regenerate with the commands above.
+- `data/e4/`: `rv.tif` (Wh), `rv_time_s.tif` (s), `g.tif` (Wh), `safe.tif`, `e4_route.geojson` and `summary.json`.
+- `data/baselines/`: `baselines_summary.json`, `baselines_goals.csv` (91 MB) and the four reference routes.
+
+Not in git; regenerate with the commands above.
