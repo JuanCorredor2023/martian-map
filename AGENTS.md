@@ -31,19 +31,38 @@ Humans over agents. **Team lead: `@JavierBonilla2004` (Javier/JB).** Only the te
 
 ## 4. Who owns what
 
-Propuesta inicial, tomada del reparto del temario del equipo. **El líder la confirma o corrige en el arranque**; las carpetas son nombres propuestos y todavía no existen.
+Reparto según la guía de trabajo del equipo (`docs/guia_trabajo_equipo.md`, de Javier, 14-nov). Cada pieza tiene su issue; las carpetas son nombres propuestos que el líder puede corregir.
 
 | Area | Owner (GitHub login) | Folders |
 |---|---|---|
-| Grafos: costo asimétrico, walkback, restricción de recursos (E4, E7) | `@aahg1105` (Aaron) | `src/grafos/` |
-| DL de rocas: BoulderNet y destilación (E9) | `@aahg1105` (Aaron) | `src/dl_rocas/` |
-| Orienteering y metaheurísticas (E5, E6) | `@dianagrz` (Diana) | `src/orienteering/` |
-| Física del traje: metabolismo, O2, velocidad (E3) | `@Seredial0326` (Sebas) | `src/fisica/` |
-| Producto: API y mapa web | `@Seredial0326` (Sebas) | `api/`, `web/` |
-| GIS: rásters, features de terreno, teselas | `@JavierBonilla2004` (Javier/JB) | `src/gis/` |
-| DL del boxwork: top-hat y U-Net (E8) | `@JavierBonilla2004` (Javier/JB) | `src/dl_boxwork/` |
-| ML: IRL y movilidad del rover (E1, E2), sensibilidad (3.4) | `@JuanCorredor2023` (Juan) | `src/ml/` |
-| Radiación (E12) | `@JuanCorredor2023` (Juan) | `src/radiacion/` |
+| Malla base, features de terreno, teselas y mapa | `@JavierBonilla2004` (Javier/JB) | `src/gis/` |
+| E8: top-hat y U-Net del boxwork, estaciones E8, `arena.tif` | `@JavierBonilla2004` (Javier/JB) | `src/dl_boxwork/` |
+| Grafo, E4 (R(v) y walkback) y baselines del MVP | `@aahg1105` (Aaron) | `src/grafos/` |
+| E9: BoulderNet y destilación (`rocas.tif`); E7 si E9 se corta | `@aahg1105` (Aaron) | `src/dl_rocas/` |
+| E5 orienteering y E6 benchmark | `@dianagrz` (Diana) | `src/orienteering/` |
+| E3: costo metabólico y de O2 | `@Seredial0326` (Sebas) | `src/fisica/` |
+| Producto: API, HUD y estaciones manuales | `@Seredial0326` (Sebas) | `api/`, `web/` |
+| E2 (trayectoria de Curiosity a la malla) y E1 (MaxEnt IRL) | `@JuanCorredor2023` (Juan) | `src/ml/` |
+| E12: dosis de radiación; tabla de resultados del equipo | `@JuanCorredor2023` (Juan) | `src/radiacion/`, `resultados/` |
 | Datos descargados: índice y scripts | `@JuanCorredor2023` (Juan) | `data/README.md`, `data/_scripts/` |
 
-Los datos (46 GB) no están en el repositorio. Qué es cada cosa y cómo conseguirlos: `data/README.md`.
+## 5. Plan de trabajo y contratos
+
+Lee `docs/guia_trabajo_equipo.md` antes de empezar: dice qué hace cada persona de la hora 0 a la 48, qué archivo recibe de quién, a quién se lo entrega y las horas de corte con su plan B. El MVP (E1 + E2 mínimo + E3 + E4 + E5) se cierra en la hora 24 y el código se congela en la hora 40.
+
+Contratos ya fijados (cualquier cambio se publica primero en el issue de contratos y lo confirma quien consume el archivo):
+
+| Contrato | Valor |
+|---|---|
+| CRS | Equirectangular de Marte, esfera R = 3.396.190 m, el del DEM (`base/crs.wkt`) |
+| Caja del recorte (2 × 2 km) | XMIN 8142537.492786024 · YMIN -285463.075189438 · XMAX 8144537.492786024 · YMAX -283463.075189438 (`base/grid.json`) |
+| Celda | 1 m en todas las capas de análisis; 0,25 m solo en ortofotos y U-Net |
+| Nodata | `NaN` en float32 |
+| Formatos | Rásters GeoTIFF float32 sobre la malla base; puntos y rutas en GeoJSON con el CRS del DEM |
+
+Reglas de la guía que aplican a todo agente:
+
+- Un dueño por pieza. Si tu pieza depende de otra que no ha llegado, trabaja con un archivo provisional del mismo formato y cámbialo cuando llegue el real.
+- Cada bloque termina con un commit y un comentario en el issue de tu pieza: qué quedó, qué falta y qué archivo dejaste.
+- Agentes solo en terminal normal (nunca de administrador) y en modo de aprobación. Igual con `pip` y `npm`.
+- Los datos no van al repositorio: se comparten por USB, red local o la carpeta compartida. Qué es cada conjunto: `data/README.md`.
