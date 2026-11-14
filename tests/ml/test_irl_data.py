@@ -12,6 +12,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src" / "ml"))
 import irl_data  # noqa: E402
 
 
+def test_feature_sets_start_with_metre_and_keep_the_merged_default():
+    for name, feats in irl_data.FEATURE_SETS.items():
+        assert feats[0] == "metre", name
+        assert len(set(feats)) == len(feats), name
+    assert irl_data.FEATURE_SETS["dem"] == irl_data.DEM_FEATURES == [
+        "metre", "slope_deg", "roughness", "tpi_ridge", "tpi_hollow", "slope_mean_5m", "slope_mean_15m"]
+    assert irl_data.FEATURE_SETS["dem_sand"][-2:] == ["sand", "sand_mean_5m"]
+
+
 def test_step_length_counts_diagonals_as_sqrt2():
     path = np.array([(0, 0), (0, 1), (1, 2), (2, 2)])
     assert irl_data.step_length(path) == pytest.approx(2 + 2 ** 0.5)

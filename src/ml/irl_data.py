@@ -20,24 +20,37 @@ TPI is split in two because a weight cannot be negative: this way ridges and
 hollows each get their own price. Every feature except metre is divided by its
 99th percentile over the whole box, so 1 means "as high as the top 1 % of the box".
 
+With --features dem_sand (E8, JB's release e8-v0) two more; --features sand
+uses only metre and these two:
+  sand             fraction of the cell that E8's U-Net marks as sand (data/e8/sand.tif)
+  sand_mean_5m     mean sand fraction in a 5 x 5 m window
+The default feature set ("dem") is the one of the E1 result merged in #50.
+
 Block: the E2 validation block (src/ml/cell_features.py: 5 consecutive stretches
 of the route with the same number of visited cells) of the drive's middle step.
 """
 import numpy as np
 import pandas as pd
+import rasterio
+from scipy.ndimage import uniform_filter
 
 import cell_features as cf
 import common
 import maxent_irl as irl
 
-FEATURES = ["metre", "slope_deg", "roughness", "tpi_ridge", "tpi_hollow",
-            "slope_mean_5m", "slope_mean_15m"]
+DEM_FEATURES = ["metre", "slope_deg", "roughness", "tpi_ridge", "tpi_hollow",
+                "slope_mean_5m", "slope_mean_15m"]
+FEATURE_SETS = {"dem": DEM_FEATURES, "dem_sand": DEM_FEATURES + ["sand", "sand_mean_5m"],
+                "sand": ["metre", "sand", "sand_mean_5m"]}
+FEATURES = list(DEM_FEATURES)     # the active set; setup() switches it with --features
+SAND = common.PRODUCTS / "e8" / "sand.tif"
 MIN_DRIVE_M = 10.0
 MARGIN_M = 50
 
 
-def feature_stack():
+def feature_stack(features=None):
     """(F, 2000, 2000) float32 features, the scale (99th percentile) of each, and the transform."""
+    features = features or FEATURES
     layers, transform = cf.feature_rasters()
     raw = {
         "slope_deg": layers["slope_deg"],
@@ -47,8 +60,20 @@ def feature_stack():
         "slope_mean_5m": layers["slope_mean_5m"],
         "slope_mean_15m": layers["slope_mean_15m"],
     }
-    scale = {k: float(np.nanpercentile(v, 99)) for k, v in raw.items()}
-    phi = np.stack([np.ones_like(layers["slope_deg"])] + [raw[k] / scale[k] for k in FEATURES[1:]])
+    if "sand" in features:
+        if not SAND.exists():
+            raise SystemExit(f"{SAND} not found: download JB's release e8-v0 into data/e8/")
+        with rasterio.open(SAND) as src:
+            if src.transform != transform or src.shape != layers["slope_deg"].shape:
+                raise SystemExit(f"{SAND} is not on the base grid")
+            sand = src.read(1).astype("float64")
+        raw["sand"] = sand
+        raw["sand_mean_5m"] = uniform_filter(sand, size=5, mode="nearest")
+    scale = {}
+    for k in features[1:]:
+        p99 = float(np.nanpercentile(raw[k], 99))
+        scale[k] = p99 if p99 > 0 else float(np.nanmax(raw[k]))   # a mostly-zero layer
+    phi = np.stack([np.ones_like(layers["slope_deg"])] + [raw[k] / scale[k] for k in features[1:]])
     return phi.astype(np.float32), scale, transform
 
 
@@ -142,14 +167,20 @@ def add_arguments(ap):
     ap.add_argument("--margin", type=int, default=MARGIN_M, help="window margin in metres")
     ap.add_argument("--whole-box", action="store_true", help="every window is the whole box")
     ap.add_argument("--chunk", type=int, default=16, help="demonstrations per GPU batch")
+    ap.add_argument("--features", choices=sorted(FEATURE_SETS), default="dem",
+                    help="feature set: dem (E1 as merged in #50), dem_sand (plus E8 sand) or sand (metre + sand)")
 
 
 def setup(args):
     """(tag, features on the chosen grid, table, demos, feature scales) for the chosen demonstrations.
 
-    Route lengths for NLL per metre come from the demos (demo.length_m * cell),
-    not from the table: a demo that touches its goal earlier is cut there.
+    Also makes args.features the active FEATURES list, which fit_irl.py and
+    validate_irl.py read. Route lengths for NLL per metre come from the demos
+    (demo.length_m * cell), not from the table: a demo that touches its goal
+    earlier is cut there.
     """
+    global FEATURES
+    FEATURES = list(FEATURE_SETS[args.features])
     phi, scale, _ = feature_stack()
     table = drives() if args.piece_m is None else pieces(args.piece_m)
     if args.cell > 1:
@@ -157,7 +188,8 @@ def setup(args):
         table = coarse_table(table, args.cell)
     margin = 10 ** 6 if args.whole_box else -(-args.margin // args.cell)   # metres -> cells
     tag = ("per_sol" if args.piece_m is None else f"piece{int(args.piece_m)}m") + \
-        f"_cell{args.cell}m_" + ("box" if args.whole_box else f"margin{args.margin}m")
+        f"_cell{args.cell}m_" + ("box" if args.whole_box else f"margin{args.margin}m") + \
+        ("" if args.features == "dem" else f"_{args.features}")
     return tag, phi, table, demos(phi, table, margin), scale
 
 
