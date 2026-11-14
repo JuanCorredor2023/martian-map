@@ -171,7 +171,8 @@ Sources: `src/ml/fit_irl.py` and `src/ml/validate_irl.py` with `--features sand`
   - In the last block the route touches no sand at all, so sand cannot help there.
   - Sand was only tested per sol at 1 m.
 - **The sand layer is a first version.** E8's U-Net v0 misses much of the sand (JB), so the price is learned from the sand it does mark.
-  - We have not checked whether the orthophoto predates Curiosity's pass. If it does not, rover tracks could change how sand looks along the route.
+  - **Image date** (E8 note, `paper/notes/E8_boxwork_sand.md`, confirmed by JB from the USGS record): the orthophoto's detail comes from HiRISE images of 2006–2011, all before landing, so it shows no rover tracks. Sand patches may have moved in the roughly 13 years before the boxwork campaign, which adds noise but cannot create the measured avoidance.
+  - **Colour:** the U-Net recognises sand by colour, and the LRGB colour was fused onto the mosaic in 2025 from HiRISE colour strips whose dates are not published.
 - **Rover preferences applied to a person.** The sand price is how much Curiosity's drivers avoided sand. Using it as a relative price for an astronaut follows the team plan ("keep what was learned about roughness and sand"), but it is an assumption, not a measurement.
 
 ## What other pieces can use
