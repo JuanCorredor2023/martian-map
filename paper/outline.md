@@ -1,0 +1,42 @@
+# Paper outline (draft)
+
+Working title: *Planning astronaut EVAs in the Gale crater boxwork, validated against Curiosity's traverse.*
+
+Each section lists the notes in `notes/` that feed it. Owners fill their notes; the outline is assembled at the end.
+
+## Abstract
+One paragraph, written last.
+
+## 1. Introduction
+Why EVA planning on Mars needs terrain-aware, energy-aware routes; the boxwork as a science target; what we contribute (planner, learned cost, walkback guarantee, orienteering of stations, validation with a real rover traverse).
+
+## 2. Study area and data
+- Gale crater boxwork, 2 × 2 km bbox, CRS and grid → *base grid note*
+- DEM, orthophotos, terrain features → *base grid note*
+- Curiosity's traverse (PLACES) → [E2](notes/E2_curiosity_traverse.md)
+- Other datasets used (REMS, RAD, BoulderNet, AI4Mars) → notes of E12, E9, E10
+
+## 3. Methods
+- 3.1 Base grid and terrain features → *base grid note*
+- 3.2 Curiosity's traverse on the grid and terrain-only baseline → [E2](notes/E2_curiosity_traverse.md)
+- 3.3 Learned terrain cost (MaxEnt IRL) → *E1 note*
+- 3.4 Metabolic and O2 cost under Mars gravity → *E3 note*
+- 3.5 Graph, return-energy layer R(v) and walkback routes → *E4 note*
+- 3.6 Station selection (orienteering) → *E5 note*
+- 3.7 Boxwork ridges and hollows (top-hat, U-Net) → *E8 note*
+- 3.8 Boulder density (BoulderNet, distillation) → *E9 note*
+- 3.9 Radiation dose along the EVA timeline → *E12 note*
+- 3.10 Product: API and HUD → *product note*
+
+## 4. Results
+- MVP route versus the three baselines → *E4/E5 notes, results table*
+- How well terrain and learned costs explain Curiosity's route → [E2](notes/E2_curiosity_traverse.md), *E1 note*
+- Second-priority layers (E8, E9, E12) and their effect on the plan
+
+## 5. Discussion
+What the validation does and does not show; limitations collected from every note; future work.
+
+## 6. Conclusions
+
+## References
+`references.md`

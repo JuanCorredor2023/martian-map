@@ -45,6 +45,10 @@ Outputs in `data/e2/`:
 | `logistic_roc.png` | ROC curves for the 50 m corridor (out-of-block predictions). |
 | `visit_probability.tif` | The main model applied to every cell, on the base grid. It is a relative 0–1 score of how route-like the terrain is, not a calibrated probability. |
 
+## Paper
+
+`python src/ml/paper_figures.py` writes the E2 figures to `paper/figures/` (run it after the scripts above). The write-up of E2 is in `paper/notes/E2_curiosity_traverse.md`.
+
 Notes on PLACES:
 
 - We use `localized_interp.csv`, not the `_demv2` variant: that one is tied to another DEM version, about +56 m in height and up to 22 m of horizontal shift against DEM v3.
