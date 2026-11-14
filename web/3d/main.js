@@ -34,6 +34,7 @@ function showMessage(html) {
 }
 
 async function main() {
+  if (window.innerWidth < 700 || window.innerHeight < 500) ui('about').open = false;
   const quality = pickQuality();
   const canvas = ui('view');
   const renderer = new THREE.WebGLRenderer({canvas, antialias: quality === 'high',
