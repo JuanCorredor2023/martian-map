@@ -15,6 +15,7 @@ CONTRACTS = REPO / "docs" / "contracts"
 PRODUCTS = REPO / "data"
 BASE = PRODUCTS / "base"      # JB's base grid (release base-grid-vN)
 E2_OUTPUT = PRODUCTS / "e2"
+E1_OUTPUT = PRODUCTS / "e1"
 
 # Provisional sol range of the boxwork (data/README.md, section 6).
 # The team sets the final range; here it only flags the poses.

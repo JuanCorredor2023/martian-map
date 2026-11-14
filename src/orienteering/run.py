@@ -20,6 +20,7 @@ from orienteering.data_io import (ROUTE_PATH, STATIONS_LAYER, STATIONS_PATH,  # 
 from orienteering.network import (load_graph, place_habitat, reachable_stations,  # noqa: E402
                                   route_path, station_matrices)
 from orienteering.problem import Problem, evaluate_route  # noqa: E402
+from orienteering.safety import return_costs, solve_with_walkback, tour_walkback  # noqa: E402
 from orienteering.solvers import MAX_STATIONS, SOLVERS  # noqa: E402
 
 
@@ -66,8 +67,17 @@ def main(argv=None):
     problem = Problem(energy=dis, prize=stations.prize, budget=budget_j, time=tim,
                       service_s=stations.service_s, service_j=service_j,
                       windows=stations.windows, max_duration_s=max_duration_s)
+    rv_j = return_costs(graph, graph.node(hr, hc))
+    checked = {}
+
+    def check(route):
+        path, stop_index = route_path(graph, stations, route, dis)
+        stop_service = [service_j[k] if k not in route[:m] else 0.0 for m, k in enumerate(route)]
+        checked["path"], checked["stop_index"] = path, stop_index
+        return tour_walkback(graph, path, stop_index, stop_service, rv_j, budget_j)
+
     try:
-        solution = SOLVERS[args.solver](problem)
+        solution, walkback, retries = solve_with_walkback(problem, SOLVERS[args.solver], check)
     except (ValueError, NotImplementedError) as err:
         raise SystemExit(f"solver {args.solver}: {err}")
 
@@ -91,9 +101,17 @@ def main(argv=None):
     print(f"duration {timeline['duration'] / 60:.0f} min (walking {(timeline['duration'] - served_s - wait_s) / 60:.0f}, "
           f"service {served_s / 60:.0f}, waiting {wait_s / 60:.0f})")
 
-    path, stop_index = route_path(graph, stations, solution.route, dis)
+    if walkback["feasible"]:
+        print(f"walkback ok: smallest slack {walkback['min_slack_j'] / J_PER_WH:.1f} Wh"
+              + (f" (after {retries} re-plans with a lower budget)" if retries else ""))
+    else:
+        bad = stations.id[solution.route[walkback["first_violation_stop"]]]
+        print(f"WARNING: walkback fails before reaching {bad} (slack {walkback['min_slack_j'] / J_PER_WH:.1f} Wh) "
+              f"after {retries} re-plans")
+
+    path, stop_index = checked["path"], checked["stop_index"]
     out = write_route_gpkg(args.out, graph, stations, solution, path, stop_index, budget_j,
-                           args.service_power_w, timeline)
+                           args.service_power_w, timeline, walkback)
     print(f"route written to {out} ({len(path)} cells, {time.time() - t0:.1f} s total)")
     return solution
 

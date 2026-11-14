@@ -152,6 +152,25 @@ class Graph:
                                          connection="strong")
         return labels, np.bincount(labels)
 
+    def main_component(self):
+        """Bool grid: cells of the largest strongly connected component (cached)."""
+        if getattr(self, "_main_cc", None) is None:
+            labels, sizes = self.components()
+            self._main_cc = (labels == np.argmax(sizes)).reshape(self.shape)
+        return self._main_cc
+
+    def place(self, x, y, label="point"):
+        """User position (CRS metres) -> valid (row, col, moved_m).
+
+        The cell must be walkable and inside the largest connected component, so
+        a route can always leave and come back; otherwise it is moved to the
+        nearest such cell and moved_m > 0. Raises ValueError outside the grid."""
+        r, c = (int(v) for v in self.xy_to_cell(x, y))
+        if not self.inside(r, c):
+            raise ValueError(f"{label} ({x}, {y}) is outside the study box")
+        sr, sc = self.snap(r, c, mask=self.main_component())
+        return sr, sc, float(np.hypot(sr - r, sc - c) * abs(self.transform[0]))
+
     def snap(self, row, col, mask=None):
         """Nearest cell (Euclidean) with outgoing edges and inside `mask`
         (bool array over the grid, e.g. the largest component). Returns (row, col)."""

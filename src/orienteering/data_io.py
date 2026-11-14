@@ -128,12 +128,16 @@ Writes the E5 route to a GeoPackage in the CRS of the DEM (contract #2), two lay
                the solver's schedule: arrival_time_s, wait_s (waiting for a window to
                open) and departure_time_s, and the route its duration_s and wait_s.
                Without it the times are walking plus service, with no waits.
+    walkback : safety.tour_walkback profile, optional. With it the stops get rv_wh
+               (energy to walk back to the habitat) and slack_wh (energy left after
+               that, once the stop's service is done), and the route walkback_ok and
+               min_slack_wh.
 The route layer has the totals: energy_wh (walking plus service), walk_energy_wh,
 service_energy_wh, travel_time_s (walking), duration_s (walking, waits and service).
 Returns the path of the file.
 """
 def write_route_gpkg(out_path, graph, stations, solution, path, stop_index, usable_j,
-                     service_power_w=0.0, timeline=None):
+                     service_power_w=0.0, timeline=None, walkback=None):
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -199,6 +203,12 @@ def write_route_gpkg(out_path, graph, stations, solution, path, stop_index, usab
         "departure_time_s": departure,
         "length_m": length[at],
     }, geometry=[Point(stations.x[k], stations.y[k]) for k in solution.route], crs=graph.crs_wkt)
+
+    if walkback is not None:
+        route["walkback_ok"] = [bool(walkback["feasible"])]
+        route["min_slack_wh"] = [float(walkback["min_slack_j"]) / 3600.0]
+        stops["rv_wh"] = np.asarray(walkback["rv_j"])[at] / 3600.0
+        stops["slack_wh"] = np.asarray(walkback["stop_slack_j"]) / 3600.0
 
     if out_path.exists():
         out_path.unlink()

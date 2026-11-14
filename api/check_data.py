@@ -1,0 +1,55 @@
+"""Check that every data file the demo needs is in place, and say how to get what is missing.
+
+Usage (repo root):
+    python -m api.check_data
+Exit code 0 when everything needed is present, 1 otherwise. Optional layers only warn.
+"""
+
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+DATA = REPO / "data"
+
+# (folder, files, release, required?, what breaks without it)
+RELEASES = [
+    ("base", ["dem_1m.tif", "slope_deg.tif", "grid.json", "crs.wkt", "ortho_color_025.tif"],
+     "base-grid-v2", True, "everything (grid, costs, planner)"),
+    ("tiles", ["tiles.json", "ortho/0/0/0.png", "slope/0/0/0.png"],
+     "tiles-v2", True, "the map tiles"),
+    ("e2", ["trajectory.geojson"], "e2-trajectory-v1", True, "the fixed test route"),
+    ("stations", ["stations_manual.gpkg", "stations_rubric.json"], "stations-v1", False,
+     "saved science stations (the HUD can still add them by hand)"),
+    ("e12", ["sep_alert.json", "rad_summary.json", "route_dose.geojson"], "e12-dose-v1", False,
+     "the radiation panel"),
+    ("e8", ["sand.tif"], "e8-v0", False, "the sand layer"),
+]
+
+
+def download_hint(folder, release):
+    zip_name = release.replace("-", "_") + ".zip"
+    if release == "stations-v1":
+        return f"gh release download {release} --dir data/{folder}"
+    return (f"gh release download {release} --dir data   then unzip data/{zip_name} "
+            f"into data/{folder}  (PowerShell: Expand-Archive data\\{zip_name} data\\{folder} -Force)")
+
+
+def main():
+    missing_required = False
+    for folder, files, release, required, impact in RELEASES:
+        absent = [f for f in files if not (DATA / folder / f).exists()]
+        if not absent:
+            print(f"  ok       data/{folder}/  ({release})")
+            continue
+        tag = "MISSING " if required else "optional"
+        print(f"  {tag} data/{folder}/  ({release}) -> without it: {impact}")
+        print(f"           missing: {', '.join(absent)}")
+        print(f"           get it:  {download_hint(folder, release)}")
+        missing_required |= required
+    print("\nAll required data present." if not missing_required
+          else "\nSome required data is missing: the demo will not start correctly.")
+    return 1 if missing_required else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -33,10 +33,10 @@ def test_health_and_layers():
     assert "Mars" in layers["crs_wkt"]
 
 
-def test_plan_returns_fixed_route_in_mars_metres():
-    fc = client.post("/plan", json=plan_body()).json()
+def test_plan_without_stations_returns_fixed_route_in_mars_metres():
+    fc = client.post("/plan", json=plan_body(stations=[])).json()
     kinds = [f["properties"]["kind"] for f in fc["features"]]
-    assert kinds == ["route", "station", "start"]
+    assert kinds == ["route", "start"]
     route = fc["features"][0]
     x, y = route["geometry"]["coordinates"][0]
     assert 8142537 < x < 8144538 and -285464 < y < -283463   # inside the box, metres
@@ -180,3 +180,53 @@ def test_radiation_summary_and_scenarios():
     rates = [s["rate_ugy_h"] for s in r["scenarios"]]
     assert rates == sorted(rates) and r["scenarios"][0]["measured"]
     assert abs(r["curve"][-1]["dose_ugy"] - r["provisional_eva"]["dose_ugy"]) < 0.1
+
+
+def test_plan_live_with_e4_round_trip():
+    body = plan_body(stations=[{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5,
+                                "service_time_min": 15}])
+    fc = client.post("/plan", json=body).json()
+    route = next(f for f in fc["features"] if f["properties"]["kind"] == "route")["properties"]
+    assert fc["properties"]["source"].startswith("E4") and route["feasible"]
+    assert 150 < route["energy_wh"] < 300                     # ~214 Wh to Nevado Sajama and back
+    n = len(route["used_wh"])
+    assert len(route["rv_wh"]) == len(route["t_s"]) == n       # per-vertex profile for the HUD
+    assert all(b >= a for a, b in zip(route["used_wh"], route["used_wh"][1:]))   # budget only shrinks
+    goal = next(f for f in fc["features"] if f["properties"]["kind"] == "goal")["properties"]
+    assert goal["station"] == "R0"
+
+
+def test_plan_live_infeasible_budget_is_422():
+    body = plan_body(energy_budget_wh=150,
+                     stations=[{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5}])
+    assert client.post("/plan", json=body).status_code == 422
+
+
+def test_sand_layer():
+    if not (REPO / "data" / "e8" / "sand.tif").exists():
+        pytest.skip("E8 release not downloaded")
+    res = client.get("/layers/sand.png")
+    assert res.status_code == 200 and res.content[:4] == b"\x89PNG"
+    assert 0 < client.get("/layers/sand").json()["share_of_box_with_sand_pct"] < 50
+
+
+def test_check_data_script_runs():
+    from api import check_data
+    assert check_data.main() in (0, 1)
+
+
+def test_guide_saved_plan_and_return_home(tmp_path, monkeypatch):
+    import api.main as main
+    monkeypatch.setattr(main, "PLANS", tmp_path)               # never touch the real saved plan
+    assert client.get("/plan/last").status_code == 404
+    st = [{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5, "type": "ridge"}]
+    client.post("/plan", json=plan_body(stations=st))
+    saved = client.get("/plan/last").json()
+    station = next(f for f in saved["plan"]["features"] if f["properties"]["kind"] == "station")
+    assert station["properties"]["type"] == "ridge"            # the guide card needs the type
+    home = client.post("/guide/return_home", json={"position": [8143217.5, -284993.2],
+                                                   "habitat": CENTRE}).json()["features"][0]
+    p = home["properties"]
+    assert 600 < p["time_s"] < 1200 and len(p["t_s"]) == len(home["geometry"]["coordinates"])
+    assert p["t_s"][-1] == pytest.approx(p["time_s"], abs=1.0)  # profile ends at the habitat
+    assert client.post("/guide/return_home", json={"position": [0, 0], "habitat": CENTRE}).status_code == 422

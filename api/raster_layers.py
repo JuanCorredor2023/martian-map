@@ -65,3 +65,19 @@ def blocked_layer(base_dir, max_cell_slope_deg):
     rgba = np.zeros(slope.shape + (4,), dtype=np.uint8)
     rgba[blocked] = BLOCKED_RGBA
     return _png(rgba), float(blocked.mean())
+
+
+SAND_RGB = (255, 196, 64)
+
+
+@lru_cache(maxsize=1)
+def sand_layer(e8_dir):
+    """E8 sand fraction (0-1) as a PNG: one hue, opacity grows with the fraction,
+    no sand = transparent. E8's U-Net is conservative (high precision, low recall),
+    so this shows DETECTED sand, not all the sand."""
+    with rasterio.open(Path(e8_dir) / "sand.tif") as src:
+        frac = np.nan_to_num(src.read(1).astype(np.float64))
+    rgba = np.zeros(frac.shape + (4,), dtype=np.uint8)
+    rgba[..., :3] = SAND_RGB
+    rgba[..., 3] = (np.clip(frac, 0, 1) * 220).astype(np.uint8)
+    return _png(rgba), {"share_of_box_with_sand_pct": float((frac > 0.5).mean() * 100)}
