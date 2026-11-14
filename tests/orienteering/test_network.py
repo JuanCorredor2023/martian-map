@@ -13,8 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from grafos.graph import Graph
 
 from orienteering.data_io import read_stations
-from orienteering.network import (leg_path, main_component, place_habitat,
-                                  reachable_stations, station_matrices, station_matrix)
+from orienteering.network import (leg_path, place_habitat, reachable_stations,
+                                  station_matrices, station_matrix)
 
 NEIGHBOURS = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)]
 E, W = 2, 6
@@ -108,9 +108,13 @@ def test_matrix_is_directed():
 
 def test_habitat_snaps_and_blocked_station_is_unreachable():
     graph = grid_graph(3, 3, blocked=[(1, 1)])
-    main_cc = main_component(graph)
+    main_cc = graph.main_component()
 
-    assert place_habitat(graph, main_cc, graph.cell_to_xy(1, 1)) != (1, 1)
+    r, c, moved = place_habitat(graph, graph.cell_to_xy(1, 1))
+    assert (r, c) != (1, 1) and moved == pytest.approx(1.0)
+    assert place_habitat(graph, graph.cell_to_xy(0, 0)) == (0, 0, 0.0)
+    with pytest.raises(ValueError):
+        place_habitat(graph, (100.0, 100.0))
     stations = type("S", (), {"row": np.array([0, 1]), "col": np.array([0, 1])})
     assert reachable_stations(main_cc, stations).tolist() == [True, False]
 

@@ -9,7 +9,6 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from grafos.build_rv import place  # noqa: E402
 from grafos.graph import Graph, follow  # noqa: E402
 
 from orienteering.data_io import BASE_DIR  # noqa: E402
@@ -17,29 +16,23 @@ from orienteering.data_io import BASE_DIR  # noqa: E402
 
 """
 Loads the E4 graph from data/base (edges_e3.npz, grid.json, crs.wkt) and the mask
-of its largest strongly connected component (the cells you can go to and come back from).
+of its largest strongly connected component (the cells you can go to and come back
+from), from Graph.main_component (cached in the graph).
 Returns (graph, main_cc) with main_cc a bool array of the grid's shape.
 """
 def load_graph(base_dir=BASE_DIR):
     graph = Graph.from_base_dir(base_dir)
-    return graph, main_component(graph)
+    return graph, graph.main_component()
 
 
 """
-Bool mask (grid shape) of the largest strongly connected component of `graph`.
+Places the habitat exactly as E4 and /plan do (Graph.place): if its cell is blocked
+or outside the main component it moves to the nearest valid cell.
+Returns (row, col, moved_m); use graph.cell_to_xy(row, col) for the coordinates shared
+with E4 and E12. Raises ValueError if xy is outside the grid.
 """
-def main_component(graph):
-    labels, sizes = graph.components()
-    return (labels == np.argmax(sizes)).reshape(graph.shape)
-
-
-"""
-Places the habitat exactly as E4 does (grafos.build_rv.place): if its cell is blocked
-or outside the main component it moves to the nearest valid cell. Returns (row, col);
-use graph.cell_to_xy(row, col) for the coordinates shared with E4 and E12.
-"""
-def place_habitat(graph, main_cc, xy):
-    return place(graph, main_cc, xy, "habitat")
+def place_habitat(graph, xy):
+    return graph.place(*xy, label="habitat")
 
 
 """

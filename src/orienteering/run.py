@@ -45,7 +45,13 @@ def main(argv=None):
     graph, main_cc = load_graph()
     stations = read_stations(graph, args.stations, layer=args.layer, prize_col=args.prize_col)
 
-    hr, hc = place_habitat(graph, main_cc, args.habitat)
+    try:
+        hr, hc, moved = place_habitat(graph, args.habitat)
+    except ValueError as err:
+        raise SystemExit(f"error: {err}")
+    if moved > 0:
+        print(f"warning: habitat {list(args.habitat)} is on a blocked cell or outside the main "
+              f"connected area; moved {moved:.1f} m to cell ({hr}, {hc})")
     hx, hy = (float(v) for v in graph.cell_to_xy(hr, hc))
     stations = stations.prepend("habitat", "habitat", hx, hy, hr, hc)
 
