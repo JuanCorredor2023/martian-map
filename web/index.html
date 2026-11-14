@@ -257,6 +257,7 @@ function planLayers() {
   if (!planFC) return [];
   const byKind = k => planFC.features.filter(f => f.properties.kind === k);
   const points = byKind("start");                 // stations are drawn from the HUD state
+  const ordered = byKind("station").filter(f => f.properties.order);   // E5 visit order
   return [
     new PathLayer({
       id: "route", data: byKind("route"),
@@ -264,6 +265,11 @@ function planLayers() {
       getColor: [0, 200, 255], getWidth: 3, widthUnits: "pixels",
       capRounded: true, jointRounded: true,
     }),
+    new TextLayer({
+      id: "visit-order", data: ordered, getPosition: f => toWorld(...f.geometry.coordinates),
+      getText: f => `#${f.properties.order}`, getSize: 13, getPixelOffset: [0, 16],
+      getColor: [54, 209, 255], fontWeight: 700, outlineWidth: 3, outlineColor: [0, 0, 0],
+      fontSettings: {sdf: true}}),
     new ScatterplotLayer({
       id: "points", data: points,
       getPosition: f => toWorld(...f.geometry.coordinates),

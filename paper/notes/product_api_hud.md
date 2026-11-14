@@ -24,6 +24,21 @@ How does the planner reach the jury: which service exposes the terrain, the cost
 - `OrthographicView` (a plane in metres, the equivalent of Leaflet's `L.CRS.Simple`). One world unit = `tile_z0_m / 256` = 8 m, so deck.gl tile indices equal gdal2tiles indices with no offset.
 - Layers: ortho, hillshade, slope (opacity slider made linear: deck.gl applies `opacity^(1/2.2)`, compensated by raising the slider value to 2.2), E3 cost with legend, steep-cell block with on/off and a 15–60° slider, route, start and stations. Cursor readout in Mars metres and grid cell.
 
+### Multi-station tour (E5 on E4, `api/tour.py`)
+When E5 (Diana, `src/orienteering`) is importable and no explicit goal is given, `/plan` solves the station tour.
+- Stations are snapped with `Graph.place`, one per cell. E5 builds the station matrices (`station_matrices`) and solves the exact DP with energy, service time and maximum EVA duration (`Problem`, `SOLVERS["dp"]`). E4 gives the legs (`route_path`) and `check_walkback` validates the path.
+- The per-vertex profile (used, R(v), time, O2, slack) has the same format as E4's route, with service energy and time added at each stop, so the HUD and the guide need no changes. The guide announces each stop and shows cards only for visited stations; the HUD numbers the visit order.
+- With the 13 stations of `stations-v1` and 1,000 Wh:
+
+  | Max duration | Visited | Prize | Energy | Time |
+  |---|---|---|---|---|
+  | 240 min | all 13 | 56 | 732 Wh | 182 min |
+  | 120 min | 8 | 37 | 483 Wh | 118 min |
+  | 60 min | 3 ridges (R1–R3) | 15 | 251 Wh | 57 min |
+
+  Energy never binds (≤ 732 of 900 Wh usable), but duration does. With 60 min the DP keeps the three highest-scoring ridges, so **the rubric decides the plan once time is short**, as the literature on reward sensitivity predicts [Smith2004].
+- Until E5 is merged, the tour is inactive and `/plan` keeps the single-goal E4 round trip. It was tested with Diana's branch on the path.
+
 ### Route profile in the HUD
 The HUD walks the planned route vertex by vertex, with a slider and play at ×30/×60/×180, using E4's per-vertex profile (guide section 32).
 - A stacked budget bar shows energy used, energy needed to return (R(v)) and free energy against the usable budget. It can only shrink: a test checks that `used_wh` never decreases.
@@ -117,7 +132,7 @@ Source: `api/walkback.py` fields, computed in the session that produced this not
 - Visual checks with headless Edge screenshots: ortho and slope align, north up, layers blend, route and stations drawn in place, rubric edits update labels and point sizes live.
 
 ## Limitations
-- `/plan` plans a single-goal round trip; the multi-station tour waits for E5 (Diana, #37).
+- The multi-station tour (`api/tour.py`) runs only when E5 is importable; until E5 is merged, `/plan` plans the single-goal E4 round trip.
 - The walkback fields are provisional (computed here, not E4's `rv.tif`) and the base defaults to the box centre, which is illustrative; the habitat location is not fixed by the team yet.
 - The rubric's empirical base is thin: one drill sample per setting, LPSC 2026 abstracts and JPL releases, no peer-reviewed paper on the in-situ campaign, no published TMAH result. Revisit when they appear.
 - Additive scores can stack near-duplicate stations; BASALT removed redundant locations. Not handled yet (options: minimum distance between stations of the same type, or one station per site with the maximum of its types).
