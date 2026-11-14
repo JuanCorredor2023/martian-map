@@ -13,16 +13,19 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .plan import PlanRequest, feature, feature_collection
 from .raster_layers import blocked_layer, cost_layer
+from . import stations as st
 
 REPO = Path(__file__).resolve().parents[1]
 DATA = Path(os.environ.get("MARTIAN_DATA", REPO / "data"))
 BASE = DATA / "base"
 TILES = DATA / "tiles"
 E2 = DATA / "e2"
+STATIONS = DATA / "stations"
 WEB = REPO / "web"
 
 app = FastAPI(title="Mars EVA planner", version="0.1.0")
@@ -79,6 +82,39 @@ def blocked_png(max_cell_slope_deg: float = Query(30.0, ge=0, le=90)):
 def blocked_stats(max_cell_slope_deg: float = Query(30.0, ge=0, le=90)):
     fraction = blocked_layer(str(BASE), round(max_cell_slope_deg, 1))[1]
     return {"max_cell_slope_deg": max_cell_slope_deg, "blocked_fraction": fraction}
+
+
+@app.get("/stations/rubric")
+def stations_rubric():
+    """Default rubric: type -> label, score and the reason behind it."""
+    return st.DEFAULT_RUBRIC
+
+
+@app.get("/stations")
+def stations_get():
+    """Saved manual stations and the rubric they were saved with."""
+    return st.load(STATIONS)
+
+
+@app.post("/stations")
+def stations_save(body: st.StationSet):
+    """Validate and save the manual stations as a GeoPackage for E5 (Diana)."""
+    try:
+        body.check_inside(_read_json(BASE / "grid.json")["bbox"])
+    except ValueError as err:
+        raise HTTPException(status_code=422, detail=str(err))
+    crs_wkt = (BASE / "crs.wkt").read_text(encoding="utf-8").strip()
+    path = st.save(body, STATIONS, crs_wkt)
+    return {"saved": len(body.stations), "path": path.as_posix()}
+
+
+@app.get("/stations/stations_manual.gpkg")
+def stations_download():
+    path = STATIONS / "stations_manual.gpkg"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="no stations saved yet")
+    return FileResponse(path, filename="stations_manual.gpkg",
+                        media_type="application/geopackage+sqlite3")
 
 
 def _fixed_test_route():
