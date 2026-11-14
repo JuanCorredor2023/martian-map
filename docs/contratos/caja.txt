@@ -1,0 +1,4 @@
+CRS: data/base/crs.wkt (DEM MSL_Gale_DEM_Mosaic_1m_v3); en el repo: docs/contratos/crs.wkt
+TE: 8142537.492786024 -285463.075189438 8144537.492786024 -283463.075189438
+TE con margen 64 m: 8142473.492786024 -285527.075189438 8144601.492786024 -283399.075189438
+Celda: 1 m (analisis), 0.25 m (ortofotos y U-Net). Nodata: NaN float32. Sin -tap: usar -te.
