@@ -103,7 +103,7 @@ Source: `api/walkback.py` fields, computed in the session that produced this not
 - **E5 (Diana):** `data/stations/stations_manual.gpkg` (layer `stations`, columns above). Proposed sensitivity analysis for the E5 results: rubrics S0 5/4/3/3, S1 5/4/4/3 (default), S2 all equal, S3 NASA-like 3/2/2/1, S4 contact first 4/4/5/3, S5 hollow = ridge 5/5/4/3, S6 wide 9/4/4/1, S7 ≥ 500 random rubrics in 1–5 that keep the order of S1; budgets 0.5–1.2 × nominal; metrics: Jaccard of the station set against S1, Kendall's τ of the visiting order, share of the maximum score. The key output is the budget above which the route stops depending on the rubric [Smith2004] [Broddrick2024]. A complementarity bonus for visiting a ridge and its neighbouring hollow (the sampling unit Curiosity used) is a possible extension.
 - **E4 (Aaron):** `/plan` already carries `max_cell_slope_deg` for the planner; R(v) and the 30 min line will be drawn from `rv.tif`.
 - **E8 (JB):** Curiosity measurement sites are the ground truth for the ridge/hollow maps.
-- **E12 (Juan):** the HUD reads `data/e12/` as produced by `src/radiation/` (generated locally from his branch until PR #35 merges); the walkback R_T at the astronaut is the same return time his alert uses (they agree within 0.0002 s).
+- **E12 (Juan):** the HUD reads `data/e12/` from his release `e12-dose-v1` (produced by `src/radiation/`); the walkback R_T at the astronaut is the same return time his alert uses (they agree within 0.0002 s).
 
 ## Reproduce
 ```
