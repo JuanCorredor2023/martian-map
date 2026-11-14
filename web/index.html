@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mars EVA Planner</title>
-<script src="https://unpkg.com/deck.gl@9.1.14/dist.min.js"></script>
+<script src="/vendor/deck.gl-9.1.14.min.js"></script>
 <style>
   :root {
     --panel: rgba(16, 20, 26, 0.86);
@@ -104,6 +104,7 @@
   <div class="muted" id="block-info"></div>
   <hr>
   <div class="muted"><b style="color:var(--text)">EVA limits</b></div>
+  <label><input type="checkbox" id="human-cost" checked> Human cost: E3 × E1 sand price</label>
   <div class="row"><span class="muted">Energy budget (Wh)</span>
     <input type="number" id="budget-wh" min="50" step="50" value="1000" style="width:70px"></div>
   <div class="row"><span class="muted">Margin (%)</span>
@@ -257,6 +258,7 @@ function planLayers() {
   if (!planFC) return [];
   const byKind = k => planFC.features.filter(f => f.properties.kind === k);
   const points = byKind("start");                 // stations are drawn from the HUD state
+  const ordered = byKind("station").filter(f => f.properties.order);   // E5 visit order
   return [
     new PathLayer({
       id: "route", data: byKind("route"),
@@ -264,6 +266,11 @@ function planLayers() {
       getColor: [0, 200, 255], getWidth: 3, widthUnits: "pixels",
       capRounded: true, jointRounded: true,
     }),
+    new TextLayer({
+      id: "visit-order", data: ordered, getPosition: f => toWorld(...f.geometry.coordinates),
+      getText: f => `#${f.properties.order}`, getSize: 13, getPixelOffset: [0, 16],
+      getColor: [54, 209, 255], fontWeight: 700, outlineWidth: 3, outlineColor: [0, 0, 0],
+      fontSettings: {sdf: true}}),
     new ScatterplotLayer({
       id: "points", data: points,
       getPosition: f => toWorld(...f.geometry.coordinates),
@@ -438,7 +445,8 @@ async function requestWalkback() {
   if (!astronaut) return;
   ui("wb-info").textContent = "Computing return fields…";
   const body = {current_position: astronaut, energy_remaining_wh: Number(ui("wb-energy").value) || 0,
-                emergency_return_time_s: 1800, base: baseXY, max_cell_slope_deg: blockLimit()};
+                emergency_return_time_s: 1800, base: baseXY, max_cell_slope_deg: blockLimit(),
+                human_cost: ui("human-cost").checked};
   const res = await fetch("/walkback", {method: "POST",
     headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
   const out = await res.json();
@@ -601,6 +609,7 @@ async function requestPlan() {
     margin: (Number(ui("margin-pct").value) || 0) / 100,
     max_duration_min: Number(ui("max-min").value) > 0 ? Number(ui("max-min").value) : null,
     o2_budget_l: Number(ui("o2-l").value) > 0 ? Number(ui("o2-l").value) : null,
+    human_cost: ui("human-cost").checked,
     apollo_speed_uses_signed_slope: true, service_energy_wh_per_min: null,
     max_cell_slope_deg: blockLimit(),
   };
@@ -615,8 +624,10 @@ async function requestPlan() {
       ? ` · ${route.energy_wh.toFixed(0)} Wh · ${(route.time_s / 60).toFixed(0)} min · ${route.o2_l.toFixed(0)} L O₂` : "";
     ui("plan-info").innerHTML =
       `${p.source || "route"}: ${route.length_m.toFixed(0)} m${facts} · usable ${p.energy_usable_wh.toFixed(0)} Wh` +
+      (p.cost_model ? `<br>cost: ${p.cost_model}` : "") +
       p.warnings.map(w => `<div class="warn">⚠ ${w}</div>`).join("") +
-      (route.used_wh ? `<div style="margin-top:6px"><a href="/guide.html" target="_blank">Open guide mode (arm tablet) ↗</a></div>` : "");
+      (route.used_wh ? `<div style="margin-top:6px"><a href="/guide.html" target="_blank">Open guide mode (arm tablet) ↗</a>` +
+       ` · <a href="/3d/" target="_blank">3D view ↗</a></div>` : "");
     if (playTimer) togglePlay();
     setupProfile();
     deckgl.setProps({layers: layers()});

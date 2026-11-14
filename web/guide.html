@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>EVA Guide</title>
-<script src="https://unpkg.com/deck.gl@9.1.14/dist.min.js"></script>
+<script src="/vendor/deck.gl-9.1.14.min.js"></script>
 <style>
   /* Arm-tablet screen: portrait, big touch targets (gloves), high contrast. */
   :root { --bg: #000; --panel: #11151b; --text: #fff; --muted: #b8c2cc; --accent: #ff8c3a;
@@ -34,6 +34,9 @@
   #station-card h2 { margin: 0 0 6px; font-size: 22px; }
   #station-card ul { margin: 8px 0 12px; padding-left: 22px; font-size: 17px; }
   .muted { color: var(--muted); }
+  #alert { margin: 0 8px 8px; padding: 12px 14px; border-radius: 14px; background: #3a0d0b;
+           border: 2px solid var(--bad); font-size: 17px; }
+  #alert b { color: #ff7a70; font-size: 19px; }
   .note { font-size: 13px; color: var(--muted); margin: 0 12px 10px; }
 </style>
 </head>
@@ -58,8 +61,11 @@
     <button id="walk-btn">▶ Walk</button>
     <button id="speed-btn">×60</button>
     <button id="voice-btn">🔊 On</button>
+    <button id="detour-btn">↪ Detour (demo)</button>
+    <button id="sep-btn" style="grid-column: span 2">☢ Solar storm (demo)</button>
     <button id="home-btn">🏠 Return home</button>
   </div>
+  <div id="alert" hidden></div>
   <div id="status"></div>
   <div class="note">Simulated walk: there is no GPS on Mars. A real suit would locate itself with
     habitat/rover beacons and motion sensors.</div>
@@ -83,7 +89,9 @@ const {Deck, OrthographicView, TileLayer, BitmapLayer, PathLayer, ScatterplotLay
 const ui = id => document.getElementById(id);
 let S, X0, Y0, deckgl, tiles, plan, rubric = {};
 let route = null;          // {coords, t, used, rv, rvTime, usable, events, kind}
-let idx = 0, timer = null, speed = 60, voiceOn = true, cardOpen = false;
+let idx = 0, timer = null, speed = 60, voiceOn = true, cardOpen = false, offRoute = null;
+let radInfo = null;
+const OFF_ROUTE_M = 15, REJOIN_AHEAD_M = 30;
 const spoken = new Set(), visited = new Set();
 const toWorld = (x, y) => [(x - X0) / S, (Y0 - y) / S];
 
@@ -116,13 +124,15 @@ function headingAt(c, d, i, span) {
   return Math.atan2(c[b][1] - c[a][1], c[b][0] - c[a][0]);
 }
 
-function buildEvents(c, d, turnIndex, goalName, endText) {
+function buildEvents(c, d, turnIndex, goalName, endText, stops) {
+  // stops: [{i, name}] for a multi-station tour (E5); otherwise the single goal at turnIndex.
+  const stopIdx = (stops || []).map(s => s.i).concat(turnIndex != null ? [turnIndex] : []);
   const ev = [];
   let last = -1e9;
   for (let i = 0; i < c.length; i++) {
     if (d[i] - last < 25 || d[i] < 10 || d[d.length - 1] - d[i] < 10) continue;
-    // the turnaround at the goal is announced as the arrival, not as a sharp turn
-    if (turnIndex != null && Math.abs(d[i] - d[turnIndex]) < 25) continue;
+    // turnarounds at stations are announced as arrivals, not as sharp turns
+    if (stopIdx.some(k => Math.abs(d[i] - d[k]) < 25)) continue;
     let ahead = i; while (ahead < c.length - 1 && d[ahead] - d[i] < 15) ahead++;
     let behind = i; while (behind > 0 && d[i] - d[behind] < 15) behind--;
     const hin = headingAt(c, d, behind, 8), hout = headingAt(c, d, ahead, 8);
@@ -134,7 +144,9 @@ function buildEvents(c, d, turnIndex, goalName, endText) {
     const arrow = Math.abs(delta) > 135 ? (delta > 0 ? "↶" : "↷") : delta > 0 ? (Math.abs(delta) > 70 ? "←" : "↖") : (Math.abs(delta) > 70 ? "→" : "↗");
     ev.push({i, dist: d[i], text: kind, arrow}); last = d[i];
   }
-  if (turnIndex != null && turnIndex > 0 && turnIndex < c.length - 1) {
+  if (stops && stops.length) {
+    for (const s of stops) ev.push({i: s.i, dist: d[s.i], text: `Arrive at station ${s.name}`, arrow: "⚑", goal: true});
+  } else if (turnIndex != null && turnIndex > 0 && turnIndex < c.length - 1) {
     ev.push({i: turnIndex, dist: d[turnIndex], text: goalName, arrow: "⚑", goal: true});
   }
   ev.push({i: c.length - 1, dist: d[c.length - 1], text: endText, arrow: "⌂", end: true});
@@ -146,6 +158,7 @@ async function init() {
   const meta = await (await fetch("/layers")).json();
   tiles = meta.tiles; S = tiles.tile_z0_m / 256; X0 = meta.grid.bbox.xmin; Y0 = meta.grid.bbox.ymax;
   const rub = await fetch("/stations/rubric"); if (rub.ok) rubric = await rub.json();
+  const rad = await fetch("/radiation"); if (rad.ok) radInfo = await rad.json();
   const res = await fetch("/plan/last");
   if (!res.ok) { ui("man-text").textContent = "No plan yet"; ui("man-dist").textContent = "Plan an EVA in the HUD first."; return; }
   plan = await res.json();
@@ -153,8 +166,9 @@ async function init() {
   const goalSt = plan.plan.features.find(x => x.properties.kind === "goal");
   const goalName = goalSt && goalSt.properties.station ? `Arrive at station ${goalSt.properties.station}` : "Arrive at the goal";
   const p = f.properties;
+  const stops = (p.stop_index || []).map((i, k) => ({i, name: p.visit_order[k]}));
   setRoute({coords: f.geometry.coordinates, t: p.t_s, used: p.used_wh, rv: p.rv_wh, rvTime: p.rv_time_s,
-            usable: p.usable_wh, turnIndex: p.turn_index, goalName, kind: "plan"});
+            usable: p.usable_wh, turnIndex: p.turn_index, goalName, kind: "plan", stops});
   deckgl = new Deck({parent: ui("map"), views: new OrthographicView({flipY: true}),
                      initialViewState: {target: [...toWorld(...route.coords[0]), 0], zoom: 4.5},
                      controller: true, layers: layers()});
@@ -163,7 +177,7 @@ async function init() {
 
 function setRoute(r) {
   r.d = cumulativeDistance(r.coords);
-  r.events = buildEvents(r.coords, r.d, r.turnIndex, r.goalName, "Arrive at the habitat");
+  r.events = buildEvents(r.coords, r.d, r.turnIndex, r.goalName, "Arrive at the habitat", r.stops);
   route = r; idx = 0; spoken.clear();
 }
 
@@ -185,7 +199,7 @@ function layers() {
       getColor: color, getWidth: 6, widthUnits: "pixels", capRounded: true, jointRounded: true}));
     out.push(new PathLayer({id: "done", data: [done], getPath: p => p.map(c => toWorld(...c)),
       getColor: [140, 140, 140], getWidth: 4, widthUnits: "pixels"}));
-    out.push(new ScatterplotLayer({id: "me", data: [route.coords[idx]], getPosition: c => toWorld(...c),
+    out.push(new ScatterplotLayer({id: "me", data: [offRoute || route.coords[idx]], getPosition: c => toWorld(...c),
       getFillColor: [255, 255, 255], getLineColor: [0, 0, 0], stroked: true, lineWidthUnits: "pixels", getLineWidth: 3,
       getRadius: 10, radiusUnits: "pixels"}));
   }
@@ -225,6 +239,7 @@ function update(i) {
   // station arrival card
   for (const f of plan.plan.features.filter(f => f.properties.kind === "station")) {
     const id = f.properties.id, [sx, sy] = f.geometry.coordinates;
+    if (f.properties.visited === false) continue;              // not in the E5 tour
     if (!visited.has(id) && Math.hypot(sx - here[0], sy - here[1]) < 12 && r.kind === "plan") {
       visited.add(id); openStationCard(f.properties); break;
     }
@@ -268,7 +283,8 @@ async function returnHome() {
   const here = route.coords[idx], usedSoFar = route.used[idx], usable = route.usable;
   const res = await fetch("/guide/return_home", {method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({position: here, habitat: plan.plan.properties.habitat,
-                          max_cell_slope_deg: plan.plan.properties.max_cell_slope_deg})});
+                          max_cell_slope_deg: plan.plan.properties.max_cell_slope_deg,
+                          human_cost: plan.plan.properties.human_cost !== false})});
   const out = await res.json();
   if (!res.ok) { ui("status").textContent = `Error: ${out.detail}`; return; }
   const f = out.features[0], p = f.properties;
@@ -279,7 +295,84 @@ async function returnHome() {
   update(0);
 }
 
+
+// --- block 2: off route -> recalculating ------------------------------------
+function nearestOnRoute(pt) {
+  let best = 0, bestD = Infinity;
+  for (let k = 0; k < route.coords.length; k++) {
+    const dd = Math.hypot(route.coords[k][0] - pt[0], route.coords[k][1] - pt[1]);
+    if (dd < bestD) { bestD = dd; best = k; }
+  }
+  return {k: best, dist: bestD};
+}
+
+async function checkOffRoute(pt) {
+  const near = nearestOnRoute(pt);
+  if (near.dist <= OFF_ROUTE_M) return;
+  stop();
+  ui("status").textContent = `Off route (${near.dist.toFixed(0)} m) — recalculating…`;
+  say("You are off route. Recalculating.");
+  // Rejoin the planned route a little ahead of the nearest point, like a car navigator.
+  let j = Math.max(near.k, idx);
+  while (j < route.coords.length - 1 && route.d[j] - route.d[Math.max(near.k, idx)] < REJOIN_AHEAD_M) j++;
+  const res = await fetch("/guide/rejoin", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({position: pt, target: route.coords[j], habitat: plan.plan.properties.habitat,
+                          max_cell_slope_deg: plan.plan.properties.max_cell_slope_deg,
+                          human_cost: plan.plan.properties.human_cost !== false})});
+  const out = await res.json();
+  if (!res.ok) { ui("status").textContent = `Error: ${out.detail}`; return; }
+  const p = out.features[0].properties, rc = out.features[0].geometry.coordinates, r = route;
+  // Splice: rejoin path, then the rest of the plan after j, with times and energy shifted.
+  const t0 = r.t[idx], u0 = r.used[idx];
+  const dt = t0 + p.time_s - r.t[j], du = u0 + p.energy_wh - r.used[j];
+  const tail = k => k > j;
+  const coords = rc.concat(r.coords.filter((_, k) => tail(k)));
+  const t = p.t_s.map(v => v + t0).concat(r.t.filter((_, k) => tail(k)).map(v => v + dt));
+  const used = p.used_wh.map(v => v + u0).concat(r.used.filter((_, k) => tail(k)).map(v => v + du));
+  const rv = r.rv ? p.rv_wh.concat(r.rv.filter((_, k) => tail(k))) : null;
+  const rvTime = r.rvTime ? p.rv_time_s.concat(r.rvTime.filter((_, k) => tail(k))) : null;
+  const turnIndex = r.turnIndex != null && r.turnIndex > j ? r.turnIndex - (j + 1) + rc.length : null;
+  const stops = (r.stops || []).filter(s => s.i > j).map(s => ({...s, i: s.i - (j + 1) + rc.length}));
+  offRoute = null;
+  setRoute({...r, coords, t, used, rv, rvTime, turnIndex, stops});
+  ui("status").textContent = `Back on track: ${p.time_s.toFixed(0)} s to rejoin the route.`;
+  say("New route found.");
+  update(0);
+}
+
+function simulateDetour() {
+  // Demo only: push the astronaut 25 m to the left of the walking direction.
+  stop();
+  const c = route.coords, i = Math.min(idx, c.length - 2);
+  const j = Math.min(c.length - 1, i + 10);
+  const hx = c[j][0] - c[i][0], hy = c[j][1] - c[i][1], n = Math.hypot(hx, hy) || 1;
+  offRoute = [c[i][0] - 25 * hy / n, c[i][1] + 25 * hx / n];
+  if (deckgl) deckgl.setProps({layers: layers()});
+  checkOffRoute(offRoute);
+}
+
+// --- block 2: solar storm alert drives the return ---------------------------
+async function solarStorm() {
+  stop();
+  const banner = ui("alert");
+  banner.hidden = false;
+  banner.innerHTML = "<b>☢ SOLAR STORM ALERT</b><br>Return to the habitat now. Computing the fastest way…";
+  say("Solar storm alert. Return to the habitat now.");
+  await returnHome();
+  if (route.kind !== "home") return;
+  const tH = (route.t[route.t.length - 1]) / 3600;
+  const sc = radInfo ? radInfo.scenarios : [];
+  const real = sc.find(s => s.id === "real"), x50 = sc.find(s => s.id === "x50");
+  banner.innerHTML = `<b>☢ SOLAR STORM ALERT</b><br>Return to the habitat now: ${(tH * 60).toFixed(1)} min.` +
+    (real ? `<br>Dose on the way back: <b>${(tH * real.rate_ugy_h).toFixed(1)} µGy</b> (real 2025-11-11 event)` : "") +
+    (x50 ? `, ${(tH * x50.rate_ugy_h).toFixed(0)} µGy if 50× stronger (hypothetical).` : "") +
+    `<br><span class="muted">Alarm rule (E12): RAD rate above 1.5× its 3-day median, 2 readings in a row.</span>`;
+  walk();
+}
+
 ui("walk-btn").addEventListener("click", walk);
+ui("detour-btn").addEventListener("click", simulateDetour);
+ui("sep-btn").addEventListener("click", solarStorm);
 ui("speed-btn").addEventListener("click", () => {
   speed = speed === 30 ? 60 : speed === 60 ? 180 : 30; ui("speed-btn").textContent = `×${speed}`; });
 ui("voice-btn").addEventListener("click", () => {

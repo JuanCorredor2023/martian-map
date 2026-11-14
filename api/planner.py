@@ -23,24 +23,42 @@ import rasterio
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from fisica.edge_cost import NEIGHBOURS, edge_costs  # noqa: E402
+from fisica.human_cost import (human_edge_costs, load_rasters, load_weights,  # noqa: E402
+                               terrain_factor)
 from fisica.metabolic import J_PER_WH  # noqa: E402
 from grafos.build_rv import SERVICE_POWER_W, route_geojson  # noqa: E402
 from grafos.graph import Graph  # noqa: E402
 from grafos.labels import Budget, NoFeasibleRoute, round_trip  # noqa: E402
 
 
-@lru_cache(maxsize=2)
-def graph(base_dir, max_cell_slope_deg):
+def e1_weights_path(base_dir):
+    """E1's weights (release e1-sand-v1) next to the base grid, or None."""
+    path = Path(base_dir).parent / "e1" / "e1_weights.json"
+    return path if path.exists() else None
+
+
+@lru_cache(maxsize=4)
+def graph(base_dir, max_cell_slope_deg, human=True):
+    """E4 Graph on E3 costs; with human=True and E1's weights present, the energy
+    of every arc is E3 x E1's terrain factor of the arrival cell (fisica.human_cost).
+    Time is unchanged (E1 prices energy, not speed)."""
     base = Path(base_dir)
     with rasterio.open(base / "dem_1m.tif") as src:
         dem = src.read(1).astype(np.float64)
     with rasterio.open(base / "slope_deg.tif") as src:
         slope = src.read(1)
     t, e, _ = edge_costs(dem, cell_slope_deg=slope, max_cell_slope_deg=max_cell_slope_deg)
+    weights = e1_weights_path(base) if human else None
+    if weights is not None:
+        spec = load_weights(weights)
+        factor = terrain_factor(spec, load_rasters(spec, base), dem.shape)
+        e = human_edge_costs(e, factor, NEIGHBOURS)
     g = json.loads((base / "grid.json").read_text(encoding="utf-8"))
-    return Graph({"energy_j": e, "time_s": t}, NEIGHBOURS,
-                 transform=tuple(g["grid_1m"]["affine"]),
-                 crs_wkt=(base / "crs.wkt").read_text(encoding="utf-8").strip())
+    gr = Graph({"energy_j": e, "time_s": t}, NEIGHBOURS,
+               transform=tuple(g["grid_1m"]["affine"]),
+               crs_wkt=(base / "crs.wkt").read_text(encoding="utf-8").strip())
+    gr.cost_model = "E3 x E1 sand (human)" if weights is not None else "E3"
+    return gr
 
 
 def pick_goal(req):
@@ -55,7 +73,7 @@ def pick_goal(req):
 
 def plan(req, base_dir):
     """FeatureCollection of the E4 round trip. Raises ValueError or NoFeasibleRoute."""
-    g = graph(str(base_dir), req.max_cell_slope_deg)
+    g = graph(str(base_dir), req.max_cell_slope_deg, req.human_cost)
     gx, gy, station = pick_goal(req)
     hr, hc, h_moved = g.place(*req.start, label="habitat")
     tr, tc, t_moved = g.place(gx, gy, label="goal")
@@ -86,7 +104,7 @@ def plan(req, base_dir):
         elif k == "goal":
             f["properties"].update(requested=[gx, gy], moved_m=t_moved,
                                    station=station.id if station else None)
-    return fc, {"habitat_moved_m": h_moved, "goal_moved_m": t_moved,
+    return fc, {"cost_model": g.cost_model, "habitat_moved_m": h_moved, "goal_moved_m": t_moved,
                 "goal_station": station.id if station else None,
                 "service_power_w": service_w}
 

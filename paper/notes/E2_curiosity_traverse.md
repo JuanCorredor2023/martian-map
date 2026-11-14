@@ -1,6 +1,6 @@
 # E2 · Curiosity's traverse on the base grid and a terrain-only baseline
 
-Owner: Juan (`@JuanCorredor2023`) · Issue: #4 (closed) · PRs: #22 (hours 0–4), #25 (hours 4–12) · Status: done · Last update: 2026-11-14
+Owner: Juan (`@JuanCorredor2023`) · Issue: #4 (closed) · PRs: #22 (hours 0–4), #25 (hours 4–12) · Status: done (update with E8 sand in PR #57) · Last update: 2026-11-14
 
 ## Question
 Where exactly did Curiosity drive inside our 2 × 2 km bbox, cell by cell on the base grid? And, within reach of that route, do the terrain features of the base grid tell where the rover drove? The second answer is the bar the learned cost (E1) has to beat.
@@ -57,6 +57,19 @@ Source: `src/ml/logistic_baseline.py` → `data/e2/logistic_baseline.json`. The 
 
 **Reading:** terrain explains the choice of valley (whole box: AUC 0.73) but not the path within it (50 m corridor: 0.53, about chance).
 
+### Update: the same baseline with E8 sand
+Source: `src/ml/logistic_sand.py` → `data/e2/logistic_baseline_sand.json`. The baseline above is unchanged. This repeats it with E8's `sand.tif` (release `e8-v0`, PR #49): the sand fraction of the cell and its 5 × 5 m mean. Same sets, model and blocks; the DEM-only model reproduces 0.526 and 0.730 exactly.
+
+| Not visited cells used | DEM only | DEM + sand | Sand only |
+|---|---|---|---|
+| ≤ 50 m (main) | 0.526 | 0.531 | 0.524 |
+| Whole box | 0.730 | 0.726 | 0.446 |
+
+- **Corridor:** sand lifts the AUC by 0.005, better in 4 of 5 blocks (−0.013, +0.007, +0.015, +0.014, +0.002). That is noise level for a per-cell score.
+- **Direction:** visited cells have less sand than their neighbours (corridor means 0.063 vs 0.091; 6.1 % vs 8.8 % of cells more than half sand).
+- **Whole box, sand only:** below 0.5, because some stretches of the route run through sandier ground than the box average. It reflects where the route runs, not avoidance.
+- **On whole routes it does help:** with start and goal given, E1's MaxEnt model with sand beats distance alone out of sample (`paper/notes/E1_maxent_irl.md`).
+
 ## Checks
 - CRS, bbox and cell size of the DEM match the contract (`summary.json` → `checks`).
 - **Elevation agreement:** PLACES elevation minus DEM elevation at the assigned cell has a median of −0.01 m, with p5 −0.74 m and p95 +0.61 m. A horizontal misregistration of a few metres would show up as metre-level differences on slopes, so this also rules out registration as the cause of the near-chance AUC.
@@ -89,11 +102,13 @@ python src/ml/trajectory_to_grid.py
 python src/ml/cell_features.py
 python src/ml/logistic_baseline.py
 python src/ml/paper_figures.py
+python src/ml/logistic_sand.py    # update with E8 sand (needs data/e8/ from release e8-v0)
 ```
 
 ## Outputs
 In `data/e2/`:
 - `trajectory.gpkg`, `trajectory.geojson`, `trajectory_poses.geojson`, `trajectory_cells.csv`, `cell_sequence.csv`, `summary.json` (shared as release `e2-trajectory-v1`);
-- `cell_features.parquet`, `logistic_baseline.json`, `logistic_roc.png`, `visit_probability.tif`.
+- `cell_features.parquet`, `logistic_baseline.json`, `logistic_roc.png`, `visit_probability.tif`;
+- `logistic_baseline_sand.json` (update with E8 sand).
 
 In `paper/figures/`: the `e2_fig1` to `e2_fig4` figures. Column reference: `src/ml/README.md`.

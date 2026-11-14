@@ -5,10 +5,12 @@ Reads the E1 outputs in data/e1/ and writes:
   e1_fig2_scales.png             terrain model vs distance-only control at every demonstration scale
   e1_fig3_validation.png         leave-one-block-out NLL and cell-level AUC against E2's baseline
   e1_fig4_whole_box_routes.png   real route vs the cheapest route between the same points (whole box)
+  e1_fig5_sand.png               held-out NLL with E8 sand and the sand prices fitted without each block
 (e1_fig1_toy_check.png is written by irl_toy_check.py.)
 
 Usage:  python src/ml/irl_paper_figures.py
-        (after irl_toy_check.py, fit_irl.py for every scale in SCALES and validate_irl.py for VALIDATIONS)
+        (after irl_toy_check.py, fit_irl.py for every scale in SCALES, validate_irl.py for VALIDATIONS,
+        fit_irl.py and validate_irl.py with --features sand and dem_sand, logistic_sand.py)
 """
 import json
 
@@ -16,6 +18,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
+import rasterio  # noqa: E402
 from skimage.graph import route_through_array  # noqa: E402
 
 import common  # noqa: E402
@@ -33,6 +36,8 @@ SCALES = [
 ]
 SHORT = ["one sol\n1 m", "100 m\n1 m", "250 m\n1 m", "500 m\n1 m", "250 m\n5 m, box", "1 km\n5 m, box"]
 VALIDATIONS = [("per_sol_cell1m_margin50m", "one sol, 1 m"), ("piece250m_cell5m_box", "250 m, 5 m, whole box")]
+# Per-sol, 1 m models with E8 sand: (tag suffix, label)
+SAND_MODELS = [("", "DEM features"), ("_sand", "sand only"), ("_dem_sand", "DEM features + sand")]
 
 
 def load(name):
@@ -68,8 +73,75 @@ def summary():
             "nonzero_terrain_weights_by_block": [{k: x for k, x in b["w_terrain"].items() if k != "metre" and x > 0}
                                                  for b in v["per_block"]],
         }
+    out["sand"] = sand_summary()
     (common.E1_OUTPUT / "e1_summary.json").write_text(json.dumps(out, indent=2), encoding="utf-8")
     return fits, vals, out
+
+
+def sand_summary():
+    """Numbers of the E8 sand models (per sol, 1 m) and of E2's logistic baseline with sand."""
+    with rasterio.open(irl_data.SAND) as src:
+        sand = src.read(1)
+    out = {"sand_layer": {"share_cells_with_sand": float((sand > 0).mean()),
+                          "p99": float(np.percentile(sand, 99)), "mean": float(sand.mean())},
+           "models": {}}
+    for suffix, label in SAND_MODELS:
+        tag = "per_sol_cell1m_margin50m" + suffix
+        f, v = load(f"irl_fit_{tag}.json"), load(f"validation_{tag}.json")
+        diffs = [b["summary"]["terrain"]["nll_per_m"] - b["summary"]["distance_only"]["nll_per_m"]
+                 for b in v["per_block"]]
+        entry = {
+            "label": label, "tag": tag,
+            "w_full_fit": {k: x for k, x in f["terrain"]["w"].items() if x > 0},
+            "in_sample_nll_per_m": {"terrain": f["terrain"]["nll_per_m"], "distance_only": f["distance_only"]["nll_per_m"]},
+            "demos_where_terrain_better": sum(d["nll_terrain"] < d["nll_distance_only"] - 1e-9 for d in f["per_demo"]),
+            "held_out_nll_per_m": {"terrain": v["summary"]["terrain"]["nll_per_m"],
+                                   "distance_only": v["summary"]["distance_only"]["nll_per_m"]},
+            "held_out_diff_per_block": diffs,
+            "blocks_where_terrain_better": int(sum(d < 0 for d in diffs)),
+            "auc_terrain_cost": {k: a["mean"] for k, a in v["auc_terrain_cost"].items()},
+            "w_by_held_out_block": [{k: x for k, x in b["w_terrain"].items() if k != "metre" and x > 0}
+                                    for b in v["per_block"]],
+        }
+        pc = f.get("preference_check_at_distance_only", {})
+        entry["preference_check_sand"] = {k: x for k, x in pc.items() if "sand" in k}
+        if "sand" in f["features"]:
+            w = f["terrain"]["w"]
+            entry["max_terrain_factor"] = 1 + sum(w[k] for k in ("sand", "sand_mean_5m")) / w["metre"]
+        out["models"][suffix.strip("_") or "dem"] = entry
+    lg = json.loads((common.E2_OUTPUT / "logistic_baseline_sand.json").read_text(encoding="utf-8"))
+    out["logistic_with_sand"] = {
+        s: {m: lg["sets"][s][m]["auc_mean"] for m in ("dem_only", "dem_plus_sand", "sand_only")}
+        for s in ("corridor_50m", "whole_box")}
+    out["logistic_with_sand"]["source"] = "src/ml/logistic_sand.py -> data/e2/logistic_baseline_sand.json"
+    return out
+
+
+def fig_sand(out):
+    s = out["sand"]["models"]
+    fig, ax = plt.subplots(1, 2, figsize=(13, 4.6))
+    for i, (key, m) in enumerate(s.items()):
+        ax[0].plot(np.arange(5) + (i - 1) * 0.15, [1000 * d for d in m["held_out_diff_per_block"]], "o", ms=7,
+                   label=f"{m['label']} (overall {1000 * (m['held_out_nll_per_m']['terrain'] - m['held_out_nll_per_m']['distance_only']):+.2f})")
+    ax[0].axhline(0, color="0.3", lw=0.8)
+    ax[0].set_xticks(range(5), [f"block {b}" for b in range(5)])
+    ax[0].set_ylabel("held-out NLL per metre: model − distance only (× 1000)\n< 0: the model explains the route better")
+    ax[0].set_title("(a) Leave-one-block-out, one demonstration per sol, 1 m")
+    ax[0].legend(fontsize=8)
+
+    m = s["sand"]
+    for j, (feat, col) in enumerate([("sand", "tab:orange"), ("sand_mean_5m", "tab:brown")]):
+        vals_ = [b.get(feat, 0.0) for b in m["w_by_held_out_block"]]
+        ax[1].bar(np.arange(5) + (j - 0.5) * 0.35, vals_, 0.35, color=col, label=f"{feat} (fit without the block)")
+        ax[1].axhline(m["w_full_fit"].get(feat, 0.0), color=col, ls="--", lw=1, label=f"{feat}, fit on all blocks")
+    ax[1].set_xticks(range(5), [f"without block {b}" for b in range(5)], fontsize=8)
+    ax[1].set_ylabel("price per metre at full sand (metre price ≈ 2.58)")
+    ax[1].set_title("(b) Sand prices fitted without each block (sand-only model)")
+    ax[1].set_ylim(0, 0.36)
+    ax[1].legend(fontsize=8, loc="upper right", ncol=2)
+    fig.tight_layout()
+    fig.savefig(FIGURES / "e1_fig5_sand.png", dpi=130)
+    plt.close(fig)
 
 
 def fig_scales(fits):
@@ -165,8 +237,9 @@ def main():
     fig_scales(fits)
     fig_validation(vals)
     fig_whole_box_routes(fits)
-    print(json.dumps(out["scales"], indent=1))
-    print(f"wrote {common.E1_OUTPUT / 'e1_summary.json'} and e1_fig2-4 in {FIGURES}")
+    fig_sand(out)
+    print(json.dumps(out["sand"], indent=1))
+    print(f"wrote {common.E1_OUTPUT / 'e1_summary.json'} and e1_fig2-5 in {FIGURES}")
 
 
 if __name__ == "__main__":

@@ -183,7 +183,9 @@ def test_radiation_summary_and_scenarios():
 
 
 def test_plan_live_with_e4_round_trip():
-    body = plan_body(stations=[{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5,
+    # An explicit goal always uses E4's single-goal round trip (with or without E5).
+    body = plan_body(goal=[8143217.5, -284993.2],
+                     stations=[{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5,
                                 "service_time_min": 15}])
     fc = client.post("/plan", json=body).json()
     route = next(f for f in fc["features"] if f["properties"]["kind"] == "route")["properties"]
@@ -193,7 +195,7 @@ def test_plan_live_with_e4_round_trip():
     assert len(route["rv_wh"]) == len(route["t_s"]) == n       # per-vertex profile for the HUD
     assert all(b >= a for a, b in zip(route["used_wh"], route["used_wh"][1:]))   # budget only shrinks
     goal = next(f for f in fc["features"] if f["properties"]["kind"] == "goal")["properties"]
-    assert goal["station"] == "R0"
+    assert goal["moved_m"] >= 0
 
 
 def test_plan_live_infeasible_budget_is_422():
@@ -230,3 +232,53 @@ def test_guide_saved_plan_and_return_home(tmp_path, monkeypatch):
     assert 600 < p["time_s"] < 1200 and len(p["t_s"]) == len(home["geometry"]["coordinates"])
     assert p["t_s"][-1] == pytest.approx(p["time_s"], abs=1.0)  # profile ends at the habitat
     assert client.post("/guide/return_home", json={"position": [0, 0], "habitat": CENTRE}).status_code == 422
+
+
+@pytest.mark.parametrize("page", ["index.html", "guide.html"])
+def test_pages_work_offline(page):
+    import re
+    html = (REPO / "web" / page).read_text(encoding="utf-8")
+    assert not re.search(r'<(script|link)[^>]+(src|href)="https?://', html)   # no CDN at demo time
+    assert client.get("/vendor/deck.gl-9.1.14.min.js").status_code == 200
+
+
+def test_plan_tour_with_e5_respects_duration():
+    from api import tour
+    if not tour.AVAILABLE:
+        pytest.skip("E5 (src/orienteering) not in this checkout yet")
+    st = [{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5, "type": "ridge", "service_time_min": 10},
+          {"id": "H0", "x": 8143219.3, "y": -284983.2, "score": 4, "type": "hollow", "service_time_min": 10},
+          {"id": "Q1", "x": 8143367.9, "y": -284509.5, "score": 3, "type": "curiosity", "service_time_min": 10}]
+    long_ = client.post("/plan", json=plan_body(stations=st, max_duration_min=240)).json()
+    short = client.post("/plan", json=plan_body(stations=st, max_duration_min=30)).json()
+    pl, ps = long_["features"][0]["properties"], short["features"][0]["properties"]
+    assert len(pl["visit_order"]) == 3 and pl["feasible"]
+    assert len(ps["visit_order"]) < 3 and ps["time_s"] <= 30 * 60 + 1      # duration binds
+    assert len(pl["stop_index"]) == len(pl["visit_order"])
+    assert all(b >= a for a, b in zip(pl["used_wh"], pl["used_wh"][1:]))
+
+
+def test_human_cost_graph_vs_e3():
+    from api import planner
+    if planner.e1_weights_path(REPO / "data" / "base") is None:
+        pytest.skip("E1 weights (e1-sand-v1) not downloaded")
+    import numpy as np
+    base = str(REPO / "data" / "base")
+    e3, hu = planner.graph(base, 30.0, False), planner.graph(base, 30.0, True)
+    assert e3.cost_model == "E3" and "E1" in hu.cost_model
+    a, b = e3.csr("energy_j"), hu.csr("energy_j")
+    assert a.nnz == b.nnz                                       # same edges
+    ratio = b.data / a.data
+    assert ratio.min() >= 1 - 1e-6 and ratio.max() <= 1.12      # factor 1 .. 1.115 (sand)
+    assert np.array_equal(e3.csr("time_s").data, hu.csr("time_s").data)   # E1 prices energy only
+
+
+def test_plan_reports_cost_model_and_walkback_accepts_flag():
+    body = plan_body(goal=[8143217.5, -284993.2],
+                     stations=[{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5}])
+    for human in (False, True):
+        fc = client.post("/plan", json={**body, "human_cost": human}).json()
+        assert fc["properties"]["human_cost"] is human and fc["properties"]["cost_model"]
+    wb = client.post("/walkback", json={"current_position": [CENTRE[0] + 300, CENTRE[1]],
+                                        "energy_remaining_wh": 150, "human_cost": False}).json()
+    assert "E3" in wb["properties"]["warnings"][0]

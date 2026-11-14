@@ -28,6 +28,8 @@ class PlanRequest(BaseModel):
     service_energy_wh_per_min: Optional[float] = Field(default=None, ge=0)
     # Cells steeper than this (slope_deg.tif) are blocked; null disables the block.
     max_cell_slope_deg: Optional[float] = Field(default=30.0, ge=0, le=90)
+    # Human cost: E3 x E1's terrain price (sand) when E1's weights are present.
+    human_cost: bool = True
     # E4 limits (agreed with Aaron in #2); null = no limit.
     goal: Optional[Tuple[float, float]] = None
     max_duration_min: Optional[float] = Field(default=None, gt=0)
@@ -76,6 +78,7 @@ class WalkbackRequest(BaseModel):
     emergency_return_time_s: float = Field(default=1800.0, gt=0)
     base: Optional[Tuple[float, float]] = None
     max_cell_slope_deg: Optional[float] = Field(default=30.0, ge=0, le=90)
+    human_cost: bool = True
 
 
 class ReturnHomeRequest(BaseModel):
@@ -83,3 +86,13 @@ class ReturnHomeRequest(BaseModel):
     position: Tuple[float, float]
     habitat: Tuple[float, float]
     max_cell_slope_deg: Optional[float] = Field(default=30.0, ge=0, le=90)
+    human_cost: bool = True
+
+
+class RejoinRequest(BaseModel):
+    """POST /guide/rejoin: off-route recovery towards a point on the planned route."""
+    position: Tuple[float, float]
+    target: Tuple[float, float]
+    habitat: Tuple[float, float]
+    max_cell_slope_deg: Optional[float] = Field(default=30.0, ge=0, le=90)
+    human_cost: bool = True

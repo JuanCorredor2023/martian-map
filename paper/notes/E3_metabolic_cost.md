@@ -83,6 +83,17 @@ cost_human(u → v) = energy_E3(u → v) × factor(v), with factor(v) = 1 + scal
 - Pipeline check with **placeholder** weights (not E1 results): the factor ranges 1.0–1.8 and the route to Nevado Sajama moves up to 50 m to avoid rough cells and ridges. The numbers will be reported only with E1's learned weights.
 - **E1 v1 weights (Juan, #2): all zero.** MaxEnt found no DEM terrain price that explains Curiosity's route better than distance on held-out data, so factor = 1 everywhere and **the human cost is E3 alone** for now. The file loads unchanged in `human_cost`. This matches E2 (AUC 0.53 in the boxwork corridor) and the base-grid finding that the 1 m DEM does not resolve the boxwork. E1 will be refit with E8's `sand.tif` and E9's `rocks.tif`; rerunning `build_cost_layers.py --e1-weights` is the only step needed.
 
+- **E1 v2 weights (Juan, release `e1-sand-v1`): a sand price.** With E8's `sand.tif`, the "sand only" MaxEnt model beats the distance-only control on held-out blocks (4 of 5). The weights are `sand` 0.072 and `sand_mean_5m` 0.224 with `distance_weight` 2.578, so the terrain factor runs from 1.0 (no sand) to 1.115 (full sand). The DEM features still do not help.
+- **Live in the planner** (`api/planner.py`): when the weights are present, the shared E4 graph used by `/plan`, `/walkback` and the guide carries the human cost. The HUD can switch it off (`human_cost`). Effect, with the habitat at the box centre and 1,000 Wh:
+
+  | | E3 | Human (E3 × E1 sand) |
+  |---|---|---|
+  | Round trip to Nevado Sajama | 162.4 Wh, 30.0 min, 1,331 m | 165.3 Wh (+1.8 %), 30.0 min, 1,330 m |
+  | Route shape | — | 65 % within 5 m of the E3 route, up to 23 m away |
+  | E5 tour, 120 min, 13 stations | 8 stations, prize 37, 483 Wh | the same 8 stations and order, 487 Wh |
+
+  The learned sand price moves routes locally by tens of metres but changes neither the time nor which stations are visited, so the plan is robust to it. Time is unchanged by design: E1 prices energy, not speed. Assumption to declare: what Curiosity's drivers avoided is applied to an astronaut, as the original plan asks ("keep what was learned about sand").
+
 ### Sensitivity (`src/fisica/sensitivity.py` → `data/e3/e3_sensitivity.json`)
 One parameter at a time from the nominal model (Santee 2001, 124.2 kg, signed Apollo speed, g = 3.71 m/s², 30° cell block). The habitat is at the box centre. The route goes to Curiosity's drilled ridge, Nevado Sajama, about 665 m away. The Pandolf + CF branch (`pandolf_cf_power`, guide sections 5–7) is implemented only for this comparison, with its own tests (315.87 W on flat ground).
 

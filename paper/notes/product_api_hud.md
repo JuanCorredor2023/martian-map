@@ -24,6 +24,21 @@ How does the planner reach the jury: which service exposes the terrain, the cost
 - `OrthographicView` (a plane in metres, the equivalent of Leaflet's `L.CRS.Simple`). One world unit = `tile_z0_m / 256` = 8 m, so deck.gl tile indices equal gdal2tiles indices with no offset.
 - Layers: ortho, hillshade, slope (opacity slider made linear: deck.gl applies `opacity^(1/2.2)`, compensated by raising the slider value to 2.2), E3 cost with legend, steep-cell block with on/off and a 15–60° slider, route, start and stations. Cursor readout in Mars metres and grid cell.
 
+### Multi-station tour (E5 on E4, `api/tour.py`)
+When E5 (Diana, `src/orienteering`) is importable and no explicit goal is given, `/plan` solves the station tour.
+- Stations are snapped with `Graph.place`, one per cell. E5 builds the station matrices (`station_matrices`) and solves the exact DP with energy, service time and maximum EVA duration (`Problem`, `SOLVERS["dp"]`). E4 gives the legs (`route_path`) and `check_walkback` validates the path.
+- The per-vertex profile (used, R(v), time, O2, slack) has the same format as E4's route, with service energy and time added at each stop, so the HUD and the guide need no changes. The guide announces each stop and shows cards only for visited stations; the HUD numbers the visit order.
+- With the 13 stations of `stations-v1` and 1,000 Wh:
+
+  | Max duration | Visited | Prize | Energy | Time |
+  |---|---|---|---|---|
+  | 240 min | all 13 | 56 | 732 Wh | 182 min |
+  | 120 min | 8 | 37 | 483 Wh | 118 min |
+  | 60 min | 3 ridges (R1–R3) | 15 | 251 Wh | 57 min |
+
+  Energy never binds (≤ 732 of 900 Wh usable), but duration does. With 60 min the DP keeps the three highest-scoring ridges, so **the rubric decides the plan once time is short**, as the literature on reward sensitivity predicts [Smith2004].
+- Until E5 is merged, the tour is inactive and `/plan` keeps the single-goal E4 round trip. It was tested with Diana's branch on the path.
+
 ### Route profile in the HUD
 The HUD walks the planned route vertex by vertex, with a slider and play at ×30/×60/×180, using E4's per-vertex profile (guide section 32).
 - A stacked budget bar shows energy used, energy needed to return (R(v)) and free energy against the usable budget. It can only shrink: a test checks that `used_wh` never decreases.
@@ -41,10 +56,12 @@ The app has two stages: **plan** in the habitat (the HUD) and **guide** during t
 - **Return home:** the fastest path from the current position to the habitat, from E4's reversed Dijkstra on time with predecessors (`POST /guide/return_home`), with no new planning. Example: 14.2 min, 664 m, 69 Wh from Nevado Sajama, computed in 0.6 s.
 - A station card on arrival shows the rubric type, why it matters and tasks per type.
 - The walk is simulated (play, ×30/×60/×180). The screen says so: there is no GPS on Mars; a real suit would use beacons and motion sensors.
-- Still to do (block 2): off-route detection with recalculation, and the SEP alert driving the return.
+- **Block 2, off route:** off route means more than 15 m from the planned route. The guide then announces it and asks `POST /guide/rejoin` for the least-energy path to a point about 30 m ahead on the route. It splices that path into the rest of the plan, shifting times and energy and carrying R(v) per vertex, like a car navigator. A demo button pushes the astronaut 25 m aside; example: back on track in 53 s.
+- **Block 2, solar storm:** a demo button raises the E12 alert (RAD above 1.5× its 3-day median, 2 readings). The guide starts the fastest way home automatically and reports the dose on the way back (return time × storm rate). Example: 10.9 min home, 2.2 µGy with the real 2025-11-11 event and 53 µGy if 50× stronger.
+- **Offline:** deck.gl 9.1.14 is vendored in `web/vendor/`, so the HUD and the guide need no internet at demo time. A test fails if a page loads a script from a CDN.
 
 ### Walkback: the red line and the energy-safe area (`api/walkback.py`, `POST /walkback`)
-**Provisional:** E4 (Aaron) owns R(v); until his `rv.tif` arrives, the HUD computes the fields itself from the same E3 directed costs.
+The fields are computed on the **same shared E4 graph** as `/plan` and the guide (`planner.graph`), with E3 or human costs (E3 × E1 sand).
 - R_T(v) and R_E(v): minimum time and energy from v back to the base, from Dijkstra runs from the base on the **reversed** graph that keep each original arc's cost (guide section 20). Cached per base and cell-block limit. Run time is under 1 s per field on the 4 M-node, 25 M-edge graph (`scipy.sparse.csgraph.dijkstra`).
 - Red line: contour R_T = 1800 s, the 30 min emergency-oxygen contingency (guide section 20.4). It depends only on the base.
 - Energy-safe boundary: contour of F_E(p, v) + R_E(v) = E_remaining, with F_E from a forward Dijkstra limited to E_remaining (guide section 20.3). It is recomputed for each position and energy, about 0.3 s.
@@ -115,8 +132,8 @@ Source: `api/walkback.py` fields, computed in the session that produced this not
 - Visual checks with headless Edge screenshots: ortho and slope align, north up, layers blend, route and stations drawn in place, rubric edits update labels and point sizes live.
 
 ## Limitations
-- `/plan` plans a single-goal round trip; the multi-station tour waits for E5 (Diana, #37).
-- The walkback fields are provisional (computed here, not E4's `rv.tif`) and the base defaults to the box centre, which is illustrative; the habitat location is not fixed by the team yet.
+- The multi-station tour (`api/tour.py`) runs only when E5 is importable; until E5 is merged, `/plan` plans the single-goal E4 round trip.
+- The base defaults to the box centre until the user moves it (the habitat is a user input).
 - The rubric's empirical base is thin: one drill sample per setting, LPSC 2026 abstracts and JPL releases, no peer-reviewed paper on the in-situ campaign, no published TMAH result. Revisit when they appear.
 - Additive scores can stack near-duplicate stations; BASALT removed redundant locations. Not handled yet (options: minimum distance between stations of the same type, or one station per site with the maximum of its types).
 - A contact station only makes sense if the 2 × 2 km box contains a real contact between units; to be checked on the map.
