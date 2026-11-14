@@ -1,0 +1,68 @@
+"""
+E5 on top of the E4 grid graph (grafos, Aaron): loading, habitat placement,
+station-to-station matrix and the cell path of each leg.
+"""
+import sys
+from pathlib import Path
+
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from grafos.build_rv import place  # noqa: E402
+from grafos.graph import Graph, follow  # noqa: E402
+
+from orienteering.data_io import BASE_DIR  # noqa: E402
+
+
+"""
+Loads the E4 graph from data/base (edges_e3.npz, grid.json, crs.wkt) and the mask
+of its largest strongly connected component (the cells you can go to and come back from).
+Returns (graph, main_cc) with main_cc a bool array of the grid's shape.
+"""
+def load_graph(base_dir=BASE_DIR):
+    graph = Graph.from_base_dir(base_dir)
+    return graph, main_component(graph)
+
+
+"""
+Bool mask (grid shape) of the largest strongly connected component of `graph`.
+"""
+def main_component(graph):
+    labels, sizes = graph.components()
+    return (labels == np.argmax(sizes)).reshape(graph.shape)
+
+
+"""
+Places the habitat exactly as E4 does (grafos.build_rv.place): if its cell is blocked
+or outside the main component it moves to the nearest valid cell. Returns (row, col);
+use graph.cell_to_xy(row, col) for the coordinates shared with E4 and E12.
+"""
+def place_habitat(graph, main_cc, xy):
+    return place(graph, main_cc, xy, "habitat")
+
+
+"""
+Tells which stations sit inside the main component, i.e. can be reached from
+the habitat and can return to it.
+"""
+def reachable_stations(main_cc, stations):
+    return main_cc[stations.row, stations.col]
+
+
+"""
+Directed cost matrix between stations: dis[i][j] is the minimum cost from station i
+to station j (one Dijkstra per station, grafos Graph.cost_matrix).
+weight: "energy_j" (J) or "time_s" (s). It is not symmetric.
+"""
+def station_matrix(graph, stations, weight="energy_j"):
+    return graph.cost_matrix(graph.node(stations.row, stations.col), weight)
+
+
+"""
+Node path (cell ids) of the cheapest leg from node a to node b.
+Raises ValueError if b is unreachable from a.
+"""
+def leg_path(graph, a, b, weight="energy_j"):
+    _, pred = graph.costs_from(a, weight, predecessors=True)
+    return follow(pred, b, end=a)[::-1]
