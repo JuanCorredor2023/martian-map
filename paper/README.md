@@ -30,7 +30,7 @@ Besides the demo, the team will submit a scientific paper. This folder collects 
 | Base grid, terrain features, tiles | to do | JB |
 | E1 · MaxEnt IRL: terrain cost learned from Curiosity's route | [notes/E1_maxent_irl.md](notes/E1_maxent_irl.md) | Juan |
 | E3 · metabolic and O2 cost | [notes/E3_metabolic_cost.md](notes/E3_metabolic_cost.md) | Sebas |
-| E4 · graph, R(v), walkback · MVP baselines | [notes/E4_walkback.md](notes/E4_walkback.md) (baselines to do) | Aaron |
+| E4 · graph, R(v), walkback · MVP baselines | [notes/E4_walkback.md](notes/E4_walkback.md) | Aaron |
 | E5 · orienteering · E6 benchmark | to do | Diana |
 | E8 · boxwork top-hat and U-Net | to do | JB |
 | E9 · BoulderNet and distillation | to do | Aaron |
