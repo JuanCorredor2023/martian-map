@@ -2,6 +2,7 @@
 
 Short key, then the source. Add yours in alphabetical order of key; complete entries are in `data/09_papers/_NOTAS.md` and in each data folder's `_NOTAS.md`.
 
+- **[AEMU-PLSS]** Advanced EMU portable life support system (PLSS) and Shuttle/ISS PLSS comparison: EMU duration about 7 h at 1000 BTU/h; Advanced EMU target 8 h at 1200 BTU/h. Conference paper, authors and title not checked (seen through a search summary; verify the full text before citing numbers). https://typeset.io/pdf/advanced-emu-portable-life-support-system-plss-and-shuttle-453gxhc3cq.pdf
 - **[Brady2019]** Brady, A. L. et al. (2019). BASALT science operations: station selection against a Science Traceability Matrix. Astrobiology 19(3), BASALT special issue (title not checked). Full text: https://www.ebi.ac.uk/europepmc/webservices/rest/PMC6442241/fullTextXML
 - **[Broddrick2024]** Broddrick et al. (2024). Lunar EVA "Science Yield" prototype for the Science Evaluation Room (3/2/1 relevance x priority, MILP). LPSC 2024, NTRS 20240000165 (title not checked). https://ntrs.nasa.gov/citations/20240000165
 - **[Carr2003]** Carr, C. E., Newman, D. J. and Hodges, K. V. (2003). Apollo 14 EVA energy estimates (NASA 1495/1599 kJ, model 1443/1430 kJ). Full title not checked; cited through [Guide-REV3]. http://web.mit.edu/aeroastro/www/people/dnewman/pdfs/DJN_paper3.43.pdf
@@ -17,6 +18,9 @@ Short key, then the source. Add yours in alphabetical order of key; complete ent
 - **[Marquez2019]** Marquez, J. J. et al. (2019). Minerva: planning and scheduling for the BASALT EVA analog. Astrobiology 19(3) (title not checked). https://pmc.ncbi.nlm.nih.gov/articles/PMC6442304
 - **[MSR-STM2025]** Mars 2020 sample science traceability matrix (2025), NTRS 20250009654 (title not checked). https://ntrs.nasa.gov/api/citations/20250009654/downloads/20250009654.pdf
 - **[NASA-blog-4804]** NASA Curiosity blog, sols 4804–4811: kicking off the final phase of boxwork exploration (2026). https://science.nasa.gov/blog/curiosity-blog-sols-4804-4811-kicking-off-the-final-phase-of-boxwork-exploration/
+- **[NASA-EMU]** NASA (2009). Extravehicular Mobility Unit fact sheet: secondary oxygen pack with a minimum of 30 min of emergency O2 in open-loop purge mode. Title not checked. https://www.nasa.gov/wp-content/uploads/2009/07/188963main_extravehicular_mobility_unit.pdf
+- **[NASA-Mars-mass]** NASA (2026). Mars EVA mass study, ICES 2026 (NTRS 20260003038): ISS/EMU average metabolic rate of 1000 BTU/h used for planning. Authors and title not checked (seen through a search summary). https://ntrs.nasa.gov/api/citations/20260003038/downloads/Final_ICES2026_Mars_Mass_1.pdf
+- **[NASA-xEMU-met]** NASA (2022). xEMU metabolic rate study, NTRS 20220009964: low ≤ 700 BTU/h, medium 700–1000 BTU/h, high ≥ 1000 BTU/h. Authors and title not checked (seen through a search summary). https://ntrs.nasa.gov/citations/20220009964
 - **[Pandolf1977]** Pandolf, K. B., Givoni, B. and Goldman, R. F. (1977). Predicting energy expenditure with loads while standing or walking very slowly. Journal of Applied Physiology 43(4), 577–581. Terrain factor η.
 - **[Parker2016]** Parker, T. J. and Calef, F. J. (2016). MSL Gale Crater DEM mosaic, 1 m/pixel, v3 (HRSC, CTX and HiRISE tied to MOLA), USGS Astrogeology. File used: `MSL_Gale_DEM_Mosaic_1m_v3.tif`.
 - **[PLACES]** MSL PLACES localization database, PDS4 bundle `msl_places`, PDS Imaging Node, NASA/JPL (server files dated 2026-08-01). Table used: `data_localizations/localized_interp.csv`; column definitions in `document/PLACES_PDS_SIS.pdf`.
