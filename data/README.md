@@ -232,7 +232,8 @@ Todos están en `_scripts/` y solo necesitan Python 3 estándar (Linux, macOS, W
 | `bajar.py URL DESTINO` | Descarga reanudable por segmentos en paralelo. |
 | `descargar_todo.py --perfil terreno dl` | Bajar los archivos grandes directo del origen según `manifiesto.json`. `--solo-verificar` comprueba tamaños y md5. |
 | `servir_lan.py` | En la máquina que ya tiene los datos: los sirve por la red local (solo lectura). |
-| `clonar_desde_lan.py http://IP:8000` | En cada máquina nueva: copia `data/` desde la anterior. Admite `--solo` y `--excluir`. Extrae los zip en destino. |
+| `clonar_desde_lan.py http://IP:8000` | En cada máquina nueva: copia `data/` desde la anterior. Admite `--solo` y `--excluir`. Extrae los zip en destino. No pisa `data/README.md` ni `data/_scripts/` si ya existen. |
+| `zip_seguro.py` | Módulo que usan los dos anteriores para extraer: reanudable, admite rutas largas en Windows y omite `.ipynb_checkpoints` y `__MACOSX`. |
 | `armar_kit_ligero.py` | Empaqueta todo lo pequeño (< 30 MB por archivo, unos 700 MB) en `_kit_ligero.zip` para USB. |
 | `descargar_grandes.sh`, `cola_noche.sh` | Las descargas de la noche del 13. |
 

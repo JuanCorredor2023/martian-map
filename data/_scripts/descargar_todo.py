@@ -12,9 +12,11 @@ Uso (desde la raíz del repo, Linux/macOS/Windows, solo Python 3 estándar):
 - Los zip marcados con "descomprimir" se extraen en una carpeta extraido/ junto al zip.
 Los archivos pequeños (waypoints, clima, índices, papers) NO van aquí: viajan en el kit ligero.
 """
-import argparse, hashlib, json, os, subprocess, sys, zipfile
+import argparse, hashlib, json, os, subprocess, sys
 
 AQUI = os.path.dirname(os.path.abspath(__file__)); DATA = os.path.dirname(AQUI)
+sys.path.insert(0, AQUI)
+import zip_seguro
 
 def md5(path):
     h = hashlib.md5()
@@ -24,13 +26,8 @@ def md5(path):
 
 def extraer(zpath):
     out = os.path.join(os.path.dirname(zpath), "extraido", os.path.splitext(os.path.basename(zpath))[0])
-    if os.path.isdir(out): return
-    with zipfile.ZipFile(zpath) as z:
-        base = os.path.realpath(out)
-        for n in z.namelist():  # no permitir rutas que salgan de la carpeta
-            if not os.path.realpath(os.path.join(out, n)).startswith(base): sys.exit(f"ruta sospechosa en {zpath}: {n}")
-        z.extractall(out)
-    print("  extraído en", os.path.relpath(out, DATA))
+    r = zip_seguro.extraer(zpath, out)
+    if r is not None: print(f"  extraído en {os.path.relpath(out, DATA)} ({r[0]} archivos, {r[1]} omitidos, {r[2]} fallos)")
 
 def main():
     ap = argparse.ArgumentParser()
