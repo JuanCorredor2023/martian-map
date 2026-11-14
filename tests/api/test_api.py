@@ -33,10 +33,10 @@ def test_health_and_layers():
     assert "Mars" in layers["crs_wkt"]
 
 
-def test_plan_returns_fixed_route_in_mars_metres():
-    fc = client.post("/plan", json=plan_body()).json()
+def test_plan_without_stations_returns_fixed_route_in_mars_metres():
+    fc = client.post("/plan", json=plan_body(stations=[])).json()
     kinds = [f["properties"]["kind"] for f in fc["features"]]
-    assert kinds == ["route", "station", "start"]
+    assert kinds == ["route", "start"]
     route = fc["features"][0]
     x, y = route["geometry"]["coordinates"][0]
     assert 8142537 < x < 8144538 and -285464 < y < -283463   # inside the box, metres
@@ -180,3 +180,23 @@ def test_radiation_summary_and_scenarios():
     rates = [s["rate_ugy_h"] for s in r["scenarios"]]
     assert rates == sorted(rates) and r["scenarios"][0]["measured"]
     assert abs(r["curve"][-1]["dose_ugy"] - r["provisional_eva"]["dose_ugy"]) < 0.1
+
+
+def test_plan_live_with_e4_round_trip():
+    body = plan_body(stations=[{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5,
+                                "service_time_min": 15}])
+    fc = client.post("/plan", json=body).json()
+    route = next(f for f in fc["features"] if f["properties"]["kind"] == "route")["properties"]
+    assert fc["properties"]["source"].startswith("E4") and route["feasible"]
+    assert 150 < route["energy_wh"] < 300                     # ~214 Wh to Nevado Sajama and back
+    n = len(route["used_wh"])
+    assert len(route["rv_wh"]) == len(route["t_s"]) == n       # per-vertex profile for the HUD
+    assert all(b >= a for a, b in zip(route["used_wh"], route["used_wh"][1:]))   # budget only shrinks
+    goal = next(f for f in fc["features"] if f["properties"]["kind"] == "goal")["properties"]
+    assert goal["station"] == "R0"
+
+
+def test_plan_live_infeasible_budget_is_422():
+    body = plan_body(energy_budget_wh=150,
+                     stations=[{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5}])
+    assert client.post("/plan", json=body).status_code == 422

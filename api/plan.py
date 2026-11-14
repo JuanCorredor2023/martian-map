@@ -27,6 +27,10 @@ class PlanRequest(BaseModel):
     service_energy_wh_per_min: Optional[float] = Field(default=None, ge=0)
     # Cells steeper than this (slope_deg.tif) are blocked; null disables the block.
     max_cell_slope_deg: Optional[float] = Field(default=30.0, ge=0, le=90)
+    # E4 limits (agreed with Aaron in #2); null = no limit.
+    goal: Optional[Tuple[float, float]] = None
+    max_duration_min: Optional[float] = Field(default=None, gt=0)
+    o2_budget_l: Optional[float] = Field(default=None, gt=0)
 
     @field_validator("stations")
     @classmethod

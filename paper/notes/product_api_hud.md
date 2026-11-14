@@ -15,13 +15,22 @@ How does the planner reach the jury: which service exposes the terrain, the cost
 
 ### API (`api/`, FastAPI)
 - `GET /health`, `GET /layers` (CRS WKT, `grid.json`, `tiles.json`). Everything is served from one origin, so no CORS setup [Guide-REV3, sections 33–38].
-- `POST /plan` with a Pydantic contract: budget in Wh (> 0), gravity in m/s² (> 0, never a 0.38 factor), margin in [0, 1), unique station ids, scores ≥ 0, points inside the box, `max_cell_slope_deg` (null disables the cell block). Until E4/E5 are connected it returns Curiosity's trajectory as a **fixed test route**, with `feasible = null` and warnings; this tests the whole pipeline first (guide section 38). Responses are GeoJSON FeatureCollections in metres of the DEM CRS, never WGS84.
+- `POST /plan` now plans **live with E4** (`api/planner.py`) when the request has stations or a goal. The graph is built from `fisica.edge_costs` with the user's cell block, cached per limit. Habitat and goal are snapped with `Graph.place`, and the response reports the metres moved. The route is `labels.round_trip` under the energy, duration (`max_duration_min`) and O2 (`o2_budget_l`) limits agreed in #2, formatted by `build_rv.route_geojson`. Until E5 is merged the goal is the best-scoring station (single-goal round trip). An infeasible budget returns 422; the API never invents a route. Without stations it still returns the fixed test route.
+- The first version of `POST /plan` used the following Pydantic contract: budget in Wh (> 0), gravity in m/s² (> 0, never a 0.38 factor), margin in [0, 1), unique station ids, scores ≥ 0, points inside the box, `max_cell_slope_deg` (null disables the cell block). Until E4/E5 are connected it returns Curiosity's trajectory as a **fixed test route**, with `feasible = null` and warnings; this tests the whole pipeline first (guide section 38). Responses are GeoJSON FeatureCollections in metres of the DEM CRS, never WGS84.
 - `GET /layers/cost.png` (+ legend): E3 mean Wh per cell, computed once without the cell block. `GET /layers/blocked.png?max_cell_slope_deg=N` (+ blocked fraction): cheap, so the HUD slider requests it live.
 - Stations: `GET /stations/rubric`, `GET/POST /stations`, `GET /stations/stations_manual.gpkg`.
 
 ### HUD (`web/index.html`, deck.gl 9.1.14 from CDN)
 - `OrthographicView` (a plane in metres, the equivalent of Leaflet's `L.CRS.Simple`). One world unit = `tile_z0_m / 256` = 8 m, so deck.gl tile indices equal gdal2tiles indices with no offset.
 - Layers: ortho, hillshade, slope (opacity slider made linear: deck.gl applies `opacity^(1/2.2)`, compensated by raising the slider value to 2.2), E3 cost with legend, steep-cell block with on/off and a 15–60° slider, route, start and stations. Cursor readout in Mars metres and grid cell.
+
+### Route profile in the HUD
+The HUD walks the planned route vertex by vertex, with a slider and play at ×30/×60/×180, using E4's per-vertex profile (guide section 32).
+- A stacked budget bar shows energy used, energy needed to return (R(v)) and free energy against the usable budget. It can only shrink: a test checks that `used_wh` never decreases.
+- It shows the elapsed time, metabolic O2, time back and the background dose.
+- A heading arrow points to the vertex about 12 m ahead.
+- On pause, the walkback lines are recomputed from that point with the energy left.
+- Example, habitat at the box centre to Nevado Sajama: 1,334 m, 197 Wh, 40 min, 35 L O2 with 10 min of service, against 2,532 Wh usable. Energy does not bind in this box, as E3 and E4 found.
 
 ### Walkback: the red line and the energy-safe area (`api/walkback.py`, `POST /walkback`)
 **Provisional:** E4 (Aaron) owns R(v); until his `rv.tif` arrives, the HUD computes the fields itself from the same E3 directed costs.
@@ -92,7 +101,7 @@ Source: `api/walkback.py` fields, computed in the session that produced this not
 - Visual checks with headless Edge screenshots: ortho and slope align, north up, layers blend, route and stations drawn in place, rubric edits update labels and point sizes live.
 
 ## Limitations
-- The planner is not connected yet: `/plan` returns a fixed route and never claims feasibility.
+- `/plan` plans a single-goal round trip; the multi-station tour waits for E5 (Diana, #37).
 - The walkback fields are provisional (computed here, not E4's `rv.tif`) and the base defaults to the box centre, which is illustrative; the habitat location is not fixed by the team yet.
 - The rubric's empirical base is thin: one drill sample per setting, LPSC 2026 abstracts and JPL releases, no peer-reviewed paper on the in-situ campaign, no published TMAH result. Revisit when they appear.
 - Additive scores can stack near-duplicate stations; BASALT removed redundant locations. Not handled yet (options: minimum distance between stations of the same type, or one station per site with the maximum of its types).

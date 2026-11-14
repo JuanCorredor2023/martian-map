@@ -18,6 +18,7 @@ from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import planner
 from . import radiation as rad
 from . import walkback as wb
 from .plan import PlanRequest, WalkbackRequest, feature, feature_collection
@@ -187,6 +188,39 @@ def walkback(req: WalkbackRequest):
         max_cell_slope_deg=req.max_cell_slope_deg, warnings=warnings)
 
 
+def _plan_live(req):
+    """E4 round trip habitat -> goal -> habitat on E3 costs (goal = request's goal or
+    the best-scoring station until E5 plans the full tour)."""
+    try:
+        fc, info = planner.plan(req, BASE)
+    except ValueError as err:
+        raise HTTPException(status_code=422, detail=str(err))
+    except planner.NoFeasibleRoute as err:
+        raise HTTPException(status_code=422, detail=f"no feasible route: {err}")
+    route = next(f for f in fc["features"] if f["properties"]["kind"] == "route")
+    p = route["properties"]
+    warnings = []
+    if info["goal_station"] is not None:
+        warnings.append(f"single-goal round trip to the best-scoring station "
+                        f"{info['goal_station']}; the multi-station tour comes with E5")
+    for what in ("habitat", "goal"):
+        if info[f"{what}_moved_m"] > 0:
+            warnings.append(f"{what} moved {info[what + '_moved_m']:.1f} m to the nearest "
+                            "walkable cell of the main connected area")
+    if req.service_energy_wh_per_min is None:
+        warnings.append(f"service power assumed {info['service_power_w']:.0f} W (E4 default)")
+    fc["features"] += [feature("Point", [s.x, s.y], kind="station", id=s.id, score=s.score,
+                               service_time_min=s.service_time_min) for s in req.stations]
+    fc["properties"] = dict(
+        model="santee_2001", source="E4_walkback (live)",
+        units={"coordinates": "m", "energy": "Wh", "time": "s"},
+        energy_budget_wh=req.energy_budget_wh, energy_usable_wh=p["usable_wh"],
+        feasible=p["feasible"], max_cell_slope_deg=req.max_cell_slope_deg,
+        max_duration_min=req.max_duration_min, o2_budget_l=req.o2_budget_l,
+        warnings=warnings)
+    return fc
+
+
 def _fixed_test_route():
     """Curiosity's trajectory (E2, Juan) used as a fixed route to test the whole
     pipeline before the planner is connected (guide section 38)."""
@@ -202,6 +236,8 @@ def plan(req: PlanRequest):
     except ValueError as err:
         raise HTTPException(status_code=422, detail=str(err))
 
+    if req.stations or req.goal is not None:
+        return _plan_live(req)
     coords, props = _fixed_test_route()
     warnings = ["fixed test route (Curiosity trajectory): the planner is not connected yet"]
     if req.service_energy_wh_per_min is None:
