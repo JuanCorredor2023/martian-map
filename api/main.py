@@ -270,12 +270,14 @@ def _plan_tour(req):
         warnings.append(f"habitat moved {info['habitat_moved_m']:.1f} m to the nearest walkable cell")
     if req.service_energy_wh_per_min is None:
         warnings.append(f"service power assumed {service_w:.0f} W (E4 default)")
+    warnings += info.get("warnings", [])                 # E5: O2 limit, re-plans, moved stations
     fc["features"] += [feature("Point", [s.x, s.y], kind="station", id=s.id, type=s.type,
                                score=s.score, service_time_min=s.service_time_min,
                                visited=s.id in order, order=order.get(s.id))
                        for s in req.stations]
     fc["properties"] = dict(
-        model="santee_2001", source="E5_orienteering_on_E4 (live)", habitat=list(req.start),
+        model="santee_2001", source=f"E5 tour (live, {info.get('engine', 'E5')})",
+        habitat=list(req.start),
         cost_model=info["cost_model"], human_cost=req.human_cost,
         units={"coordinates": "m", "energy": "Wh", "time": "s"},
         energy_budget_wh=req.energy_budget_wh, energy_usable_wh=p["usable_wh"],
