@@ -58,3 +58,17 @@ def test_all_costs_positive():
 
 def test_neighbour_order_is_8_unique_moves():
     assert len(set(NEIGHBOURS)) == 8 and (0, 0) not in NEIGHBOURS
+
+
+def test_cell_slope_block_and_disable():
+    dem = np.zeros((5, 5))
+    cell_slope = np.full((5, 5), 10.0)
+    cell_slope[2, 2] = 35.0
+    _, e, _ = edge_costs(dem, cell_slope_deg=cell_slope, max_cell_slope_deg=30)
+    assert np.isnan(e[:, 2, 2]).all()                             # no edge out of the steep cell
+    assert np.isnan(e[E, 2, 1])                                   # no edge into it
+    assert np.isfinite(e[E, 1, 1])                                # the rest is untouched
+    _, e_off, _ = edge_costs(dem, cell_slope_deg=cell_slope, max_cell_slope_deg=None)
+    assert np.isfinite(e_off[:, 2, 2]).all()                      # demo toggle: block disabled
+    _, e_40, _ = edge_costs(dem, cell_slope_deg=cell_slope, max_cell_slope_deg=40)
+    assert np.isfinite(e_40[:, 2, 2]).all()                       # demo slider: higher limit

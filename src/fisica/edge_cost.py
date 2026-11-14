@@ -24,6 +24,8 @@ NEIGHBOURS = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -
 #              N        NE       E       SE      S       SW       W        NW
 
 DEFAULT_MAX_SLOPE_DEG = 20.0   # CSRM limit; the model is extrapolated beyond it
+DEFAULT_MAX_CELL_SLOPE_DEG = 30.0   # team decision: block cells whose steepest
+                                    # slope (slope_deg.tif) exceeds this; None disables
 
 
 def _shifted(a, d_row, d_col):
@@ -49,10 +51,16 @@ def santee_power_array(mass_kg, v, alpha_deg, g_mps2):
 
 
 def edge_costs(dem, cell_size_m=1.0, mass_kg=TOTAL_MASS_KG, g_mps2=G_MARS,
-               signed=True, max_slope_deg=DEFAULT_MAX_SLOPE_DEG):
+               signed=True, max_slope_deg=DEFAULT_MAX_SLOPE_DEG,
+               cell_slope_deg=None, max_cell_slope_deg=DEFAULT_MAX_CELL_SLOPE_DEG):
     """Directed time (s) and energy (J) for the 8 edges of every cell.
 
     dem: 2-D float array of elevations in metres, NaN = nodata.
+    max_slope_deg: limit on the slope ALONG the move (edge removed above it).
+    cell_slope_deg: optional steepest-slope raster (slope_deg.tif). Cells above
+        max_cell_slope_deg are blocked (no edge in or out); this covers the
+        cross-slope risk that Santee does not model. Pass max_cell_slope_deg=None
+        (or no raster) to disable the block.
     Returns (time_s, energy_j, alpha_deg), each float32 of shape (8, rows, cols).
     """
     dem = np.asarray(dem, dtype=np.float64)
@@ -61,9 +69,14 @@ def edge_costs(dem, cell_size_m=1.0, mass_kg=TOTAL_MASS_KG, g_mps2=G_MARS,
     energy_j = np.full(shape, np.nan, dtype=np.float32)
     alpha_out = np.full(shape, np.nan, dtype=np.float32)
 
+    walkable = np.isfinite(dem)
+    if cell_slope_deg is not None and max_cell_slope_deg is not None:
+        walkable &= np.asarray(cell_slope_deg) <= max_cell_slope_deg   # NaN -> blocked
+    blocked_dem = np.where(walkable, dem, np.nan)   # NaN cells get no edges
+
     for k, (dr, dc) in enumerate(NEIGHBOURS):
         d_h = cell_size_m * (np.sqrt(2.0) if dr and dc else 1.0)
-        dz = _shifted(dem, dr, dc) - dem                     # NaN if either end is nodata
+        dz = _shifted(blocked_dem, dr, dc) - blocked_dem   # NaN if either end is nodata/blocked
         alpha = np.degrees(np.arctan(dz / d_h))
         valid = np.isfinite(alpha) & (np.abs(alpha) <= max_slope_deg)
         alpha_v = np.where(valid, alpha, 0.0)                # placeholder to avoid warnings
