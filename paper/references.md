@@ -35,5 +35,6 @@ Short key, then the source. Add yours in alphabetical order of key; complete ent
 - **[Smith2004]** Smith, D. E. (2004). Choosing objectives in over-subscription planning. ICAPS 2004. https://icaps04.icaps-conference.org/icapspapers/ICAPS04SmithD.pdf
 - **[Soule1972]** Soule, R. G. and Goldman, R. F. (1972). Terrain coefficients for energy cost prediction. Journal of Applied Physiology 32(5), 706–708. Terrain factors from paved road (1.0) to loose sand (2.1).
 - **[Stevens2019]** Stevens, A. H. et al. (2019). BASALT science backroom: tactical sample prioritisation (leaderboard). Astrobiology 19(3) (title not checked). https://www.ebi.ac.uk/europepmc/webservices/rest/PMC6442282/fullTextXML
+- **[threejs]** three.js, JavaScript 3D library, release r187 (npm `three@0.187.0`), MIT licence. Vendored in `web/3d/vendor/` for the 3D map (P1). https://threejs.org/
 - **[Vansteenwegen2011]** Vansteenwegen, P., Souffriau, W. and Van Oudheusden, D. (2011). The orienteering problem: A survey. European Journal of Operational Research 209(1), 1–10.
 - **[Ziebart2008]** Ziebart, B. D., Maas, A., Bagnell, J. A. and Dey, A. K. (2008). Maximum Entropy Inverse Reinforcement Learning. Proc. AAAI-08, 1433–1438. Copy in `data/09_papers/irl_y_movilidad_rover/`.
