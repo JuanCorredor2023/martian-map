@@ -44,7 +44,7 @@ Reparto según la guía de trabajo del equipo (`docs/guia_trabajo_equipo.md`, de
 | E3: costo metabólico y de O2 | `@Seredial0326` (Sebas) | `src/fisica/` |
 | Producto: API, HUD y estaciones manuales | `@Seredial0326` (Sebas) | `api/`, `web/` |
 | E2 (trayectoria de Curiosity a la malla) y E1 (MaxEnt IRL) | `@JuanCorredor2023` (Juan) | `src/ml/` |
-| E12: dosis de radiación; tabla de resultados del equipo | `@JuanCorredor2023` (Juan) | `src/radiacion/`, `resultados/` |
+| E12: dosis de radiación; tabla de resultados del equipo | `@JuanCorredor2023` (Juan) | `src/radiation/`, `resultados/` |
 | Datos descargados: índice y scripts | `@JuanCorredor2023` (Juan) | `data/README.md`, `data/_scripts/` |
 
 ## 5. Plan de trabajo y contratos
