@@ -393,10 +393,11 @@ async function requestWalkback() {
 async function requestPlan() {
   const btn = ui("plan-btn");
   btn.disabled = true;
-  // Box centre as start (illustrative); stations and scores come from the panel.
-  const cx = X0 + SIZE_M / 2, cy = Y0 - SIZE_M / 2;
+  // The habitat is a user input (team decision): the plan starts at the base set
+  // in the walkback panel, or at the box centre until one is set (illustrative).
+  const start = baseXY || [X0 + SIZE_M / 2, Y0 - SIZE_M / 2];
   const body = {
-    start: [cx, cy],
+    start,
     stations: stations.map(s => ({id: s.id, x: s.x, y: s.y, score: scoreOf(s),
                                   service_time_min: s.service_time_min})),
     energy_budget_wh: 2813, gravity_m_s2: 3.71, margin: 0.10,
