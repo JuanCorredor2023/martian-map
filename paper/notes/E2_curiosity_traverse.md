@@ -1,6 +1,6 @@
 # E2 · Curiosity's traverse on the base grid and a terrain-only baseline
 
-Owner: Juan (`@JuanCorredor2023`) · Issue: #4 (closed) · PRs: #22 (hours 0–4), #25 (hours 4–12) · Status: done (update with E8 sand in the E1 sand PR) · Last update: 2026-11-14
+Owner: Juan (`@JuanCorredor2023`) · Issue: #4 (closed) · PRs: #22 (hours 0–4), #25 (hours 4–12) · Status: done (update with E8 sand in PR #57) · Last update: 2026-11-14
 
 ## Question
 Where exactly did Curiosity drive inside our 2 × 2 km bbox, cell by cell on the base grid? And, within reach of that route, do the terrain features of the base grid tell where the rover drove? The second answer is the bar the learned cost (E1) has to beat.

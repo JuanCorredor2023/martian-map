@@ -1,6 +1,6 @@
 # E1 · Terrain cost learned from Curiosity's route (MaxEnt IRL)
 
-Owner: Juan (`@JuanCorredor2023`) · Issue: #5 (open: refit with boulders, hours 24–34) · PRs: #50 (DEM features), this one (E8 sand) · Status: DEM features give no price (negative result); E8 sand gives a small price that holds out of sample and is handed to E3 · Last update: 2026-11-14
+Owner: Juan (`@JuanCorredor2023`) · Issue: #5 (open: refit with boulders, hours 24–34) · PRs: #50 (DEM features), #57 (E8 sand) · Status: DEM features give no price (negative result); E8 sand gives a small price that holds out of sample and is handed to E3 · Last update: 2026-11-14
 
 ## Question
 Given where Curiosity started and where it stopped, which terrain prices make the route its drivers actually chose the most likely one? If the learned prices explain the route better than distance alone, they become the terrain part of the astronaut's cost (combined with E3); if not, the planner uses E3 alone.
