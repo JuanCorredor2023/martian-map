@@ -18,7 +18,16 @@
   #map { position: absolute; inset: 0; }
   .panel { position: absolute; background: var(--panel); border: 1px solid var(--border);
            border-radius: 8px; padding: 12px 14px; backdrop-filter: blur(4px); }
-  #layers { top: 16px; left: 16px; width: 230px; }
+  #layers { top: 16px; left: 16px; width: 230px; max-height: calc(100% - 96px); overflow-y: auto; overflow-x: hidden; }
+  #rad-chart { display: block; margin: 6px 0 2px; overflow: visible; }
+  #rad-chart .axis { stroke: rgba(255,255,255,0.25); stroke-width: 1; }
+  #rad-chart .tick { fill: var(--muted); font-size: 10px; }
+  #rad-chart .line { fill: none; stroke: #8ab4f8; stroke-width: 2; stroke-linejoin: round; }
+  #rad-chart .cross { stroke: rgba(255,255,255,0.5); stroke-width: 1; }
+  #rad-tip { font-size: 11px; color: var(--text); min-height: 14px; }
+  .alert { margin-top: 6px; padding: 6px 8px; border-radius: 6px; background: rgba(255,59,48,0.15);
+           border: 1px solid rgba(255,59,48,0.6); color: var(--text); font-size: 12px; }
+  .alert b { color: #ff6b61; }
   #stations { top: 16px; right: 16px; width: 300px; overflow-x: hidden; max-height: calc(100% - 64px); overflow-y: auto; }
   #stations select, #stations input[type=number] { background: #1c222b; color: var(--text);
             border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font: inherit; }
@@ -87,6 +96,16 @@
   <div class="row"><span class="muted">Energy left (Wh)</span>
     <input type="number" id="wb-energy" min="0" step="10" value="150" style="width:70px"></div>
   <div id="wb-info" class="muted"></div>
+  <hr>
+  <div class="muted"><b style="color: var(--text)">Radiation (E12)</b> · dose over EVA time, not a map</div>
+  <div id="rad-summary" class="muted"></div>
+  <div class="muted" style="margin-top:6px">Accumulated dose, provisional EVA (µGy)</div>
+  <svg id="rad-chart" width="226" height="86" role="img" aria-label="Accumulated dose against EVA time"></svg>
+  <div id="rad-tip" class="muted"></div>
+  <select id="sep-scenario" style="width:100%;margin-top:4px;background:#1c222b;color:var(--text);
+          border:1px solid var(--border);border-radius:4px;padding:3px"></select>
+  <button id="sep-btn" class="secondary">Simulate SEP alert at the astronaut</button>
+  <div id="sep-info"></div>
   <hr>
   <div class="muted" id="status">Loading layers…</div>
 </div>
@@ -390,6 +409,70 @@ async function requestWalkback() {
   redraw();
 }
 
+// ---------------------------------------------------------------------------
+// Radiation (E12, Juan): a dose budget along the EVA timeline and an SEP alert
+// scenario. No per-pixel radiation map (guide section 43): the background
+// barely changes across a few km. Dose on the way back = return time x rate.
+// ---------------------------------------------------------------------------
+let radInfo = null;
+
+function drawDoseChart(curve) {
+  const svg = ui("rad-chart"), W = 226, H = 86, L = 30, B = 16, T = 4, R = 6;
+  const tMax = curve[curve.length - 1].t_h, dMax = Math.max(...curve.map(p => p.dose_ugy));
+  const x = t => L + (t / tMax) * (W - L - R), y = d => H - B - (d / dMax) * (H - B - T);
+  const path = curve.map((p, i) => `${i ? "L" : "M"}${x(p.t_h).toFixed(1)},${y(p.dose_ugy).toFixed(1)}`).join("");
+  svg.innerHTML = `
+    <line class="axis" x1="${L}" y1="${H - B}" x2="${W - R}" y2="${H - B}"/>
+    <line class="axis" x1="${L}" y1="${T}" x2="${L}" y2="${H - B}"/>
+    <text class="tick" x="${L - 4}" y="${y(dMax) + 3}" text-anchor="end">${dMax.toFixed(0)}</text>
+    <text class="tick" x="${L - 4}" y="${H - B + 3}" text-anchor="end">0</text>
+    <text class="tick" x="${L}" y="${H - 3}">0 h</text>
+    <text class="tick" x="${W - R}" y="${H - 3}" text-anchor="end">${tMax.toFixed(1)} h</text>
+    <path class="line" d="${path}"/>
+    <line class="cross" id="rad-cross" y1="${T}" y2="${H - B}" visibility="hidden"/>
+    <rect x="${L}" y="0" width="${W - L - R}" height="${H}" fill="transparent" id="rad-hit"/>`;
+  const cross = svg.querySelector("#rad-cross");
+  svg.querySelector("#rad-hit").addEventListener("mousemove", ev => {
+    const box = svg.getBoundingClientRect();
+    const t = Math.min(tMax, Math.max(0, (ev.clientX - box.left - L) / (W - L - R) * tMax));
+    const p = curve.reduce((a, b) => Math.abs(b.t_h - t) < Math.abs(a.t_h - t) ? b : a);
+    cross.setAttribute("x1", x(p.t_h)); cross.setAttribute("x2", x(p.t_h));
+    cross.setAttribute("visibility", "visible");
+    ui("rad-tip").textContent = `t = ${p.t_h.toFixed(2)} h · ${p.dose_ugy.toFixed(1)} µGy`;
+  });
+  svg.querySelector("#rad-hit").addEventListener("mouseleave", () => {
+    cross.setAttribute("visibility", "hidden"); ui("rad-tip").textContent = "";
+  });
+}
+
+async function loadRadiation() {
+  const res = await fetch("/radiation");
+  if (!res.ok) { ui("rad-summary").innerHTML = `<span class="warn">${(await res.json()).detail}</span>`; return; }
+  radInfo = await res.json();
+  const e = radInfo.provisional_eva;
+  ui("rad-summary").innerHTML =
+    `Background ${radInfo.background_ugy_h.toFixed(1)} µGy/h (RAD, boxwork sols). ` +
+    `Provisional EVA ${e.eva_time_h.toFixed(1)} h → <b style="color:var(--text)">${e.dose_ugy.toFixed(1)} µGy</b> ` +
+    `(≈ ${e.dose_usv_est.toFixed(0)} µSv est.). Radiation only changes the plan in a solar storm.`;
+  drawDoseChart(radInfo.curve);
+  for (const sc of radInfo.scenarios) ui("sep-scenario").add(new Option(`${sc.label} · ${sc.rate_ugy_h.toFixed(0)} µGy/h`, sc.id));
+}
+
+function simulateSEP() {
+  if (!radInfo) return;
+  if (!wbFC) { ui("sep-info").innerHTML = '<div class="warn">Place the astronaut on the map first (Walkback).</div>'; return; }
+  const sc = radInfo.scenarios.find(s => s.id === ui("sep-scenario").value);
+  const p = wbFC.properties, tH = p.return_time_s / 3600;
+  const doseBack = tH * sc.rate_ugy_h, doseCalm = tH * radInfo.background_ugy_h;
+  const ev = radInfo.real_event, rule = radInfo.sep_rule;
+  ui("sep-info").innerHTML = `<div class="alert">⚠ <b>SEP ALERT · return to the habitat now</b><br>
+    Fastest way back: ${(p.return_time_s / 60).toFixed(1)} min${p.contingency_ok ? "" : " (beyond the 30 min line)"}.<br>
+    Dose on the way back: <b>${doseBack.toFixed(1)} µGy</b> (${doseCalm.toFixed(1)} µGy without the storm).<br>
+    <span class="muted">${sc.measured ? "Measured event" : "Hypothetical scaling of the real event"} ·
+    alarm rule: rate &gt; ${rule.k_on}× the ${rule.baseline}, ${rule.n_on} observations in a row
+    (real alarm ${ev.alarm_delay_min.toFixed(0)} min after onset).</span></div>`;
+}
+
 async function requestPlan() {
   const btn = ui("plan-btn");
   btn.disabled = true;
@@ -486,6 +569,7 @@ ui("block-slope").addEventListener("input", refreshBlockInfo);
 ui("plan-btn").addEventListener("click", requestPlan);
 ui("save-stations").addEventListener("click", saveStations);
 ui("load-candidates").addEventListener("click", loadCandidates);
+ui("sep-btn").addEventListener("click", simulateSEP);
 // Only one map-click mode at a time.
 document.querySelectorAll(".click-mode").forEach(box => box.addEventListener("input", () => {
   if (box.checked) document.querySelectorAll(".click-mode").forEach(o => { if (o !== box) o.checked = false; });
@@ -494,7 +578,7 @@ ui("wb-energy").addEventListener("change", requestWalkback);
 for (const id of ["block-on", "block-slope"]) ui(id).addEventListener("change", requestWalkback);
 window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 
-main().then(refreshBlockInfo).then(loadStations).catch(err => { ui("status").textContent = "Error: " + err.message; console.error(err); });
+main().then(refreshBlockInfo).then(loadStations).then(loadRadiation).catch(err => { ui("status").textContent = "Error: " + err.message; console.error(err); });
 </script>
 </body>
 </html>

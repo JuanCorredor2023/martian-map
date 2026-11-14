@@ -18,6 +18,7 @@ from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import radiation as rad
 from . import walkback as wb
 from .plan import PlanRequest, WalkbackRequest, feature, feature_collection
 from .raster_layers import blocked_layer, cost_layer
@@ -29,6 +30,7 @@ BASE = DATA / "base"
 TILES = DATA / "tiles"
 E2 = DATA / "e2"
 STATIONS = DATA / "stations"
+E12 = DATA / "e12"
 WEB = REPO / "web"
 
 app = FastAPI(title="Mars EVA planner", version="0.1.0")
@@ -127,6 +129,14 @@ def stations_download():
         raise HTTPException(status_code=404, detail="no stations saved yet")
     return FileResponse(path, filename="stations_manual.gpkg",
                         media_type="application/geopackage+sqlite3")
+
+
+@app.get("/radiation")
+def radiation():
+    """Dose budget and SEP scenarios from E12 (no per-pixel radiation map)."""
+    if not (E12 / "sep_alert.json").exists():
+        raise HTTPException(status_code=404, detail="E12 outputs missing in data/e12/")
+    return {**rad.summary(E12), "curve": rad.dose_curve(E12)}
 
 
 def _box_centre():

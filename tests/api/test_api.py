@@ -170,3 +170,13 @@ def test_walkback_boundaries_are_few_closed_rings():
         rings = f["geometry"]["coordinates"]
         assert 1 <= len(rings) <= 3                        # not thousands of fragments
         assert all(r[0] == r[-1] for r in rings)           # closed along scarps and box edge
+
+
+def test_radiation_summary_and_scenarios():
+    if not (REPO / "data" / "e12" / "sep_alert.json").exists():
+        pytest.skip("E12 outputs not generated")
+    r = client.get("/radiation").json()
+    assert 5 < r["background_ugy_h"] < 9                      # E12: 6.52 uGy/h in the boxwork
+    rates = [s["rate_ugy_h"] for s in r["scenarios"]]
+    assert rates == sorted(rates) and r["scenarios"][0]["measured"]
+    assert abs(r["curve"][-1]["dose_ugy"] - r["provisional_eva"]["dose_ugy"]) < 0.1
