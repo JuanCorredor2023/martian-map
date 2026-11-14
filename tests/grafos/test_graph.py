@@ -70,6 +70,20 @@ def test_snap_skips_blocked_cells():
     assert abs(r - 3) <= 2 and abs(c - 3) <= 2
 
 
+def test_place_raises_outside_and_moves_blocked():
+    dem = np.zeros((9, 9))
+    slope = np.zeros((9, 9))
+    slope[3:6, 3:6] = 45                                    # blocked block in the middle
+    g = make_graph(dem, cell_slope_deg=slope)
+    x, y = g.cell_to_xy(1, 1)
+    assert g.place(x, y) == (1, 1, 0.0)                     # valid cell: unchanged
+    x, y = g.cell_to_xy(4, 4)
+    r, c, moved = g.place(x, y)
+    assert g.main_component()[r, c] and moved == pytest.approx(np.hypot(r - 4, c - 4))
+    with pytest.raises(ValueError):
+        g.place(0.0, 0.0)                                   # outside the grid
+
+
 def test_follow_and_path_cost():
     g = make_graph(np.zeros((6, 6)))
     s, t = g.node(0, 0), g.node(5, 3)

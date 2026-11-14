@@ -77,14 +77,16 @@ def route_geojson(graph, prof, habitat_xy, goal_xy, crs_wkt, **props):
 
 
 def place(graph, main_cc, xy, label):
-    """User (x, y) -> valid (row, col); exits with a clear message if outside the box."""
-    r, c = (int(v) for v in graph.xy_to_cell(*xy))
-    if not graph.inside(r, c):
-        sys.exit(f"error: {label} {xy} is outside the study box")
-    sr, sc = graph.snap(r, c, mask=main_cc)
-    if (sr, sc) != (r, c):
-        print(f"warning: {label} cell ({r}, {c}) is blocked or outside the main connected "
-              f"area; moved {np.hypot(sr - r, sc - c):.1f} m to ({sr}, {sc})")
+    """CLI wrapper of Graph.place: prints the move and exits on bad input.
+    Library code should call graph.place(x, y) and handle ValueError itself.
+    `main_cc` is kept for backward compatibility and ignored."""
+    try:
+        sr, sc, moved = graph.place(*xy, label=label)
+    except ValueError as err:
+        sys.exit(f"error: {err}")
+    if moved > 0:
+        print(f"warning: {label} {list(xy)} is on a blocked cell or outside the main "
+              f"connected area; moved {moved:.1f} m to cell ({sr}, {sc})")
     return sr, sc
 
 
@@ -115,10 +117,9 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     graph = Graph.from_base_dir(base)
-    labels, sizes = graph.components()
-    main_cc = (labels == np.argmax(sizes)).reshape(graph.shape)
+    main_cc = graph.main_component()
     print(f"graph: {graph.n:,} nodes, {graph.csr().nnz:,} arcs; largest SCC "
-          f"{100 * sizes.max() / graph.n:.1f}% ({time.time() - t0:.1f}s)")
+          f"{100 * main_cc.mean():.1f}% ({time.time() - t0:.1f}s)")
 
     hr, hc = place(graph, main_cc, args.habitat, "habitat")
     habitat = int(graph.node(hr, hc))

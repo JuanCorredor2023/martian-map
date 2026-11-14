@@ -55,7 +55,10 @@ class Budget:
     leak_lpm: float = 0.0        # time-based O2 use (L/min), declared assumption
 
     def o2(self, e_j, t_s):
-        return np.asarray(e_j) / 1000.0 / KJ_PER_LITER_O2 + self.leak_lpm * np.asarray(t_s) / 60.0
+        o2 = np.asarray(e_j) / 1000.0 / KJ_PER_LITER_O2
+        if self.leak_lpm:                       # skip 0 * inf = NaN on unreachable cells
+            o2 = o2 + self.leak_lpm * np.asarray(t_s) / 60.0
+        return o2
 
     def fits(self, e_j, t_s, tol=1e-9):
         return bool(e_j <= self.energy_j * (1 + tol) and t_s <= self.time_s * (1 + tol)
