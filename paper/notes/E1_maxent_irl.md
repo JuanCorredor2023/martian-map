@@ -1,6 +1,6 @@
 # E1 · Terrain cost learned from Curiosity's route (MaxEnt IRL)
 
-Owner: Juan (`@JuanCorredor2023`) · Issue: #5 (open: refit with sand and boulders, hours 24–34) · PRs: #50 · Status: done for the MVP, negative result · Last update: 2026-11-14
+Owner: Juan (`@JuanCorredor2023`) · Issue: #5 (open: refit with boulders, hours 24–34) · PRs: #50 (DEM features), this one (E8 sand) · Status: DEM features give no price (negative result); E8 sand gives a small price that holds out of sample and is handed to E3 · Last update: 2026-11-14
 
 ## Question
 Given where Curiosity started and where it stopped, which terrain prices make the route its drivers actually chose the most likely one? If the learned prices explain the route better than distance alone, they become the terrain part of the astronaut's cost (combined with E3); if not, the planner uses E3 alone.
@@ -8,6 +8,7 @@ Given where Curiosity started and where it stopped, which terrain prices make th
 ## Data
 - **Demonstrations:** E2's cell sequence (`data/e2/cell_sequence.csv`, release `e2-trajectory-v1`): Curiosity's route inside the bbox from PLACES [PLACES], cell by cell on the 1 m base grid, 8-connected, sols 4369–4868.
 - **Terrain:** JB's base grid (release `base-grid-v2`): `slope_deg.tif`, `roughness.tif`, `tpi.tif` from `dem_1m.tif` [Parker2016], plus the mean slope in 5 × 5 and 15 × 15 m windows, the same five features as E2's baseline. No cell of the box is nodata.
+- **Sand:** E8's `sand.tif` (JB, release `e8-v0`, PR #49): the fraction (0–1) of each 1 m cell that E8's U-Net marks as sand on the 0.25 m orthophoto [HiRISE-Gale]. Same grid as the DEM (checked: CRS, transform, 2000 × 2000), no nodata; 10.3 % of the box has some sand and the 99th percentile is 1 (`data/e1/e1_summary.json` → `sand.sand_layer`). JB reports the U-Net as conservative: 91 % of what it marks as sand is sand, but it misses much of it.
 
 ## Method
 
@@ -26,6 +27,17 @@ Given where Curiosity started and where it stopped, which terrain prices make th
 - **Route pieces** of about 100, 250 and 500 m (`irl_data.pieces`), with 50, 75 and 100 m margins on the 1 m grid.
 - **Whole box at 5 m:** features averaged over 5 × 5 m cells (400 × 400 grid), pieces of about 250 and 1000 m, and the whole box as the window, so the model can route through any valley or over any wall.
 - A demonstration that touches its goal cell earlier is cut there (the goal absorbs); NLL per metre uses the length after the cut.
+
+### Feature sets with E8 sand (`--features`)
+- `dem`: the seven features above (the PR #50 result).
+- `sand`: `metre`, `sand` (the cell's sand fraction) and `sand_mean_5m` (its mean over 5 × 5 m), both already in 0–1.
+- `dem_sand`: the DEM set plus the two sand features.
+- All three are fitted and validated on the per-sol demonstrations at 1 m, the scale where a rover would dodge sand inside a valley.
+
+### Hand-off rule (`src/ml/export_e1_weights.py`)
+- **Which model:** a model's prices go to E3 only if it beats the distance-only control on held-out blocks; among those, the lowest held-out NLL wins.
+- **Same cost in E3:** `fisica.human_cost` scales a feature as clip(x / max, 0, 1). We export max = the feature's true maximum over the box and weight = w · max / p99, so the clip never acts and E3 computes exactly E1's w · x / p99.
+- **Extra raster:** the 5 × 5 m sand mean has no file of its own, so the script writes it to `data/e1/sand_mean_5m.tif`.
 
 ### Validation
 - **Leave-one-block-out** with E2's 5 consecutive blocks of the route (`src/ml/cell_features.py`); a demonstration belongs to the block of its middle step. Both models are fitted on four blocks and scored on the fifth.
@@ -114,6 +126,31 @@ On the whole-box grid, the cheapest route between the start and end of each 250 
 
 *Figure E1-4. Real route (orange) and the cheapest distance-only route between the same points (dashed blue) for the 19 pieces of about 250 m, over the mean slope at 15 m on 5 m cells.*
 
+### With E8 sand: a small price that holds out of sample
+Sources: `src/ml/fit_irl.py` and `src/ml/validate_irl.py` with `--features sand` and `--features dem_sand` → `data/e1/irl_fit_per_sol_cell1m_margin50m_<set>.json` and `validation_per_sol_cell1m_margin50m_<set>.json`, gathered in `data/e1/e1_summary.json` → `sand`. One demonstration per sol, 1 m cells, 50 m margin.
+
+| Model | Held-out NLL per metre (control 1.18349) | Blocks where it beats the control | Held-out AUC of the cost, 50 m corridor / whole box | Prices fitted on all drives |
+|---|---|---|---|---|
+| DEM features (PR #50) | 1.18373 | 2 of 5 | 0.506 / 0.524 | `tpi_ridge` 0.049 |
+| **Sand only** | **1.18281** | **4 of 5** | 0.525 / 0.499 | `sand` 0.072, `sand_mean_5m` 0.224 |
+| DEM features + sand | 1.18303 | 3 of 5 | 0.531 / 0.531 | `tpi_ridge` 0.063, `sand` 0.073, `sand_mean_5m` 0.226 |
+
+- **First terrain price that generalises.** The sand-only model explains held-out drives better than distance alone: overall −0.68 × 10⁻³ NLL per metre. By block: −3.01, +3.66, −0.28, −3.17 and −0.45 × 10⁻³, so it loses only in block 1 (fig. E1-5a). In sample it explains 70 of the 129 drives better than the control (1.17879 vs 1.18002).
+- **The price is stable.** Fitted without each block, `sand_mean_5m` costs 0.13–0.26 in all five folds and `sand` 0.08–0.14 in four of them (0 without block 3; fig. E1-5b).
+- **Direction:** at the control's fit the real route crosses 8 % less sand per metre than the model's routes (0.0634 vs 0.0690; preference z −1.06 for `sand` and −1.27 for `sand_mean_5m`). Each z alone is within chance; the held-out NLL is the stronger evidence.
+- **Size: small.** With the metre price 2.578, a cell that is all sand inside an all-sand 5 × 5 m patch costs 11.5 % more per metre than bare ground ((0.072 + 0.224) / 2.578). The rover dodges sand a little; it does not avoid it at any cost.
+- **The DEM features still add only noise:** adding them to sand makes the held-out NLL worse (1.18303 vs 1.18281).
+- **Cell-level AUC stays near E2's:** 0.525 in the corridor against E2's 0.526. A per-cell score cannot see the trade-off "detour vs crossing sand" that MaxEnt scores on whole routes.
+- **E2's logistic baseline with sand** (`src/ml/logistic_sand.py` → `data/e2/logistic_baseline_sand.json`): 0.526 → 0.531 in the 50 m corridor, 0.730 → 0.726 in the whole box. Sand alone gives 0.524 and 0.446; the whole-box value is below 0.5 because some stretches of the route run through sandier ground than the box average, so it measures where the route is, not avoidance.
+- **Hand-off:** `export_e1_weights.py` picks the sand-only model and writes `sand` 0.07177 and `sand_mean_5m` 0.22352 (distance weight 2.57767) to `data/e1/e1_weights.json`.
+  - The script also runs Sebas's own reader on it (`fisica.human_cost`, PR #41) and records the result in `e1_weights.json` → `terrain_factor_check`.
+  - The terrain factor is 1.0 on bare ground and at most 1.115, with p95 1.091 and 8.4 % of the box above 1.05.
+  - It matches E1's own price to 2.2 × 10⁻¹⁶.
+
+![Sand](../figures/e1_fig5_sand.png)
+
+*Figure E1-5. (a) Held-out NLL per metre of each model minus the distance-only control, per E2 block (below 0 = better than distance). (b) Sand prices of the sand-only model fitted without each block (bars) and on all drives (dashed lines).*
+
 ## Checks
 - **Gradient:** three independent computations agree (synthetic check above), and 6 unit tests in `tests/ml/test_maxent_irl.py` cover it, including padded batches (`python -m pytest tests/ml -q`).
 - **Policy:** sums to 1 at every cell but the goal (test).
@@ -129,14 +166,25 @@ On the whole-box grid, the cheapest route between the start and end of each 250 
 - **Few long demonstrations.** 19 pieces of 250 m and 5 of 1000 m; the 1000 m whole-box fit has no held-out test.
 - **Linear prices, ≥ 0.** A feature the rover sought out would show up as a positive preference z, not as a weight; the preference check shows none.
 - **5 m cells average away 1 m detail;** they are only used for the whole-box scale.
+- **The sand effect is small and not uniform.**
+  - The held-out gain is 0.68 × 10⁻³ NLL per metre; one block of five (block 1) gets worse with sand.
+  - In the last block the route touches no sand at all, so sand cannot help there.
+  - Sand was only tested per sol at 1 m.
+- **The sand layer is a first version.** E8's U-Net v0 misses much of the sand (JB), so the price is learned from the sand it does mark.
+  - We have not checked whether the orthophoto predates Curiosity's pass. If it does not, rover tracks could change how sand looks along the route.
+- **Rover preferences applied to a person.** The sand price is how much Curiosity's drivers avoided sand. Using it as a relative price for an astronaut follows the team plan ("keep what was learned about roughness and sand"), but it is an assumption, not a measurement.
 
 ## What other pieces can use
-- **E3 and product (Sebas):** E1 learned no terrain price from the DEM features at any scale, so for the MVP the human cost is E3 alone (guide's plan B for hour 20: terrain factors fixed by sensitivity). The hand-off file `data/e1/e1_weights.json` (`src/ml/export_e1_weights.py`, format agreed in #2 and read by `fisica.human_cost`, PR #41) carries every weight at 0, the fitted values in `fitted_weight` for the record and the held-out NLL that decided it; with it the terrain factor is 1.0 on every cell. A price is only handed over if the terrain model beats the control on held-out blocks.
-- **E8 (JB) and E9 (Aaron):** the missing terrain terms are most likely sand and boulders. E1 takes a new layer as one more feature (`irl_data.feature_stack`); when `sand.tif` and `rocks.tif` arrive (hours 30–34), refit with `fit_irl.py` and `validate_irl.py`.
+- **E3 and product (Sebas):** the DEM features give no price, but E8 sand does. `data/e1/e1_weights.json` (`src/ml/export_e1_weights.py`, format agreed in #2, read by `fisica.human_cost`, PR #41) hands over the sand-only model.
+  - Prices: `sand` 0.07177 and `sand_mean_5m` 0.22352, with distance weight 2.57767, giving a terrain factor from 1.0 on bare ground to 1.115 in full sand.
+  - Rasters: `../e8/sand.tif` and `../e1/sand_mean_5m.tif`, relative to `data/base/`.
+  - The file keeps every candidate's held-out NLL and the check with E3's own reader.
+- **E8 (JB):** sand is the first layer that helps E1 out of sample; ridges were not tried (E8 reports them at chance).
+- **E9 (Aaron):** boulders are the other obstacle the DEM does not see. E1 takes a new layer as one more feature (`irl_data.feature_stack`, a new `--features` set); when `rocks.tif` arrives, refit and validate.
 - **E4 and E5 (Aaron, Diana):** at 250 m the cheapest route between the rover's consecutive positions already follows the valley floor like the real route (fig. E1-4). Steep walls are avoided by where the waypoints are, which E4/E5 decide through E3's cell block and slope cost.
 
 ## Reproduce
-From the repo root, with the `martian` environment, `data/base/` from release `base-grid-v2` and `data/e2/` from E2:
+From the repo root, with the `martian` environment, `data/base/` from release `base-grid-v2`, `data/e2/` from E2 and `data/e8/` from release `e8-v0`:
 ```bash
 python -m pytest tests/ml -q
 python src/ml/irl_toy_check.py
@@ -148,10 +196,22 @@ python src/ml/fit_irl.py --piece-m 500 --margin 100 --chunk 4
 python src/ml/fit_irl.py --piece-m 250 --cell 5 --whole-box --chunk 8
 python src/ml/fit_irl.py --piece-m 1000 --cell 5 --whole-box --chunk 5
 python src/ml/validate_irl.py --piece-m 250 --cell 5 --whole-box --chunk 8
+python src/ml/fit_irl.py --features sand --chunk 32
+python src/ml/fit_irl.py --features dem_sand --chunk 32
+python src/ml/validate_irl.py --features sand --chunk 32
+python src/ml/validate_irl.py --features dem_sand --chunk 32
+python src/ml/logistic_sand.py
 python src/ml/irl_paper_figures.py
 python src/ml/export_e1_weights.py
 ```
-About 90 minutes on an NVIDIA T1000 (4 GB); most of it is the whole-box runs.
+About 110 minutes on an NVIDIA T1000 (4 GB); most of it is the whole-box runs.
 
 ## Outputs
-In `data/e1/` (not in git): `toy_check.json`, `irl_fit_<tag>.json` for the six scales, `validation_per_sol_cell1m_margin50m.json`, `validation_piece250m_cell5m_box.json`, `e1_summary.json`, and the hand-off to E3 `e1_weights.json` (also posted in #2). In `paper/figures/`: `e1_fig1_toy_check.png` to `e1_fig4_whole_box_routes.png`. Column and file reference: `src/ml/README.md`.
+In `data/e1/` (not in git):
+- `toy_check.json`;
+- `irl_fit_<tag>.json` for the six scales and the two sand sets;
+- `validation_per_sol_cell1m_margin50m[_sand|_dem_sand].json` and `validation_piece250m_cell5m_box.json`;
+- `e1_summary.json`;
+- the hand-off to E3: `e1_weights.json` and `sand_mean_5m.tif`.
+
+In `data/e2/`: `logistic_baseline_sand.json`. In `paper/figures/`: `e1_fig1_toy_check.png` to `e1_fig5_sand.png`. Column and file reference: `src/ml/README.md`.

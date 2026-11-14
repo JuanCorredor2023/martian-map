@@ -44,6 +44,7 @@ Outputs in `data/e2/`:
 | `logistic_baseline.json` | AUC per block, mean and pooled out-of-block AUC for every comparison set and model, the main model's standardized coefficients and feature medians. |
 | `logistic_roc.png` | ROC curves for the 50 m corridor (out-of-block predictions). |
 | `visit_probability.tif` | The main model applied to every cell, on the base grid. It is a relative 0–1 score of how route-like the terrain is, not a calibrated probability. |
+| `logistic_baseline_sand.json` | `python src/ml/logistic_sand.py`: the same baseline with E8's `sand.tif` (cell value and 5 × 5 m mean) added, or alone; same sets, model and blocks, plus boxwork-only scores. Needs `data/e8/` from release `e8-v0`. |
 
 ## E1: terrain cost learned from the route with MaxEnt IRL (#5)
 
@@ -56,19 +57,21 @@ python src/ml/fit_irl.py                                # one demonstration per 
 python src/ml/validate_irl.py                           # leave-one-block-out (E2's 5 blocks)
 python src/ml/fit_irl.py --piece-m 250 --cell 5 --whole-box
 python src/ml/validate_irl.py --piece-m 250 --cell 5 --whole-box
-python src/ml/irl_paper_figures.py                      # after every scale in its SCALES list
+python src/ml/fit_irl.py --features sand                # E8 sand (data/e8/ from release e8-v0)
+python src/ml/validate_irl.py --features sand           # also --features dem_sand
+python src/ml/irl_paper_figures.py                      # after every run in its SCALES, VALIDATIONS and SAND_MODELS lists
 python src/ml/export_e1_weights.py                      # hand-off to E3 (data/e1/e1_weights.json)
 ```
 
 | Script | What it does |
 |---|---|
 | `maxent_irl.py` | The method: move costs on the 8-neighbour grid (same `NEIGHBOURS` order as `src/fisica/edge_cost.py`), soft value iteration (backward pass), expected visits (forward pass), NLL and its gradient, L-BFGS-B fit with every weight ≥ 0. Runs on the GPU with PyTorch if there is one. |
-| `irl_data.py` | Demonstrations from `data/e2/cell_sequence.csv`: one per sol (≥ 10 m) or route pieces of a given length, each in a window around it (or the whole box), with the E2 validation block. Features ≥ 0: `metre` (constant), `slope_deg`, `roughness`, `tpi_ridge`, `tpi_hollow` (TPI split by sign), `slope_mean_5m`, `slope_mean_15m`, each divided by its 99th percentile over the box. `--cell 5` averages them over 5 × 5 m cells. |
+| `irl_data.py` | Demonstrations from `data/e2/cell_sequence.csv`: one per sol (≥ 10 m) or route pieces of a given length, each in a window around it (or the whole box), with the E2 validation block. Features ≥ 0: `metre` (constant), `slope_deg`, `roughness`, `tpi_ridge`, `tpi_hollow` (TPI split by sign), `slope_mean_5m`, `slope_mean_15m`, each divided by its 99th percentile over the box. `--cell 5` averages them over 5 × 5 m cells. `--features sand` uses `metre`, `sand` and `sand_mean_5m` (E8's `data/e8/sand.tif` and its 5 × 5 m mean); `--features dem_sand` uses all nine. |
 | `irl_toy_check.py` | Invented terrain with hidden prices: the fit must recover them, and the gradient must match PyTorch autograd and finite differences. |
 | `fit_irl.py` | Fits the terrain model and the distance-only control (only the price of a metre) on every demonstration. |
 | `validate_irl.py` | Fits on four E2 blocks and tests on the fifth: NLL per metre, Hausdorff and within-5/10 m of the cheapest predicted route, and the AUC of the learned cost on E2's comparison sets. |
-| `irl_paper_figures.py` | `data/e1/e1_summary.json` and the figures `paper/figures/e1_fig2`–`e1_fig4`. |
-| `export_e1_weights.py` | Hand-off to E3: `data/e1/e1_weights.json` in the format agreed in #2 (read by `fisica.human_cost`). Weights are handed over only if the terrain model beats the distance-only control on held-out blocks; otherwise they are 0 and the fitted values stay in `fitted_weight`. |
+| `irl_paper_figures.py` | `data/e1/e1_summary.json` and the figures `paper/figures/e1_fig2`–`e1_fig5`. |
+| `export_e1_weights.py` | Hand-off to E3: `data/e1/e1_weights.json` in the format agreed in #2 (read by `fisica.human_cost`). Among the per-sol models (`dem`, `sand`, `dem_sand`), only those that beat the distance-only control on held-out blocks qualify, and the lowest held-out NLL wins; with none, every weight is 0. Weights are converted so that `human_cost`'s clip never acts, `data/e1/sand_mean_5m.tif` is written when needed, and the result is checked with E3's own reader. |
 
 Outputs in `data/e1/` (not tracked by git), `<tag>` = demonstrations, cell size and window (for example `per_sol_cell1m_margin50m`, `piece250m_cell5m_box`):
 
@@ -78,7 +81,8 @@ Outputs in `data/e1/` (not tracked by git), `<tag>` = demonstrations, cell size 
 | `irl_fit_<tag>.json` | Weights of both models, NLL per metre, real vs expected feature counts, the preference check at the control's fit, and per-demonstration NLL. |
 | `validation_<tag>.json` | Held-out metrics per block and overall, weights fitted without each block, AUC of the learned cost next to E2's. |
 | `e1_summary.json` | The numbers quoted in the E1 note, gathered from the files above. |
-| `e1_weights.json` | Weights for `fisica.human_cost` (E3 × terrain factor): per feature `weight`, `fitted_weight`, `raster`, `min`/`max`, `transform`, `slope`; plus `distance_weight`, `validated` and the held-out NLL. |
+| `e1_weights.json` | Weights for `fisica.human_cost` (E3 × terrain factor): per feature `weight`, `fitted_weight`, `raster` (relative to `data/base/`), `min`/`max`, `transform`, `slope`; plus `distance_weight`, `validated`, `model`, every candidate's held-out NLL and `terrain_factor_check`. |
+| `sand_mean_5m.tif` | The 5 × 5 m mean of E8's sand fraction on the base grid (float32), read by E3 through `e1_weights.json`. |
 
 Prices are per cell length (1 m or 5 m of route); compare scales with `w_relative_to_metre`.
 
