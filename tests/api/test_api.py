@@ -129,3 +129,44 @@ def test_curiosity_drill_targets_match_places():
     ridge, hollow = t["R0"], t["H0"]
     d = ((ridge["x"] - hollow["x"]) ** 2 + (ridge["y"] - hollow["y"]) ** 2) ** 0.5
     assert 8 < d < 12                      # NASA: drilled ridge ~10 m from the drilled hollow
+
+
+def test_walkback_fields_and_boundaries():
+    body = {"current_position": [CENTRE[0] + 300, CENTRE[1]], "energy_remaining_wh": 150}
+    fc = client.post("/walkback", json=body).json()
+    p = fc["properties"]
+    assert 400 <= p["return_time_s"] <= 600            # 300 m at ~0.75 m/s, plus detours
+    assert 30 <= p["return_energy_wh"] <= 60           # 300 m x ~390 J/m = 32.5 Wh on flat ground
+    assert p["contingency_ok"] and p["energy_ok"]
+    kinds = {f["properties"]["kind"]: f for f in fc["features"]}
+    assert kinds["emergency_time_boundary"]["geometry"]["coordinates"]       # red line exists
+    assert kinds["energy_safe_boundary"]["properties"]["energy_remaining_wh"] == 150
+
+
+def test_walkback_return_is_directed():
+    import numpy as np
+    import api.main as main
+    from api import walkback as wb
+    g = wb.grid(str(main.BASE), 30.0)
+    base = g.node(*main._box_centre())
+    r_t, r_e = wb.return_fields(str(main.BASE), 30.0, base)
+    assert r_t.flat[base] == 0 and r_e.flat[base] == 0
+    f_e = wb.forward_energy(str(main.BASE), 30.0, base, np.inf)            # base -> v
+    both = np.isfinite(f_e) & np.isfinite(r_e)
+    assert np.abs(f_e[both] - r_e[both]).max() > 1.0                       # going != coming back
+
+
+def test_walkback_rejects_bad_requests():
+    assert client.post("/walkback", json={"current_position": [0, 0],
+                                          "energy_remaining_wh": 10}).status_code == 422
+    assert client.post("/walkback", json={"current_position": CENTRE,
+                                          "energy_remaining_wh": -1}).status_code == 422
+
+
+def test_walkback_boundaries_are_few_closed_rings():
+    body = {"current_position": [CENTRE[0] + 300, CENTRE[1]], "energy_remaining_wh": 150}
+    fc = client.post("/walkback", json=body).json()
+    for f in fc["features"][:2]:
+        rings = f["geometry"]["coordinates"]
+        assert 1 <= len(rings) <= 3                        # not thousands of fragments
+        assert all(r[0] == r[-1] for r in rings)           # closed along scarps and box edge

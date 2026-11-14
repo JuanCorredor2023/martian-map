@@ -80,12 +80,20 @@
   <button id="plan-btn">Plan EVA (test route)</button>
   <div id="plan-info" class="muted"></div>
   <hr>
+  <div class="muted"><b style="color: var(--text)">Walkback</b> · <span style="color:#ff3b30">━</span> 30 min return
+    · <span style="color:#36d1ff">━</span> energy-safe area</div>
+  <label><input type="checkbox" id="wb-mode" class="click-mode"> Click the map to place the astronaut</label>
+  <label><input type="checkbox" id="base-mode" class="click-mode"> Click the map to move the base</label>
+  <div class="row"><span class="muted">Energy left (Wh)</span>
+    <input type="number" id="wb-energy" min="0" step="10" value="150" style="width:70px"></div>
+  <div id="wb-info" class="muted"></div>
+  <hr>
   <div class="muted" id="status">Loading layers…</div>
 </div>
 
 <div id="stations" class="panel">
   <h1>Science stations</h1>
-  <label><input type="checkbox" id="add-mode"> Click the map to add a</label>
+  <label><input type="checkbox" id="add-mode" class="click-mode"> Click the map to add a</label>
   <select id="new-type"></select>
   <hr>
   <div class="muted">Rubric: score of each station type (edit live)</div>
@@ -327,13 +335,69 @@ async function loadCandidates() {
 
 const redraw = () => deckgl && deckgl.setProps({layers: layers()});
 
+// ---------------------------------------------------------------------------
+// Walkback (guide sections 20.3-20.5): red line = R_T(v) = 30 min (contingency
+// oxygen, depends only on the base); cyan line = F_E(p, v) + R_E(v) = energy left
+// (where the astronaut can still go AND come back from the current position).
+// ---------------------------------------------------------------------------
+let wbFC = null, astronaut = null, baseXY = null;
+
+function wbLayers() {
+  const out = [];
+  if (wbFC) {
+    const lines = kind => wbFC.features.filter(f => f.properties.kind === kind)
+      .flatMap(f => f.geometry.coordinates);
+    // Each line is drawn twice: a dark casing underneath so it stays readable
+    // over the red/orange slope layer, then the coloured line on top.
+    const outline = (id, data, color, width) => [
+      new PathLayer({id: id + "-casing", data, getPath: l => l.map(([x, y]) => toWorld(x, y)),
+                     getColor: [0, 0, 0, 200], getWidth: width + 3, widthUnits: "pixels",
+                     jointRounded: true, capRounded: true}),
+      new PathLayer({id, data, getPath: l => l.map(([x, y]) => toWorld(x, y)),
+                     getColor: color, getWidth: width, widthUnits: "pixels",
+                     jointRounded: true, capRounded: true}),
+    ];
+    out.push(...outline("energy-boundary", lines("energy_safe_boundary"), [54, 209, 255], 2.5));
+    out.push(...outline("red-line", lines("emergency_time_boundary"), [255, 59, 48], 3));
+  }
+  const pts = [];
+  if (baseXY) pts.push({xy: baseXY, color: [255, 255, 255], r: 9});
+  if (astronaut) pts.push({xy: astronaut, color: [255, 64, 200], r: 7});
+  out.push(new ScatterplotLayer({id: "wb-points", data: pts,
+    getPosition: d => toWorld(...d.xy), getFillColor: d => d.color, getRadius: d => d.r,
+    radiusUnits: "pixels", stroked: true, getLineColor: [0, 0, 0], lineWidthMinPixels: 2}));
+  return out;
+}
+
+async function requestWalkback() {
+  if (!astronaut) return;
+  ui("wb-info").textContent = "Computing return fields…";
+  const body = {current_position: astronaut, energy_remaining_wh: Number(ui("wb-energy").value) || 0,
+                emergency_return_time_s: 1800, base: baseXY, max_cell_slope_deg: blockLimit()};
+  const res = await fetch("/walkback", {method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  const out = await res.json();
+  if (!res.ok) { ui("wb-info").innerHTML = `<div class="warn">${JSON.stringify(out.detail)}</div>`; return; }
+  wbFC = out;
+  const p = out.properties;
+  if (!baseXY) baseXY = out.features.find(f => f.properties.kind === "base").geometry.coordinates;
+  const ok = (cond, text) => `<div style="color:${cond ? "#4cd964" : "#ff3b30"}">${cond ? "✔" : "⚠"} ${text}</div>`;
+  ui("wb-info").innerHTML =
+    ok(p.contingency_ok, `Return time ${(p.return_time_s / 60).toFixed(1)} min (limit 30)`) +
+    ok(p.energy_ok, `Return energy ${p.return_energy_wh.toFixed(1)} Wh · ` +
+                    `${p.energy_left_after_return_wh.toFixed(1)} Wh left after returning`) +
+    p.warnings.map(w => `<div class="warn">⚠ ${w}</div>`).join("");
+  redraw();
+}
+
 async function requestPlan() {
   const btn = ui("plan-btn");
   btn.disabled = true;
-  // Box centre as start (illustrative); stations and scores come from the panel.
-  const cx = X0 + SIZE_M / 2, cy = Y0 - SIZE_M / 2;
+  // The habitat is a user input (team decision): the plan starts at the base set
+  // in the walkback panel, or at the box centre until one is set (illustrative).
+  const start = baseXY || [X0 + SIZE_M / 2, Y0 - SIZE_M / 2];
   const body = {
-    start: [cx, cy],
+    start,
     stations: stations.map(s => ({id: s.id, x: s.x, y: s.y, score: scoreOf(s),
                                   service_time_min: s.service_time_min})),
     energy_budget_wh: 2813, gravity_m_s2: 3.71, margin: 0.10,
@@ -370,6 +434,7 @@ function layers() {
     ...overlayLayers(),
     ...planLayers(),
     ...stationLayers(),
+    ...wbLayers(),
   ];
 }
 
@@ -388,8 +453,14 @@ async function main() {
     views: new OrthographicView({id: "map", flipY: true}),
     initialViewState: {target: [centre, centre, 0], zoom: 1.5, minZoom: -1, maxZoom: 8},
     controller: true,
-    onClick: info => { if (ui("add-mode").checked && info.coordinate) addStationAt(info.coordinate); },
-    getCursor: ({isDragging}) => isDragging ? "grabbing" : (ui("add-mode").checked ? "crosshair" : "grab"),
+    onClick: info => {
+      if (!info.coordinate) return;
+      if (ui("add-mode").checked) addStationAt(info.coordinate);
+      else if (ui("wb-mode").checked) { astronaut = toMars(...info.coordinate); requestWalkback(); }
+      else if (ui("base-mode").checked) { baseXY = toMars(...info.coordinate); redraw(); requestWalkback(); }
+    },
+    getCursor: ({isDragging}) => isDragging ? "grabbing"
+      : ([...document.querySelectorAll(".click-mode")].some(e => e.checked) ? "crosshair" : "grab"),
     layers: layers(),
     onHover: info => {
       if (!info.coordinate) return;
@@ -415,6 +486,12 @@ ui("block-slope").addEventListener("input", refreshBlockInfo);
 ui("plan-btn").addEventListener("click", requestPlan);
 ui("save-stations").addEventListener("click", saveStations);
 ui("load-candidates").addEventListener("click", loadCandidates);
+// Only one map-click mode at a time.
+document.querySelectorAll(".click-mode").forEach(box => box.addEventListener("input", () => {
+  if (box.checked) document.querySelectorAll(".click-mode").forEach(o => { if (o !== box) o.checked = false; });
+}));
+ui("wb-energy").addEventListener("change", requestWalkback);
+for (const id of ["block-on", "block-slope"]) ui(id).addEventListener("change", requestWalkback);
 window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 
 main().then(refreshBlockInfo).then(loadStations).catch(err => { ui("status").textContent = "Error: " + err.message; console.error(err); });
