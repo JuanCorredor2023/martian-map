@@ -22,7 +22,7 @@ from . import planner
 from . import radiation as rad
 from . import walkback as wb
 from .plan import PlanRequest, WalkbackRequest, feature, feature_collection
-from .raster_layers import blocked_layer, cost_layer
+from .raster_layers import blocked_layer, cost_layer, sand_layer
 from . import stations as st
 
 REPO = Path(__file__).resolve().parents[1]
@@ -32,6 +32,7 @@ TILES = DATA / "tiles"
 E2 = DATA / "e2"
 STATIONS = DATA / "stations"
 E12 = DATA / "e12"
+E8 = DATA / "e8"
 WEB = REPO / "web"
 
 app = FastAPI(title="Mars EVA planner", version="0.1.0")
@@ -75,6 +76,22 @@ def cost_png():
 @app.get("/layers/cost")
 def cost_legend():
     return cost_layer(str(BASE))[1]
+
+
+@app.get("/layers/sand.png")
+def sand_png():
+    """E8 sand fraction (release e8-v0): detected sand, conservative."""
+    if not (E8 / "sand.tif").exists():
+        raise HTTPException(status_code=404, detail="data/e8/sand.tif missing (release e8-v0)")
+    return Response(sand_layer(str(E8))[0], media_type="image/png")
+
+
+@app.get("/layers/sand")
+def sand_info():
+    if not (E8 / "sand.tif").exists():
+        raise HTTPException(status_code=404, detail="data/e8/sand.tif missing (release e8-v0)")
+    return {**sand_layer(str(E8))[1], "source": "E8 U-Net v0 (JB), release e8-v0",
+            "note": "conservative: ~91 % precision when it marks sand, but it misses a lot of sand"}
 
 
 @app.get("/layers/blocked.png")

@@ -200,3 +200,16 @@ def test_plan_live_infeasible_budget_is_422():
     body = plan_body(energy_budget_wh=150,
                      stations=[{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5}])
     assert client.post("/plan", json=body).status_code == 422
+
+
+def test_sand_layer():
+    if not (REPO / "data" / "e8" / "sand.tif").exists():
+        pytest.skip("E8 release not downloaded")
+    res = client.get("/layers/sand.png")
+    assert res.status_code == 200 and res.content[:4] == b"\x89PNG"
+    assert 0 < client.get("/layers/sand").json()["share_of_box_with_sand_pct"] < 50
+
+
+def test_check_data_script_runs():
+    from api import check_data
+    assert check_data.main() in (0, 1)
