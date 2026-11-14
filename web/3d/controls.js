@@ -98,6 +98,10 @@ export class TerrainControls {
     this.lookAt([0, this.terrain.heightAt(0, 0), 0], 2500, 0, 37 * Math.PI / 180);
   }
 
+  // Call after the terrain changed height (relief slider): the camera is lifted if the
+  // ground rose above it.
+  refresh() { this._apply(); }
+
   // Call once per frame with the seconds elapsed. Returns true when the view changed.
   update(dt) {
     if (this.autoRotate && !this._gesture) {
