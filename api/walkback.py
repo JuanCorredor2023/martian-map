@@ -22,46 +22,29 @@ import contourpy
 import numpy as np
 import rasterio
 from scipy import ndimage
-from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
 from shapely.geometry import LineString
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from fisica.edge_cost import NEIGHBOURS, edge_costs  # noqa: E402
 
 
 class Grid:
-    """Base grid, its directed E3 costs and the two sparse graphs (time, energy)."""
+    """Base grid and the two sparse graphs (time, energy), taken from the planner's
+    shared E4 Graph so walkback, /plan and the guide use exactly the same costs
+    (E3, or E3 x E1's sand price when human=True)."""
 
-    def __init__(self, base_dir, max_cell_slope_deg):
+    def __init__(self, base_dir, max_cell_slope_deg, human=True):
+        from . import planner
         with rasterio.open(f"{base_dir}/dem_1m.tif") as src:
-            dem = src.read(1)
             self.transform = src.transform
-        with rasterio.open(f"{base_dir}/slope_deg.tif") as src:
-            slope = src.read(1)
-        self.shape = dem.shape
-        time_s, energy_j, _ = edge_costs(dem, cell_size_m=abs(self.transform.a),
-                                         cell_slope_deg=slope,
-                                         max_cell_slope_deg=max_cell_slope_deg)
-        self.time = self._graph(time_s)
-        self.energy = self._graph(energy_j)
-        self.time_rev = self.time.T.tocsr()
-        self.energy_rev = self.energy.T.tocsr()
-
-    def _graph(self, weights):
-        rows, cols = self.shape
-        idx = np.arange(rows * cols).reshape(rows, cols)
-        src, dst, data = [], [], []
-        for k, (dr, dc) in enumerate(NEIGHBOURS):
-            ok = np.isfinite(weights[k])
-            r, c = np.nonzero(ok)
-            src.append(idx[r, c])
-            dst.append(idx[r + dr, c + dc])
-            data.append(weights[k][ok].astype(np.float64))
-        n = rows * cols
-        return csr_matrix((np.concatenate(data), (np.concatenate(src), np.concatenate(dst))),
-                          shape=(n, n))
+            self.shape = (src.height, src.width)
+        g = planner.graph(base_dir, max_cell_slope_deg, human)
+        self.cost_model = g.cost_model
+        self.time = g.csr("time_s")
+        self.energy = g.csr("energy_j")
+        self.time_rev = g.csr("time_s", reverse=True)
+        self.energy_rev = g.csr("energy_j", reverse=True)
 
     def cell(self, x, y):
         row, col = rasterio.transform.rowcol(self.transform, x, y)
@@ -118,20 +101,20 @@ class Grid:
         return self.boundary(self.region(field, level, seed_node))
 
 
-@lru_cache(maxsize=2)
-def grid(base_dir, max_cell_slope_deg):
-    return Grid(base_dir, max_cell_slope_deg)
+@lru_cache(maxsize=4)
+def grid(base_dir, max_cell_slope_deg, human=True):
+    return Grid(base_dir, max_cell_slope_deg, human)
 
 
 @lru_cache(maxsize=8)
-def return_fields(base_dir, max_cell_slope_deg, base_node):
+def return_fields(base_dir, max_cell_slope_deg, base_node, human=True):
     """(R_T in s, R_E in J) as 2-D arrays; inf where the base cannot be reached."""
-    g = grid(base_dir, max_cell_slope_deg)
+    g = grid(base_dir, max_cell_slope_deg, human)
     r_t = dijkstra(g.time_rev, directed=True, indices=base_node).reshape(g.shape)
     r_e = dijkstra(g.energy_rev, directed=True, indices=base_node).reshape(g.shape)
     return r_t, r_e
 
 
-def forward_energy(base_dir, max_cell_slope_deg, start_node, limit_j):
-    g = grid(base_dir, max_cell_slope_deg)
+def forward_energy(base_dir, max_cell_slope_deg, start_node, limit_j, human=True):
+    g = grid(base_dir, max_cell_slope_deg, human)
     return dijkstra(g.energy, directed=True, indices=start_node, limit=limit_j).reshape(g.shape)

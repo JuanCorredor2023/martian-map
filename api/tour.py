@@ -30,7 +30,7 @@ def plan_tour(req, base_dir, service_power_w):
     """FeatureCollection of the best station tour habitat -> ... -> habitat.
 
     Raises ValueError (bad input) or NoTour (nothing fits the limits)."""
-    g = planner.graph(str(base_dir), req.max_cell_slope_deg)
+    g = planner.graph(str(base_dir), req.max_cell_slope_deg, req.human_cost)
     hr, hc, h_moved = g.place(*req.start, label="habitat")
     hx, hy = (float(v) for v in g.cell_to_xy(hr, hc))
 
@@ -103,7 +103,7 @@ def plan_tour(req, base_dir, service_power_w):
                 "solver": sol.solver, "solver_runtime_s": round(sol.runtime_s, 3)}}
     start = {"type": "Feature", "geometry": {"type": "Point", "coordinates": [hx, hy]},
              "properties": {"kind": "start", "requested": list(req.start), "moved_m": h_moved}}
-    info = {"habitat_moved_m": h_moved, "visit_order": visit, "prize": float(sol.prize),
+    info = {"cost_model": g.cost_model, "habitat_moved_m": h_moved, "visit_order": visit, "prize": float(sol.prize),
             "stations_considered": len(keep), "service_power_w": service_power_w,
             "moved": moved}
     return {"type": "FeatureCollection", "features": [line, start]}, info

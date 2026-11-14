@@ -283,7 +283,8 @@ async function returnHome() {
   const here = route.coords[idx], usedSoFar = route.used[idx], usable = route.usable;
   const res = await fetch("/guide/return_home", {method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({position: here, habitat: plan.plan.properties.habitat,
-                          max_cell_slope_deg: plan.plan.properties.max_cell_slope_deg})});
+                          max_cell_slope_deg: plan.plan.properties.max_cell_slope_deg,
+                          human_cost: plan.plan.properties.human_cost !== false})});
   const out = await res.json();
   if (!res.ok) { ui("status").textContent = `Error: ${out.detail}`; return; }
   const f = out.features[0], p = f.properties;
@@ -316,7 +317,8 @@ async function checkOffRoute(pt) {
   while (j < route.coords.length - 1 && route.d[j] - route.d[Math.max(near.k, idx)] < REJOIN_AHEAD_M) j++;
   const res = await fetch("/guide/rejoin", {method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({position: pt, target: route.coords[j], habitat: plan.plan.properties.habitat,
-                          max_cell_slope_deg: plan.plan.properties.max_cell_slope_deg})});
+                          max_cell_slope_deg: plan.plan.properties.max_cell_slope_deg,
+                          human_cost: plan.plan.properties.human_cost !== false})});
   const out = await res.json();
   if (!res.ok) { ui("status").textContent = `Error: ${out.detail}`; return; }
   const p = out.features[0].properties, rc = out.features[0].geometry.coordinates, r = route;

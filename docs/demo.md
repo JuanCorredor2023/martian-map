@@ -22,6 +22,8 @@ The demo is a FastAPI backend (`api/`) that serves the HUD (`web/index.html`) an
    | `data/stations/` | `stations-v1` | saved science stations (optional) |
    | `data/e12/` | `e12-dose-v1` | radiation panel (optional) |
    | `data/e8/` | `e8-v0` | sand layer (optional) |
+   | `data/e1/` | `e1-sand-v1` | human cost: E3 × E1 sand price (optional; without it E3 alone) |
+   | `data/tiles/3d/` | generated | 3D view: run once `python src/viz3d/build_terrain_assets.py` (optional) |
 
    PowerShell example: `gh release download base-grid-v2 --dir data; Expand-Archive data\base_grid_v2.zip data\base -Force; Remove-Item data\base_grid_v2.zip`. The stations release has no zip: `gh release download stations-v1 --dir data\stations`.
 
@@ -43,7 +45,7 @@ No internet is needed at demo time: deck.gl is vendored in `web/vendor/` and all
 This follows the guide's demo script (zero-to-hero REV3, section 51).
 
 1. **Terrain (30 s).** HiRISE ortho with the slope layer on top; switch on *Sand detected (E8)*. Say that the 1 m DEM does not resolve the boxwork ridges, but the 0.25 m image does.
-2. **What a step costs (45 s).** Turn on *E3 walking cost*. The cost is Santee 2001 with Mars gravity only in the slope term. Whole-power scaling fails the lunar check (52 W against 292 W on flat ground). The cheapest metre is a gentle descent (338.75 J/m), not flat ground.
+2. **What a step costs (45 s).** Turn on *E3 walking cost*. *Human cost* (EVA limits) multiplies E3's energy by E1's sand price (up to +11.5 % on sand), the one terrain term learned from Curiosity's route that held up on unseen data. The cost is Santee 2001 with Mars gravity only in the slope term. Whole-power scaling fails the lunar check (52 W against 292 W on flat ground). The cheapest metre is a gentle descent (338.75 J/m), not flat ground.
 3. **Steep cells (20 s).** Move *Block cells steeper than N°* (30° by default; 20° blocks 30 % of the box). This is the decision that changes routes the most (E3 sensitivity).
 4. **Science stations (45 s).** The right panel lists 13 stations. Three are Curiosity's real drill sites (Nevado Sajama ridge, Valle de la Luna hollow, Altadena); the rest are candidates. The rubric (ridge 5, hollow 4, contact 4, Curiosity site 3) is editable live; its literature review is in `docs/research/`.
 5. **Plan (60 s).** Set the EVA limits (energy budget, margin, **max duration**) and press *Plan EVA*. E4 builds the round trip live. Press **▶ Play**: the budget bar splits energy into used, needed to return and free. It only shrinks, and the arrow shows the heading.
@@ -54,7 +56,7 @@ This follows the guide's demo script (zero-to-hero REV3, section 51).
 
 - Santee 2001 with g = 3.71 m/s² is an extrapolation, not validated for a suited astronaut on Mars. O2 is a metabolic equivalent (20.1 kJ/L), not a tank reading.
 - In this 2 × 2 km box energy rarely binds (the costliest round trip is about 560 Wh against 2,813 Wh xEMU); time does.
-- E1 (learning from Curiosity's route) found no DEM terrain price, so the human cost is E3 alone until sand and rocks are added.
+- E1 (learning from Curiosity's route) found no DEM terrain price; only E8's sand helps on unseen data. Its price is small: the route to Nevado Sajama moves up to 23 m and costs 1.8 % more, and the 120 min tour visits the same stations. It applies to astronauts what rover drivers avoided, which is an assumption.
 - Station values encode an expert ranking, not measurements. The walkback fields are on the same E3 costs as E4.
 - There is no GPS on Mars: walking the route is simulated.
 

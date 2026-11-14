@@ -33,20 +33,20 @@ def load_plan(plans_dir):
 
 
 @lru_cache(maxsize=8)
-def _towards_home(base_dir, max_cell_slope_deg, habitat_node):
-    g = planner.graph(base_dir, max_cell_slope_deg)
+def _towards_home(base_dir, max_cell_slope_deg, habitat_node, human=True):
+    g = planner.graph(base_dir, max_cell_slope_deg, human)
     t, pred = g.costs_to(habitat_node, "time_s", predecessors=True)
     return t, pred
 
 
-def return_home(base_dir, max_cell_slope_deg, position_xy, habitat_xy):
+def return_home(base_dir, max_cell_slope_deg, position_xy, habitat_xy, human=True):
     """LineString coordinates position -> habitat (fastest), with time, energy and length.
     Raises ValueError if a point is outside the box or the habitat is unreachable."""
-    g = planner.graph(base_dir, max_cell_slope_deg)
+    g = planner.graph(base_dir, max_cell_slope_deg, human)
     hr, hc, _ = g.place(*habitat_xy, label="habitat")
     pr, pc, moved = g.place(*position_xy, label="position")
     habitat, pos = int(g.node(hr, hc)), int(g.node(pr, pc))
-    t, pred = _towards_home(base_dir, max_cell_slope_deg, habitat)
+    t, pred = _towards_home(base_dir, max_cell_slope_deg, habitat, human)
     if not np.isfinite(t[pos]):
         raise ValueError("no walkable way back to the habitat from here")
     path = follow(pred, pos, end=habitat) if pos != habitat else np.array([pos])
@@ -67,16 +67,16 @@ def return_home(base_dir, max_cell_slope_deg, position_xy, habitat_xy):
 
 
 @lru_cache(maxsize=8)
-def _return_energy(base_dir, max_cell_slope_deg, habitat_node):
-    g = planner.graph(base_dir, max_cell_slope_deg)
+def _return_energy(base_dir, max_cell_slope_deg, habitat_node, human=True):
+    g = planner.graph(base_dir, max_cell_slope_deg, human)
     return g.costs_to(habitat_node, "energy_j")
 
 
-def rejoin(base_dir, max_cell_slope_deg, position_xy, target_xy, habitat_xy):
+def rejoin(base_dir, max_cell_slope_deg, position_xy, target_xy, habitat_xy, human=True):
     """Off-route recovery: the least-energy path position -> target (a point on the
     planned route ahead), with the same per-vertex profile as E4's route: t_s,
     used_wh, and what it takes to get home from each vertex (rv_wh, rv_time_s)."""
-    g = planner.graph(base_dir, max_cell_slope_deg)
+    g = planner.graph(base_dir, max_cell_slope_deg, human)
     hr, hc, _ = g.place(*habitat_xy, label="habitat")
     pr, pc, moved = g.place(*position_xy, label="position")
     tr, tc, _ = g.place(*target_xy, label="target")
@@ -93,8 +93,8 @@ def rejoin(base_dir, max_cell_slope_deg, position_xy, target_xy, habitat_xy):
     one = len(path) > 1
     energy = g.path_cost(path, "energy_j") if one else np.array([0.0])
     times = g.path_cost(path, "time_s") if one else np.array([0.0])
-    rv_t, _ = _towards_home(base_dir, max_cell_slope_deg, habitat)
-    rv_e = _return_energy(base_dir, max_cell_slope_deg, habitat)
+    rv_t, _ = _towards_home(base_dir, max_cell_slope_deg, habitat, human)
+    rv_e = _return_energy(base_dir, max_cell_slope_deg, habitat, human)
     return {
         "coordinates": [[float(a), float(b)] for a, b in zip(x, y)],
         "time_s": float(times[-1]), "energy_wh": float(energy[-1] / J_PER_WH),
