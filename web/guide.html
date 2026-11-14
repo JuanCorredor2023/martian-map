@@ -124,13 +124,15 @@ function headingAt(c, d, i, span) {
   return Math.atan2(c[b][1] - c[a][1], c[b][0] - c[a][0]);
 }
 
-function buildEvents(c, d, turnIndex, goalName, endText) {
+function buildEvents(c, d, turnIndex, goalName, endText, stops) {
+  // stops: [{i, name}] for a multi-station tour (E5); otherwise the single goal at turnIndex.
+  const stopIdx = (stops || []).map(s => s.i).concat(turnIndex != null ? [turnIndex] : []);
   const ev = [];
   let last = -1e9;
   for (let i = 0; i < c.length; i++) {
     if (d[i] - last < 25 || d[i] < 10 || d[d.length - 1] - d[i] < 10) continue;
-    // the turnaround at the goal is announced as the arrival, not as a sharp turn
-    if (turnIndex != null && Math.abs(d[i] - d[turnIndex]) < 25) continue;
+    // turnarounds at stations are announced as arrivals, not as sharp turns
+    if (stopIdx.some(k => Math.abs(d[i] - d[k]) < 25)) continue;
     let ahead = i; while (ahead < c.length - 1 && d[ahead] - d[i] < 15) ahead++;
     let behind = i; while (behind > 0 && d[i] - d[behind] < 15) behind--;
     const hin = headingAt(c, d, behind, 8), hout = headingAt(c, d, ahead, 8);
@@ -142,7 +144,9 @@ function buildEvents(c, d, turnIndex, goalName, endText) {
     const arrow = Math.abs(delta) > 135 ? (delta > 0 ? "↶" : "↷") : delta > 0 ? (Math.abs(delta) > 70 ? "←" : "↖") : (Math.abs(delta) > 70 ? "→" : "↗");
     ev.push({i, dist: d[i], text: kind, arrow}); last = d[i];
   }
-  if (turnIndex != null && turnIndex > 0 && turnIndex < c.length - 1) {
+  if (stops && stops.length) {
+    for (const s of stops) ev.push({i: s.i, dist: d[s.i], text: `Arrive at station ${s.name}`, arrow: "⚑", goal: true});
+  } else if (turnIndex != null && turnIndex > 0 && turnIndex < c.length - 1) {
     ev.push({i: turnIndex, dist: d[turnIndex], text: goalName, arrow: "⚑", goal: true});
   }
   ev.push({i: c.length - 1, dist: d[c.length - 1], text: endText, arrow: "⌂", end: true});
@@ -162,8 +166,9 @@ async function init() {
   const goalSt = plan.plan.features.find(x => x.properties.kind === "goal");
   const goalName = goalSt && goalSt.properties.station ? `Arrive at station ${goalSt.properties.station}` : "Arrive at the goal";
   const p = f.properties;
+  const stops = (p.stop_index || []).map((i, k) => ({i, name: p.visit_order[k]}));
   setRoute({coords: f.geometry.coordinates, t: p.t_s, used: p.used_wh, rv: p.rv_wh, rvTime: p.rv_time_s,
-            usable: p.usable_wh, turnIndex: p.turn_index, goalName, kind: "plan"});
+            usable: p.usable_wh, turnIndex: p.turn_index, goalName, kind: "plan", stops});
   deckgl = new Deck({parent: ui("map"), views: new OrthographicView({flipY: true}),
                      initialViewState: {target: [...toWorld(...route.coords[0]), 0], zoom: 4.5},
                      controller: true, layers: layers()});
@@ -172,7 +177,7 @@ async function init() {
 
 function setRoute(r) {
   r.d = cumulativeDistance(r.coords);
-  r.events = buildEvents(r.coords, r.d, r.turnIndex, r.goalName, "Arrive at the habitat");
+  r.events = buildEvents(r.coords, r.d, r.turnIndex, r.goalName, "Arrive at the habitat", r.stops);
   route = r; idx = 0; spoken.clear();
 }
 
@@ -234,6 +239,7 @@ function update(i) {
   // station arrival card
   for (const f of plan.plan.features.filter(f => f.properties.kind === "station")) {
     const id = f.properties.id, [sx, sy] = f.geometry.coordinates;
+    if (f.properties.visited === false) continue;              // not in the E5 tour
     if (!visited.has(id) && Math.hypot(sx - here[0], sy - here[1]) < 12 && r.kind === "plan") {
       visited.add(id); openStationCard(f.properties); break;
     }
@@ -324,8 +330,9 @@ async function checkOffRoute(pt) {
   const rv = r.rv ? p.rv_wh.concat(r.rv.filter((_, k) => tail(k))) : null;
   const rvTime = r.rvTime ? p.rv_time_s.concat(r.rvTime.filter((_, k) => tail(k))) : null;
   const turnIndex = r.turnIndex != null && r.turnIndex > j ? r.turnIndex - (j + 1) + rc.length : null;
+  const stops = (r.stops || []).filter(s => s.i > j).map(s => ({...s, i: s.i - (j + 1) + rc.length}));
   offRoute = null;
-  setRoute({...r, coords, t, used, rv, rvTime, turnIndex});
+  setRoute({...r, coords, t, used, rv, rvTime, turnIndex, stops});
   ui("status").textContent = `Back on track: ${p.time_s.toFixed(0)} s to rejoin the route.`;
   say("New route found.");
   update(0);

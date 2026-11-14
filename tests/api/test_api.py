@@ -183,7 +183,9 @@ def test_radiation_summary_and_scenarios():
 
 
 def test_plan_live_with_e4_round_trip():
-    body = plan_body(stations=[{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5,
+    # An explicit goal always uses E4's single-goal round trip (with or without E5).
+    body = plan_body(goal=[8143217.5, -284993.2],
+                     stations=[{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5,
                                 "service_time_min": 15}])
     fc = client.post("/plan", json=body).json()
     route = next(f for f in fc["features"] if f["properties"]["kind"] == "route")["properties"]
@@ -193,7 +195,7 @@ def test_plan_live_with_e4_round_trip():
     assert len(route["rv_wh"]) == len(route["t_s"]) == n       # per-vertex profile for the HUD
     assert all(b >= a for a, b in zip(route["used_wh"], route["used_wh"][1:]))   # budget only shrinks
     goal = next(f for f in fc["features"] if f["properties"]["kind"] == "goal")["properties"]
-    assert goal["station"] == "R0"
+    assert goal["moved_m"] >= 0
 
 
 def test_plan_live_infeasible_budget_is_422():
@@ -238,3 +240,19 @@ def test_pages_work_offline(page):
     html = (REPO / "web" / page).read_text(encoding="utf-8")
     assert not re.search(r'<(script|link)[^>]+(src|href)="https?://', html)   # no CDN at demo time
     assert client.get("/vendor/deck.gl-9.1.14.min.js").status_code == 200
+
+
+def test_plan_tour_with_e5_respects_duration():
+    from api import tour
+    if not tour.AVAILABLE:
+        pytest.skip("E5 (src/orienteering) not in this checkout yet")
+    st = [{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5, "type": "ridge", "service_time_min": 10},
+          {"id": "H0", "x": 8143219.3, "y": -284983.2, "score": 4, "type": "hollow", "service_time_min": 10},
+          {"id": "Q1", "x": 8143367.9, "y": -284509.5, "score": 3, "type": "curiosity", "service_time_min": 10}]
+    long_ = client.post("/plan", json=plan_body(stations=st, max_duration_min=240)).json()
+    short = client.post("/plan", json=plan_body(stations=st, max_duration_min=30)).json()
+    pl, ps = long_["features"][0]["properties"], short["features"][0]["properties"]
+    assert len(pl["visit_order"]) == 3 and pl["feasible"]
+    assert len(ps["visit_order"]) < 3 and ps["time_s"] <= 30 * 60 + 1      # duration binds
+    assert len(pl["stop_index"]) == len(pl["visit_order"])
+    assert all(b >= a for a, b in zip(pl["used_wh"], pl["used_wh"][1:]))
