@@ -25,6 +25,8 @@ Stations placed on the base grid, one entry per station:
     row, col: cell of the base grid that contains the point
     prize: prize of the station (score of the rubric)
     service_s: service time at the station in s
+    windows: (n, 2) earliest and latest start of service in s from the start of the
+             EVA ([0, inf] = always open); None means no station has a window
 """
 @dataclass
 class Stations:
@@ -36,6 +38,7 @@ class Stations:
     col: np.ndarray
     prize: np.ndarray
     service_s: np.ndarray
+    windows: np.ndarray | None = None
 
     def __len__(self):
         return len(self.row)
@@ -44,24 +47,32 @@ class Stations:
     Stations selected by a boolean mask or an index array.
     """
     def subset(self, keep):
+        windows = self.windows[keep] if self.windows is not None else None
         return Stations(self.id[keep], self.type[keep], self.x[keep], self.y[keep],
-                        self.row[keep], self.col[keep], self.prize[keep], self.service_s[keep])
+                        self.row[keep], self.col[keep], self.prize[keep], self.service_s[keep],
+                        windows)
 
     """
-    Stations with a new one inserted first (the habitat as station 0).
+    Stations with a new one inserted first (the habitat as station 0), always open.
     """
     def prepend(self, id, type, x, y, row, col, prize=0.0, service_s=0.0):
+        windows = None
+        if self.windows is not None:
+            windows = np.vstack([[0.0, np.inf], self.windows])
         return Stations(np.r_[[id], self.id], np.r_[[type], self.type],
                         np.r_[x, self.x], np.r_[y, self.y], np.r_[row, self.row],
                         np.r_[col, self.col], np.r_[prize, self.prize],
-                        np.r_[service_s, self.service_s])
+                        np.r_[service_s, self.service_s], windows)
 
 
 """
 Reads a point layer from a GeoPackage and places every point on the grid of `graph`
 (grafos.graph.Graph). Columns of stations_manual.gpkg (Sebas, release stations-v1):
     id, type, score (prize_col), service_time_min
-Missing columns get defaults: id = row number, type = "", prize = 1, service = 0.
+Optional time window columns (not in stations-v1 yet), minutes from the start of the EVA:
+    window_open_min, window_close_min (empty = no limit)
+Missing columns get defaults: id = row number, type = "", prize = 1, service = 0,
+no windows.
 Points outside the grid are dropped. Points falling in an already used cell are
 dropped too (the first one is kept), so every station is a distinct graph node.
 The habitat is not read from the file: it is a user input (see run.py).
@@ -80,9 +91,18 @@ def read_stations(graph, path=STATIONS_PATH, layer=STATIONS_LAYER, prize_col="sc
     else:
         service_s = np.zeros(n)
 
+    windows = None
+    if "window_open_min" in gdf.columns or "window_close_min" in gdf.columns:
+        opens = gdf.get("window_open_min", np.zeros(n))
+        closes = gdf.get("window_close_min", np.full(n, np.inf))
+        opens, closes = np.asarray(opens, dtype=float), np.asarray(closes, dtype=float)
+        opens = np.where(np.isnan(opens), 0.0, opens) * 60.0
+        closes = np.where(np.isnan(closes), np.inf, closes) * 60.0
+        windows = np.column_stack([opens, closes])
+
     row, col = graph.xy_to_cell(x, y)
     inside = (row >= 0) & (row < graph.height) & (col >= 0) & (col < graph.width)
-    stations = Stations(ids, types, x, y, row, col, prize, service_s).subset(inside)
+    stations = Stations(ids, types, x, y, row, col, prize, service_s, windows).subset(inside)
 
     _, first = np.unique(graph.node(stations.row, stations.col), return_index=True)
     return stations.subset(np.sort(first))
@@ -94,21 +114,50 @@ Writes the E5 route to a GeoPackage in the CRS of the DEM (contract #2), two lay
             solver, prize, energy_wh, travel_time_s, length_m, usable_wh and the
             visiting order (station ids separated by ">")
     stops : one Point per stop in visiting order (habitat first and last) with
-            order, id, type, score, service_time_min, and the cumulative energy_wh,
-            travel_time_s and length_m on arrival, plus the energy of the leg into it
+            order, id, type, score, service_time_min, service_energy_wh, and on arrival:
+            energy_wh (walking plus service done so far), walk_energy_wh, travel_time_s
+            (walking only), arrival_time_s (walking plus service so far), length_m;
+            plus the walking energy of the leg into it (leg_energy_wh)
     graph : grafos Graph (cell centres, CRS and leg costs)
     path, stop_index : from network.route_path
     usable_j : energy budget the solver used, in J
-Travel time is walking time only; service time at the stations is not included.
+    service_power_w : metabolic power while working at a station (service energy =
+                      service time x power); every stop is served once, the final
+                      return to the habitat is not
+    timeline : problem.evaluate_route(problem, route), optional. With it the stops get
+               the solver's schedule: arrival_time_s, wait_s (waiting for a window to
+               open) and departure_time_s, and the route its duration_s and wait_s.
+               Without it the times are walking plus service, with no waits.
+The route layer has the totals: energy_wh (walking plus service), walk_energy_wh,
+service_energy_wh, travel_time_s (walking), duration_s (walking, waits and service).
 Returns the path of the file.
 """
-def write_route_gpkg(out_path, graph, stations, solution, path, stop_index, usable_j):
+def write_route_gpkg(out_path, graph, stations, solution, path, stop_index, usable_j,
+                     service_power_w=0.0, timeline=None):
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     energy = graph.path_cost(path, "energy_j") if len(path) > 1 else np.zeros(1)
     time_s = graph.path_cost(path, "time_s") if len(path) > 1 else np.zeros(1)
     length = graph.path_cost(path, "length_m") if len(path) > 1 else np.zeros(1)
+
+    route_st = list(solution.route)
+    served = np.array([k not in route_st[:m] for m, k in enumerate(route_st)])
+    svc_s = np.where(served, stations.service_s[route_st], 0.0)
+    svc_j = svc_s * service_power_w
+    done_s = np.r_[0.0, np.cumsum(svc_s)[:-1]]
+    done_j = np.r_[0.0, np.cumsum(svc_j)[:-1]]
+
+    at = np.asarray(stop_index)
+    if timeline is not None and timeline["arrival"] is not None:
+        arrival = np.asarray(timeline["arrival"], dtype=float)
+        wait = np.asarray(timeline["begin"], dtype=float) - arrival
+        departure = np.asarray(timeline["depart"], dtype=float)
+    else:
+        arrival = time_s[at] + done_s
+        wait = np.zeros(len(at))
+        departure = arrival + svc_s
+    duration = float(departure[-1]) if len(departure) else 0.0
 
     rows, cols = graph.cell(path)
     xs, ys = graph.cell_to_xy(rows, cols)
@@ -120,25 +169,34 @@ def write_route_gpkg(out_path, graph, stations, solution, path, stop_index, usab
     route = gpd.GeoDataFrame({
         "solver": [solution.solver],
         "prize": [float(solution.prize)],
-        "energy_wh": [float(energy[-1]) / 3600.0],
+        "energy_wh": [(float(energy[-1]) + svc_j.sum()) / 3600.0],
+        "walk_energy_wh": [float(energy[-1]) / 3600.0],
+        "service_energy_wh": [svc_j.sum() / 3600.0],
         "travel_time_s": [float(time_s[-1])],
+        "duration_s": [duration],
+        "wait_s": [float(wait.sum())],
+        "service_power_w": [float(service_power_w)],
         "length_m": [float(length[-1])],
         "usable_wh": [float(usable_j) / 3600.0],
         "n_stops": [len(route_ids)],
         "order": [">".join(route_ids)],
     }, geometry=[LineString(coords)], crs=graph.crs_wkt)
 
-    at = np.asarray(stop_index)
     previous = np.r_[0, at[:-1]]
     stops = gpd.GeoDataFrame({
         "order": np.arange(len(route_ids)),
         "id": route_ids,
         "type": [str(stations.type[k]) for k in solution.route],
         "score": [float(stations.prize[k]) for k in solution.route],
-        "service_time_min": [float(stations.service_s[k]) / 60.0 for k in solution.route],
-        "energy_wh": energy[at] / 3600.0,
+        "service_time_min": svc_s / 60.0,
+        "service_energy_wh": svc_j / 3600.0,
+        "energy_wh": (energy[at] + done_j) / 3600.0,
+        "walk_energy_wh": energy[at] / 3600.0,
         "leg_energy_wh": (energy[at] - energy[previous]) / 3600.0,
         "travel_time_s": time_s[at],
+        "arrival_time_s": arrival,
+        "wait_s": wait,
+        "departure_time_s": departure,
         "length_m": length[at],
     }, geometry=[Point(stations.x[k], stations.y[k]) for k in solution.route], crs=graph.crs_wkt)
 

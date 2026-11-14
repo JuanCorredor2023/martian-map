@@ -60,6 +60,31 @@ def station_matrix(graph, stations, weight="energy_j"):
 
 
 """
+Energy and time matrices between stations, both measured along the same legs:
+energy[i][j] is the minimum energy from station i to station j, and time[i][j] is
+the walking time along that minimum-energy leg (not the fastest leg), so the
+solver's times match the route that is actually walked. One Dijkstra per station.
+Unreachable pairs are np.inf in both.
+"""
+def station_matrices(graph, stations):
+    ids = graph.node(stations.row, stations.col)
+    n = len(ids)
+    energy = np.full((n, n), np.inf)
+    time = np.full((n, n), np.inf)
+
+    for i, src in enumerate(ids):
+        dist, pred = graph.costs_from(int(src), "energy_j", predecessors=True)
+        energy[i] = dist[ids]
+        for j, dst in enumerate(ids):
+            if i == j:
+                time[i, j] = 0.0
+            elif np.isfinite(energy[i, j]):
+                leg = follow(pred, int(dst), end=int(src))[::-1]
+                time[i, j] = graph.path_cost(leg, "time_s")[-1]
+    return energy, time
+
+
+"""
 Node path (cell ids) of the cheapest leg from node a to node b.
 limit: known cost of the leg (e.g. from station_matrix); the search stops there,
 which is much faster than a search over the whole grid.

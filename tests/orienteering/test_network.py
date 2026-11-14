@@ -14,7 +14,7 @@ from grafos.graph import Graph
 
 from orienteering.data_io import read_stations
 from orienteering.network import (leg_path, main_component, place_habitat,
-                                  reachable_stations, station_matrix)
+                                  reachable_stations, station_matrices, station_matrix)
 
 NEIGHBOURS = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)]
 E, W = 2, 6
@@ -66,6 +66,37 @@ def test_read_stations_defaults_without_columns(tmp_path):
     s = read_stations(graph, path, layer="poses")
 
     assert s.prize.tolist() == [1.0, 1.0] and s.service_s.tolist() == [0.0, 0.0]
+
+
+def test_read_stations_windows(tmp_path):
+    graph = grid_graph(2, 3)
+    gdf = stations_at(graph, [(0, 0), (0, 1), (0, 2)], id=["A", "B", "C"],
+                      window_open_min=[10.0, None, 0.0], window_close_min=[20.0, 30.0, None])
+    path = tmp_path / "w.gpkg"
+    gdf.to_file(path, layer="stations")
+
+    s = read_stations(graph, path, layer="stations")
+
+    assert s.windows.tolist() == [[600.0, 1200.0], [0.0, 1800.0], [0.0, np.inf]]
+    assert s.prepend("habitat", "habitat", 0.0, 0.0, 1, 0).windows[0].tolist() == [0.0, np.inf]
+
+
+def test_time_matrix_follows_the_energy_leg():
+    # East moves are cheap in energy (0.5) but slow (5 s); the time matrix must report the
+    # time of the minimum-energy leg, not the fastest one
+    graph = grid_graph(2, 3)
+    energy = graph._edges["energy_j"].copy()
+    slow = graph._edges["time_s"].copy()
+    energy[E] = np.where(np.isfinite(energy[E]), 0.5, np.nan)
+    slow[E] = np.where(np.isfinite(slow[E]), 5.0, np.nan)
+    graph = Graph({"energy_j": energy, "time_s": slow}, NEIGHBOURS, transform=graph.transform)
+    stations = type("S", (), {"row": np.array([0, 0]), "col": np.array([0, 2])})
+
+    e, t = station_matrices(graph, stations)
+
+    assert e[0, 1] == 1.0 and t[0, 1] == 10.0
+    assert e[1, 0] == 2.0 and t[1, 0] == 2.0
+    assert t[0, 0] == 0.0
 
 
 def test_matrix_is_directed():
@@ -126,3 +157,33 @@ def test_route_gpkg_round_trip(tmp_path):
     assert stops["leg_energy_wh"].sum() * 3600 == pytest.approx(spent)
     assert stops["service_time_min"].tolist() == [0.0, 10.0, 5.0, 0.0]
     assert [tuple(int(v) for v in graph.cell(n)) for n in path[stop_index]] == cells + [cells[0]]
+
+    # With service at 2 W: A works 600 s (1200 J), B 300 s (600 J); the habitat is not served
+    out = write_route_gpkg(tmp_path / "e5s.gpkg", graph, stations, solution, path, stop_index,
+                           100.0, service_power_w=2.0)
+    line = gpd.read_file(out, layer="route").iloc[0]
+    stops = gpd.read_file(out, layer="stops")
+    walk_s = float(graph.path_cost(path, "time_s")[-1])
+
+    assert line["service_energy_wh"] * 3600 == pytest.approx(1800.0)
+    assert line["energy_wh"] * 3600 == pytest.approx(spent + 1800.0)
+    assert line["duration_s"] == pytest.approx(walk_s + 900.0)
+    assert (stops["service_energy_wh"] * 3600).tolist() == pytest.approx([0.0, 1200.0, 600.0, 0.0])
+    assert stops["energy_wh"].iloc[-1] * 3600 == pytest.approx(spent + 1800.0)
+    assert stops["arrival_time_s"].iloc[2] == pytest.approx(stops["travel_time_s"].iloc[2] + 600.0)
+
+    # With a timeline from the solver: B opens late, so the route waits there
+    from orienteering.problem import Problem, evaluate_route
+    problem = Problem(energy=dis, prize=stations.prize, budget=1e9, time=np.ones((3, 3)) * 10,
+                      service_s=stations.service_s,
+                      windows=np.array([[0, np.inf], [0, np.inf], [2000, np.inf]]))
+    timeline = evaluate_route(problem, route)
+    out = write_route_gpkg(tmp_path / "e5w.gpkg", graph, stations, solution, path, stop_index,
+                           100.0, service_power_w=2.0, timeline=timeline)
+    line = gpd.read_file(out, layer="route").iloc[0]
+    stops = gpd.read_file(out, layer="stops")
+
+    assert stops["arrival_time_s"].tolist() == pytest.approx([0.0, 10.0, 620.0, 2310.0])
+    assert stops["wait_s"].tolist() == pytest.approx([0.0, 0.0, 1380.0, 0.0])
+    assert stops["departure_time_s"].tolist() == pytest.approx([0.0, 610.0, 2300.0, 2310.0])
+    assert line["duration_s"] == pytest.approx(2310.0) and line["wait_s"] == pytest.approx(1380.0)
