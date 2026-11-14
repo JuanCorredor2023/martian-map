@@ -22,7 +22,7 @@ from . import guide
 from . import planner
 from . import radiation as rad
 from . import walkback as wb
-from .plan import (PlanRequest, ReturnHomeRequest, WalkbackRequest, feature,
+from .plan import (PlanRequest, RejoinRequest, ReturnHomeRequest, WalkbackRequest, feature,
                    feature_collection)
 from .raster_layers import blocked_layer, cost_layer, sand_layer
 from . import stations as st
@@ -181,6 +181,21 @@ def return_home(req: ReturnHomeRequest):
     crs_wkt = (BASE / "crs.wkt").read_text(encoding="utf-8").strip()
     return feature_collection(
         [feature("LineString", out.pop("coordinates"), kind="return_home", **out)], crs_wkt,
+        units={"coordinates": "m", "energy": "Wh", "time": "s"})
+
+
+@app.post("/guide/rejoin")
+def rejoin(req: RejoinRequest):
+    """Off route: least-energy path back onto the planned route, with the per-vertex
+    profile (t_s, used_wh, rv_wh, rv_time_s) so the guide can splice it in."""
+    limit = req.max_cell_slope_deg if req.max_cell_slope_deg else None
+    try:
+        out = guide.rejoin(str(BASE), limit, req.position, req.target, req.habitat)
+    except ValueError as err:
+        raise HTTPException(status_code=422, detail=str(err))
+    crs_wkt = (BASE / "crs.wkt").read_text(encoding="utf-8").strip()
+    return feature_collection(
+        [feature("LineString", out.pop("coordinates"), kind="rejoin", **out)], crs_wkt,
         units={"coordinates": "m", "energy": "Wh", "time": "s"})
 
 

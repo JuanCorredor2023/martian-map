@@ -230,3 +230,11 @@ def test_guide_saved_plan_and_return_home(tmp_path, monkeypatch):
     assert 600 < p["time_s"] < 1200 and len(p["t_s"]) == len(home["geometry"]["coordinates"])
     assert p["t_s"][-1] == pytest.approx(p["time_s"], abs=1.0)  # profile ends at the habitat
     assert client.post("/guide/return_home", json={"position": [0, 0], "habitat": CENTRE}).status_code == 422
+
+
+@pytest.mark.parametrize("page", ["index.html", "guide.html"])
+def test_pages_work_offline(page):
+    import re
+    html = (REPO / "web" / page).read_text(encoding="utf-8")
+    assert not re.search(r'<(script|link)[^>]+(src|href)="https?://', html)   # no CDN at demo time
+    assert client.get("/vendor/deck.gl-9.1.14.min.js").status_code == 200

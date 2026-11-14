@@ -34,6 +34,10 @@ Open **http://localhost:8000/**. The first plan or walkback takes about 10 s whi
 
 Health check: `http://localhost:8000/health`. Tests: `python -m pytest tests -q`.
 
+No internet is needed at demo time: deck.gl is vendored in `web/vendor/` and all data is local.
+
+**Guide mode (arm tablet):** after planning, open the link under the plan (or `http://localhost:8000/guide.html`). Press ▶ Walk; try *Detour (demo)* (off route → recalculating), *Solar storm (demo)* (automatic way home with the dose) and *Return home*.
+
 ## 3. Five-minute walkthrough
 
 This follows the guide's demo script (zero-to-hero REV3, section 51).

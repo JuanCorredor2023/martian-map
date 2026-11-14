@@ -83,3 +83,11 @@ class ReturnHomeRequest(BaseModel):
     position: Tuple[float, float]
     habitat: Tuple[float, float]
     max_cell_slope_deg: Optional[float] = Field(default=30.0, ge=0, le=90)
+
+
+class RejoinRequest(BaseModel):
+    """POST /guide/rejoin: off-route recovery towards a point on the planned route."""
+    position: Tuple[float, float]
+    target: Tuple[float, float]
+    habitat: Tuple[float, float]
+    max_cell_slope_deg: Optional[float] = Field(default=30.0, ge=0, le=90)
