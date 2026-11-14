@@ -62,3 +62,12 @@ def feature_collection(features, crs_wkt, **properties):
             "crs": {"type": "name", "properties": {"name": crs_wkt}},
             "properties": properties,
             "features": features}
+
+
+class WalkbackRequest(BaseModel):
+    """POST /walkback (guide section 34.3). Base defaults to the box centre."""
+    current_position: Tuple[float, float]
+    energy_remaining_wh: float = Field(ge=0)
+    emergency_return_time_s: float = Field(default=1800.0, gt=0)
+    base: Optional[Tuple[float, float]] = None
+    max_cell_slope_deg: Optional[float] = Field(default=30.0, ge=0, le=90)
