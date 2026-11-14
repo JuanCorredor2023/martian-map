@@ -85,6 +85,13 @@
   <div class="legend"></div>
   <div class="ticks"><span>0°</span><span>15°</span><span>30°</span><span>45°+</span></div>
   <hr>
+  <label><input type="checkbox" id="show-sand"> Sand detected (E8)</label>
+  <div id="sand-legend" class="muted" hidden style="font-size:11px">
+    <div class="legend" style="background: linear-gradient(90deg, rgba(255,196,64,0), rgb(255,196,64))"></div>
+    <div class="ticks"><span>0</span><span>sand fraction per 1 m cell</span><span>1</span></div>
+    Conservative U-Net: when it marks sand it is right ~91 % of the time, but it misses a lot of sand.
+  </div>
+  <hr>
   <label><input type="checkbox" id="show-cost"> E3 walking cost</label>
   <div id="cost-legend" hidden>
     <div class="legend cost"></div>
@@ -206,6 +213,9 @@ const blockLimit = () => ui("block-on").checked ? Number(ui("block-slope").value
 
 function overlayLayers() {
   const out = [];
+  if (ui("show-sand").checked) {
+    out.push(new BitmapLayer({id: "sand", image: "/layers/sand.png", bounds: boxBounds()}));
+  }
   if (ui("show-cost").checked) {
     out.push(new BitmapLayer({id: "cost", image: "/layers/cost.png", bounds: boxBounds(),
                               opacity: Math.pow(0.75, 2.2)}));
@@ -671,10 +681,11 @@ async function main() {
 }
 
 for (const id of ["show-ortho", "show-hillshade", "show-slope", "slope-opacity",
-                  "show-cost", "block-on", "block-slope"]) {
+                  "show-cost", "show-sand", "block-on", "block-slope"]) {
   ui(id).addEventListener("input", () => deckgl && deckgl.setProps({layers: layers()}));
 }
 ui("show-cost").addEventListener("input", showCostLegend);
+ui("show-sand").addEventListener("input", () => { ui("sand-legend").hidden = !ui("show-sand").checked; });
 ui("block-on").addEventListener("input", refreshBlockInfo);
 ui("block-slope").addEventListener("input", refreshBlockInfo);
 

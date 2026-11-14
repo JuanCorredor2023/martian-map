@@ -40,6 +40,9 @@ The HUD walks the planned route vertex by vertex, with a slider and play at ×30
 - Boundaries are drawn from the **region**, not from raw contours. The cells inside the limit that are connected to the base (red line) or to the astronaut (cyan line) form the region. Blocked and unreachable cells count as outside, and small holes are filled. A morphological closing and opening of about 2 m smooth it, and it is traced with `contourpy` on a one-cell padded grid so it closes along scarps and the box edge. The result is simplified to 2 m. A first version contoured the raw fields with NaN at blocked cells. It produced over 3,000 broken fragments (the line stopped at every blocked cell) and never closed the region; this is now covered by a test.
 - The HUD places the astronaut and the base by clicking. It shows the return time against the 30 min limit, the return energy and the energy left after returning.
 
+### Sand layer (E8)
+`GET /layers/sand.png` draws E8's sand fraction (JB, release `e8-v0`). It uses one hue, opacity grows with the fraction, and cells without sand are transparent. The HUD labels it "sand detected": the U-Net is conservative (about 91 % precision, low recall), so empty areas are not proof of no sand. Inside the boxwork network, where the stations are, it marks little sand; most detected sand lies on the darker deposits to the east and north.
+
 ### Radiation in the HUD (`api/radiation.py`, `GET /radiation`)
 - Reads E12's outputs (Juan, `data/e12/`): background rate, the real 2025-11-11 SEP event, the alarm rule and the dose along the provisional EVA. Radiation is shown as a **dose budget along the EVA timeline**, never as a per-pixel map, because the cosmic background barely changes across a few km [Guide-REV3, section 43] [Hassler2014].
 - HUD panel:
