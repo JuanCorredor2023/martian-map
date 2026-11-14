@@ -61,8 +61,32 @@ def station_matrix(graph, stations, weight="energy_j"):
 
 """
 Node path (cell ids) of the cheapest leg from node a to node b.
+limit: known cost of the leg (e.g. from station_matrix); the search stops there,
+which is much faster than a search over the whole grid.
 Raises ValueError if b is unreachable from a.
 """
-def leg_path(graph, a, b, weight="energy_j"):
-    _, pred = graph.costs_from(a, weight, predecessors=True)
+def leg_path(graph, a, b, weight="energy_j", limit=np.inf):
+    if a == b:
+        return np.array([a], dtype=np.int64)
+    limit = limit * (1 + 1e-9) + 1e-6 if np.isfinite(limit) else np.inf
+    _, pred = graph.costs_from(a, weight, limit=limit, predecessors=True)
     return follow(pred, b, end=a)[::-1]
+
+
+"""
+Full cell path of a tour (station indices, from start to end).
+    dis : station matrix used by the solver, to bound each leg's search
+Returns (path, stop_index): path is the node id of every cell visited, in order;
+stop_index[k] is the position in path of the k-th stop of the tour.
+"""
+def route_path(graph, stations, route, dis=None, weight="energy_j"):
+    nodes = graph.node(stations.row, stations.col)
+    path, stop_index = [int(nodes[route[0]])], [0]
+
+    for a, b in zip(route, route[1:]):
+        limit = dis[a][b] if dis is not None else np.inf
+        leg = leg_path(graph, int(nodes[a]), int(nodes[b]), weight, limit)
+        path.extend(int(v) for v in leg[1:])
+        stop_index.append(len(path) - 1)
+
+    return np.array(path, dtype=np.int64), stop_index

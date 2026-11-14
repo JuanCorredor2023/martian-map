@@ -5,6 +5,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
+import pytest
 from shapely.geometry import Point
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -89,3 +90,39 @@ def test_leg_path_detours_blocked_cell():
     path = leg_path(graph, a, b)
     cells = [tuple(int(v) for v in graph.cell(n)) for n in path]
     assert cells[0] == (1, 0) and cells[-1] == (1, 2) and (1, 1) not in cells
+
+
+def test_route_gpkg_round_trip(tmp_path):
+    import pyogrio
+
+    from orienteering.data_io import Stations, write_route_gpkg
+    from orienteering.network import route_path
+    from orienteering.problem import Solution
+
+    graph = grid_graph(3, 4, blocked=[(1, 1)])
+    cells = [(1, 0), (1, 3), (0, 2)]
+    xy = [graph.cell_to_xy(r, c) for r, c in cells]
+    stations = Stations(np.array(["habitat", "A", "B"]), np.array(["habitat", "ridge", "hollow"]),
+                        np.array([p[0] for p in xy]), np.array([p[1] for p in xy]),
+                        np.array([r for r, _ in cells]), np.array([c for _, c in cells]),
+                        np.array([0.0, 5.0, 4.0]), np.array([0.0, 600.0, 300.0]))
+    dis = station_matrix(graph, stations)
+    route = [0, 1, 2, 0]
+    spent = sum(dis[a][b] for a, b in zip(route, route[1:]))
+    solution = Solution(route, 9.0, spent, "dp", 0.0)
+
+    path, stop_index = route_path(graph, stations, route, dis)
+    out = write_route_gpkg(tmp_path / "e5.gpkg", graph, stations, solution, path, stop_index, 100.0)
+
+    assert sorted(name for name, _ in pyogrio.list_layers(out)) == ["route", "stops"]
+    line = gpd.read_file(out, layer="route").iloc[0]
+    stops = gpd.read_file(out, layer="stops")
+
+    assert line["order"] == "habitat>A>B>habitat"
+    assert line["energy_wh"] * 3600 == pytest.approx(spent)
+    assert len(line.geometry.coords) == len(path)
+    assert stops["id"].tolist() == ["habitat", "A", "B", "habitat"]
+    assert stops["energy_wh"].iloc[-1] * 3600 == pytest.approx(spent)
+    assert stops["leg_energy_wh"].sum() * 3600 == pytest.approx(spent)
+    assert stops["service_time_min"].tolist() == [0.0, 10.0, 5.0, 0.0]
+    assert [tuple(int(v) for v in graph.cell(n)) for n in path[stop_index]] == cells + [cells[0]]

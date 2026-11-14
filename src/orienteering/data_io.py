@@ -7,9 +7,11 @@ from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
+from shapely.geometry import LineString, Point
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 BASE_DIR = DATA_DIR / "base"
+ROUTE_PATH = DATA_DIR / "e5" / "e5_route.gpkg"
 STATIONS_PATH = DATA_DIR / "stations" / "stations_manual.gpkg"
 STATIONS_LAYER = "stations"
 TRAJECTORY_PATH = DATA_DIR / "e2" / "trajectory.gpkg"
@@ -86,5 +88,62 @@ def read_stations(graph, path=STATIONS_PATH, layer=STATIONS_LAYER, prize_col="sc
     return stations.subset(np.sort(first))
 
 
-def build_gpkg():
-    pass
+"""
+Writes the E5 route to a GeoPackage in the CRS of the DEM (contract #2), two layers:
+    route : one LineString through the centre of every cell of the tour, with
+            solver, prize, energy_wh, travel_time_s, length_m, usable_wh and the
+            visiting order (station ids separated by ">")
+    stops : one Point per stop in visiting order (habitat first and last) with
+            order, id, type, score, service_time_min, and the cumulative energy_wh,
+            travel_time_s and length_m on arrival, plus the energy of the leg into it
+    graph : grafos Graph (cell centres, CRS and leg costs)
+    path, stop_index : from network.route_path
+    usable_j : energy budget the solver used, in J
+Travel time is walking time only; service time at the stations is not included.
+Returns the path of the file.
+"""
+def write_route_gpkg(out_path, graph, stations, solution, path, stop_index, usable_j):
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    energy = graph.path_cost(path, "energy_j") if len(path) > 1 else np.zeros(1)
+    time_s = graph.path_cost(path, "time_s") if len(path) > 1 else np.zeros(1)
+    length = graph.path_cost(path, "length_m") if len(path) > 1 else np.zeros(1)
+
+    rows, cols = graph.cell(path)
+    xs, ys = graph.cell_to_xy(rows, cols)
+    coords = list(zip(xs.tolist(), ys.tolist()))
+    if len(coords) == 1:
+        coords = coords * 2
+
+    route_ids = [str(stations.id[k]) for k in solution.route]
+    route = gpd.GeoDataFrame({
+        "solver": [solution.solver],
+        "prize": [float(solution.prize)],
+        "energy_wh": [float(energy[-1]) / 3600.0],
+        "travel_time_s": [float(time_s[-1])],
+        "length_m": [float(length[-1])],
+        "usable_wh": [float(usable_j) / 3600.0],
+        "n_stops": [len(route_ids)],
+        "order": [">".join(route_ids)],
+    }, geometry=[LineString(coords)], crs=graph.crs_wkt)
+
+    at = np.asarray(stop_index)
+    previous = np.r_[0, at[:-1]]
+    stops = gpd.GeoDataFrame({
+        "order": np.arange(len(route_ids)),
+        "id": route_ids,
+        "type": [str(stations.type[k]) for k in solution.route],
+        "score": [float(stations.prize[k]) for k in solution.route],
+        "service_time_min": [float(stations.service_s[k]) / 60.0 for k in solution.route],
+        "energy_wh": energy[at] / 3600.0,
+        "leg_energy_wh": (energy[at] - energy[previous]) / 3600.0,
+        "travel_time_s": time_s[at],
+        "length_m": length[at],
+    }, geometry=[Point(stations.x[k], stations.y[k]) for k in solution.route], crs=graph.crs_wkt)
+
+    if out_path.exists():
+        out_path.unlink()
+    route.to_file(out_path, layer="route", driver="GPKG")
+    stops.to_file(out_path, layer="stops", driver="GPKG")
+    return out_path

@@ -12,9 +12,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from grafos.walkback import J_PER_WH  # noqa: E402
 
-from orienteering.data_io import STATIONS_LAYER, STATIONS_PATH, read_stations  # noqa: E402
+from orienteering.data_io import (ROUTE_PATH, STATIONS_LAYER, STATIONS_PATH,  # noqa: E402
+                                  read_stations, write_route_gpkg)
 from orienteering.network import (load_graph, place_habitat, reachable_stations,  # noqa: E402
-                                  station_matrix)
+                                  route_path, station_matrix)
 from orienteering.problem import Problem  # noqa: E402
 from orienteering.solvers import MAX_STATIONS, SOLVERS  # noqa: E402
 
@@ -29,6 +30,7 @@ def main(argv=None):
     ap.add_argument("--budget-wh", type=float, default=1000.0, help="energy budget (same as E4)")
     ap.add_argument("--margin", type=float, default=0.10, help="reserve kept out of the budget (same as E4)")
     ap.add_argument("--solver", choices=sorted(SOLVERS), default="dp")
+    ap.add_argument("--out", default=ROUTE_PATH, help="GeoPackage for the route (layers route and stops)")
     args = ap.parse_args(argv)
     t0 = time.time()
 
@@ -63,6 +65,13 @@ def main(argv=None):
     for k in solution.route:
         print(f"  {stations.id[k]:>8} ({stations.type[k]}): x={stations.x[k]:.1f} "
               f"y={stations.y[k]:.1f} prize={stations.prize[k]:g}")
+
+    if not solution.route:
+        print("no route fits in the budget: nothing written")
+        return solution
+    path, stop_index = route_path(graph, stations, solution.route, dis)
+    out = write_route_gpkg(args.out, graph, stations, solution, path, stop_index, budget_j)
+    print(f"route written to {out} ({len(path)} cells, {time.time() - t0:.1f} s total)")
     return solution
 
 
