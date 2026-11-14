@@ -45,9 +45,46 @@ Outputs in `data/e2/`:
 | `logistic_roc.png` | ROC curves for the 50 m corridor (out-of-block predictions). |
 | `visit_probability.tif` | The main model applied to every cell, on the base grid. It is a relative 0–1 score of how route-like the terrain is, not a calibrated probability. |
 
+## E1: terrain cost learned from the route with MaxEnt IRL (#5)
+
+The question: under which terrain prices is Curiosity's real route the most likely one? Maximum-entropy inverse reinforcement learning [Ziebart 2008]: a route is more likely the cheaper it is, `P(route) ∝ exp(−cost)`, and the prices are fitted so that the real route is as likely as possible. Every demonstration gets its start and goal, so the model learns *how* the rover went, not *where*.
+
+```bash
+python -m pytest tests/ml -q
+python src/ml/irl_toy_check.py                          # synthetic check: recovers hidden prices
+python src/ml/fit_irl.py                                # one demonstration per sol, 1 m, 50 m margin
+python src/ml/validate_irl.py                           # leave-one-block-out (E2's 5 blocks)
+python src/ml/fit_irl.py --piece-m 250 --cell 5 --whole-box
+python src/ml/validate_irl.py --piece-m 250 --cell 5 --whole-box
+python src/ml/irl_paper_figures.py                      # after every scale in its SCALES list
+python src/ml/export_e1_weights.py                      # hand-off to E3 (data/e1/e1_weights.json)
+```
+
+| Script | What it does |
+|---|---|
+| `maxent_irl.py` | The method: move costs on the 8-neighbour grid (same `NEIGHBOURS` order as `src/fisica/edge_cost.py`), soft value iteration (backward pass), expected visits (forward pass), NLL and its gradient, L-BFGS-B fit with every weight ≥ 0. Runs on the GPU with PyTorch if there is one. |
+| `irl_data.py` | Demonstrations from `data/e2/cell_sequence.csv`: one per sol (≥ 10 m) or route pieces of a given length, each in a window around it (or the whole box), with the E2 validation block. Features ≥ 0: `metre` (constant), `slope_deg`, `roughness`, `tpi_ridge`, `tpi_hollow` (TPI split by sign), `slope_mean_5m`, `slope_mean_15m`, each divided by its 99th percentile over the box. `--cell 5` averages them over 5 × 5 m cells. |
+| `irl_toy_check.py` | Invented terrain with hidden prices: the fit must recover them, and the gradient must match PyTorch autograd and finite differences. |
+| `fit_irl.py` | Fits the terrain model and the distance-only control (only the price of a metre) on every demonstration. |
+| `validate_irl.py` | Fits on four E2 blocks and tests on the fifth: NLL per metre, Hausdorff and within-5/10 m of the cheapest predicted route, and the AUC of the learned cost on E2's comparison sets. |
+| `irl_paper_figures.py` | `data/e1/e1_summary.json` and the figures `paper/figures/e1_fig2`–`e1_fig4`. |
+| `export_e1_weights.py` | Hand-off to E3: `data/e1/e1_weights.json` in the format agreed in #2 (read by `fisica.human_cost`). Weights are handed over only if the terrain model beats the distance-only control on held-out blocks; otherwise they are 0 and the fitted values stay in `fitted_weight`. |
+
+Outputs in `data/e1/` (not tracked by git), `<tag>` = demonstrations, cell size and window (for example `per_sol_cell1m_margin50m`, `piece250m_cell5m_box`):
+
+| File | Contents |
+|---|---|
+| `toy_check.json` | Hidden and recovered prices (5 repeats), gradient check, NLL per metre of the fit, the hidden prices and the control. |
+| `irl_fit_<tag>.json` | Weights of both models, NLL per metre, real vs expected feature counts, the preference check at the control's fit, and per-demonstration NLL. |
+| `validation_<tag>.json` | Held-out metrics per block and overall, weights fitted without each block, AUC of the learned cost next to E2's. |
+| `e1_summary.json` | The numbers quoted in the E1 note, gathered from the files above. |
+| `e1_weights.json` | Weights for `fisica.human_cost` (E3 × terrain factor): per feature `weight`, `fitted_weight`, `raster`, `min`/`max`, `transform`, `slope`; plus `distance_weight`, `validated` and the held-out NLL. |
+
+Prices are per cell length (1 m or 5 m of route); compare scales with `w_relative_to_metre`.
+
 ## Paper
 
-`python src/ml/paper_figures.py` writes the E2 figures to `paper/figures/` (run it after the scripts above). The write-up of E2 is in `paper/notes/E2_curiosity_traverse.md`.
+`python src/ml/paper_figures.py` writes the E2 figures to `paper/figures/` (run it after the scripts above). The write-up of E2 is in `paper/notes/E2_curiosity_traverse.md`. E1: `python src/ml/irl_paper_figures.py` and `paper/notes/E1_maxent_irl.md`.
 
 Notes on PLACES:
 
