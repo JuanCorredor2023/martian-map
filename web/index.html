@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mars EVA Planner</title>
+<script src="https://unpkg.com/deck.gl@9.1.14/dist.min.js"></script>
+<style>
+  :root {
+    --panel: rgba(16, 20, 26, 0.86);
+    --text: #e8ecf1;
+    --muted: #9aa6b2;
+    --accent: #ff7a45;
+    --border: rgba(255, 255, 255, 0.12);
+  }
+  html, body { margin: 0; height: 100%; background: #0b0d10; color: var(--text);
+               font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #map { position: absolute; inset: 0; }
+  .panel { position: absolute; background: var(--panel); border: 1px solid var(--border);
+           border-radius: 8px; padding: 12px 14px; backdrop-filter: blur(4px); }
+  #layers { top: 16px; left: 16px; width: 230px; }
+  #readout { bottom: 16px; left: 16px; font-variant-numeric: tabular-nums; }
+  h1 { font-size: 14px; margin: 0 0 10px; letter-spacing: 0.02em; }
+  h1 span { color: var(--accent); }
+  label { display: flex; align-items: center; gap: 8px; margin: 6px 0; cursor: pointer; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .muted { color: var(--muted); font-size: 12px; }
+  .legend { height: 10px; border-radius: 3px; margin: 6px 0 2px;
+            background: linear-gradient(90deg, #2e9b3e 0%, #f2d43a 33%, #f28c28 66%, #d7301f 100%); }
+  .ticks { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+  button { width: 100%; padding: 7px; margin-top: 4px; border: 0; border-radius: 6px;
+           background: var(--accent); color: #111; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: wait; }
+  #plan-info { margin-top: 8px; }
+  .warn { color: #f2c94c; font-size: 12px; margin-top: 4px; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
+  @media (max-width: 520px) { #layers { width: auto; right: 16px; } }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="layers" class="panel">
+  <h1>Mars EVA Planner <span>· Gale boxwork</span></h1>
+  <label><input type="checkbox" id="show-ortho" checked> HiRISE ortho (0.25 m)</label>
+  <label><input type="checkbox" id="show-hillshade"> Hillshade</label>
+  <label><input type="checkbox" id="show-slope" checked> Slope</label>
+  <div class="muted">Slope opacity</div>
+  <input type="range" id="slope-opacity" min="0" max="1" step="0.05" value="0.5">
+  <div class="legend"></div>
+  <div class="ticks"><span>0°</span><span>15°</span><span>30°</span><span>45°+</span></div>
+  <hr>
+  <button id="plan-btn">Plan EVA (test route)</button>
+  <div id="plan-info" class="muted"></div>
+  <hr>
+  <div class="muted" id="status">Loading layers…</div>
+</div>
+
+<div id="readout" class="panel muted">Move the cursor over the map</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Coordinate system (guide sections 31 and 37)
+// The backend speaks metres in the DEM's Mars equirectangular CRS. deck.gl's
+// OrthographicView is a plain plane, so we define "world units" for it:
+//   1 world unit = S metres, with S = tile_z0_m / 256 (= 8 m).
+// With that scale a 256-px tile at deck zoom z covers exactly the same ground
+// as the tile (z, x, y) produced by gdal2tiles --profile=raster --xyz, so tile
+// indices match without any offset. World y grows southwards (flipY), like
+// raster rows and XYZ tiles.
+// ---------------------------------------------------------------------------
+const {Deck, OrthographicView, TileLayer, BitmapLayer, PathLayer, ScatterplotLayer} = deck;
+
+let S, X0, Y0, SIZE_M;
+const toWorld = (x, y) => [(x - X0) / S, (Y0 - y) / S];       // Mars metres -> world
+const toMars  = (wx, wy) => [X0 + wx * S, Y0 - wy * S];       // world -> Mars metres
+
+function tileLayer(id, url, maxZoom, visible, opacity = 1) {
+  return new TileLayer({
+    id, visible, opacity,
+    data: url,
+    minZoom: 0,
+    maxZoom,                                  // above it deck.gl magnifies the last level
+    tileSize: 256,
+    extent: [0, 0, SIZE_M / S, SIZE_M / S],   // do not request tiles outside the bbox
+    renderSubLayers: props => {
+      const {left, bottom, right, top} = props.tile.bbox;
+      return new BitmapLayer(props, {data: null, image: props.data,
+                                     bounds: [left, bottom, right, top]});
+    },
+  });
+}
+
+const ui = id => document.getElementById(id);
+let deckgl, tiles, planFC = null;
+
+// Vector layers from the /plan FeatureCollection (coordinates in Mars metres).
+function planLayers() {
+  if (!planFC) return [];
+  const byKind = k => planFC.features.filter(f => f.properties.kind === k);
+  const points = [...byKind("start"), ...byKind("station")];
+  return [
+    new PathLayer({
+      id: "route", data: byKind("route"),
+      getPath: f => f.geometry.coordinates.map(([x, y]) => toWorld(x, y)),
+      getColor: [0, 200, 255], getWidth: 3, widthUnits: "pixels",
+      capRounded: true, jointRounded: true,
+    }),
+    new ScatterplotLayer({
+      id: "points", data: points,
+      getPosition: f => toWorld(...f.geometry.coordinates),
+      getFillColor: f => f.properties.kind === "start" ? [255, 255, 255] : [255, 122, 69],
+      getLineColor: [17, 17, 17], stroked: true, lineWidthMinPixels: 1.5,
+      getRadius: 7, radiusUnits: "pixels",
+    }),
+  ];
+}
+
+async function requestPlan() {
+  const btn = ui("plan-btn");
+  btn.disabled = true;
+  // Box centre as start; one demo station 300 m east. Values are illustrative.
+  const cx = X0 + SIZE_M / 2, cy = Y0 - SIZE_M / 2;
+  const body = {
+    start: [cx, cy],
+    stations: [{id: "S1", x: cx + 300, y: cy, score: 5, service_time_min: 10}],
+    energy_budget_wh: 2813, gravity_m_s2: 3.71, margin: 0.10,
+    apollo_speed_uses_signed_slope: true, service_energy_wh_per_min: null,
+  };
+  try {
+    const res = await fetch("/plan", {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    if (!res.ok) throw new Error((await res.json()).detail);
+    planFC = await res.json();
+    const route = planFC.features.find(f => f.properties.kind === "route").properties;
+    const p = planFC.properties;
+    ui("plan-info").innerHTML =
+      `Route ${route.length_m.toFixed(0)} m · usable budget ${p.energy_usable_wh.toFixed(0)} Wh` +
+      p.warnings.map(w => `<div class="warn">⚠ ${w}</div>`).join("");
+    deckgl.setProps({layers: layers()});
+  } catch (err) {
+    ui("plan-info").innerHTML = `<div class="warn">Error: ${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function layers() {
+  const L = tiles.layers;
+  return [
+    tileLayer("ortho", "/" + L.ortho.url, 5, ui("show-ortho").checked),
+    tileLayer("hillshade", "/" + L.hillshade.url, 3, ui("show-hillshade").checked, 0.6),
+    // deck.gl applies opacity^(1/2.2) internally (gamma), so we raise the slider
+    // value to 2.2 to make the slider linear: 0.3 on the slider = 30 % slope.
+    tileLayer("slope", "/" + L.slope.url, 3, ui("show-slope").checked,
+              Math.pow(Number(ui("slope-opacity").value), 2.2)),
+    ...planLayers(),
+  ];
+}
+
+async function main() {
+  const meta = await (await fetch("/layers")).json();
+  tiles = meta.tiles;
+  const g = meta.grid;
+  S = tiles.tile_z0_m / 256;
+  X0 = g.bbox.xmin;
+  Y0 = g.bbox.ymax;
+  SIZE_M = g.bbox.xmax - g.bbox.xmin;
+
+  const centre = SIZE_M / S / 2;
+  deckgl = new Deck({
+    parent: ui("map"),
+    views: new OrthographicView({id: "map", flipY: true}),
+    initialViewState: {target: [centre, centre, 0], zoom: 1.5, minZoom: -1, maxZoom: 8},
+    controller: true,
+    layers: layers(),
+    onHover: info => {
+      if (!info.coordinate) return;
+      const [x, y] = toMars(info.coordinate[0], info.coordinate[1]);
+      const col = Math.floor(x - X0), row = Math.floor(Y0 - y);
+      const inside = row >= 0 && col >= 0 && row < g.grid_1m.height && col < g.grid_1m.width;
+      ui("readout").textContent = inside
+        ? `x ${x.toFixed(1)} m · y ${y.toFixed(1)} m · cell (row ${row}, col ${col})`
+        : "Outside the study box";
+    },
+  });
+  ui("status").textContent = `Box ${SIZE_M} × ${SIZE_M} m · Mars equirectangular (m)`;
+}
+
+for (const id of ["show-ortho", "show-hillshade", "show-slope", "slope-opacity"]) {
+  ui(id).addEventListener("input", () => deckgl && deckgl.setProps({layers: layers()}));
+}
+
+ui("plan-btn").addEventListener("click", requestPlan);
+
+main().catch(err => { ui("status").textContent = "Error: " + err.message; console.error(err); });
+</script>
+</body>
+</html>
