@@ -208,3 +208,8 @@ def test_sand_layer():
     res = client.get("/layers/sand.png")
     assert res.status_code == 200 and res.content[:4] == b"\x89PNG"
     assert 0 < client.get("/layers/sand").json()["share_of_box_with_sand_pct"] < 50
+
+
+def test_check_data_script_runs():
+    from api import check_data
+    assert check_data.main() in (0, 1)
