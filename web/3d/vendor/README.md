@@ -13,7 +13,6 @@ npm integrity of the tarball:
 Only the files the page imports were kept, with their original paths:
 
 - `three/build/three.module.js`, `three/build/three.core.js`
-- `three/examples/jsm/controls/OrbitControls.js`, `MapControls.js`
 - `three/examples/jsm/lines/Line2.js`, `LineSegments2.js`, `LineGeometry.js`,
   `LineSegmentsGeometry.js`, `LineMaterial.js`
 

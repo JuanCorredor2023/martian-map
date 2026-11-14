@@ -32,8 +32,12 @@
   summary { cursor: pointer; margin: 6px 0; }
   details[open] summary { margin-bottom: 8px; }
   #readout { bottom: 16px; left: 16px; font-variant-numeric: tabular-nums; }
-  #compass { top: 16px; right: 16px; width: 44px; height: 44px; padding: 6px; border-radius: 50%; }
+  #compass { top: 16px; right: 16px; width: 44px; height: 44px; padding: 6px; border-radius: 50%;
+             cursor: pointer; }
   #compass svg { display: block; width: 44px; height: 44px; }
+  #home { top: 84px; right: 16px; width: 58px; height: 58px; padding: 17px; border-radius: 50%;
+          cursor: pointer; color: var(--text); font: inherit; }
+  #home svg { display: block; width: 22px; height: 22px; }
   #message { top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 460px; text-align: center; }
   #message code { display: block; margin-top: 8px; padding: 6px 8px; border-radius: 4px;
                   background: #1c222b; color: var(--text); user-select: all; }
@@ -49,8 +53,11 @@
   <!-- Closed by main.js on small screens so the panel does not cover the map. -->
   <details id="about" open>
     <summary class="muted">About this view</summary>
-    <div class="muted">Gale boxwork, 2 × 2 km. Drag to move, right-drag or two fingers to rotate,
-      wheel or pinch to zoom.</div>
+    <div class="muted">Gale boxwork, 2 × 2 km.<br>
+      <b>Mouse:</b> drag to rotate around the point under the cursor, right-drag (or Shift + drag)
+      to move, wheel to zoom.<br>
+      <b>Touch:</b> one finger rotates, two fingers move, pinch to zoom, twist to turn.<br>
+      Compass: face north. House: reset the view.</div>
     <hr>
     <div class="muted">The boxwork network is seen in the HiRISE photo (0.25 m). The relief (1 m DEM)
       shows the hillside, knolls and scarps; it does not resolve the 1–2 m ridges.</div>
@@ -61,7 +68,7 @@
   <div class="muted"><a href="/">← 2D planner</a></div>
 </div>
 
-<div id="compass" class="panel" title="North">
+<div id="compass" class="panel" title="North (click to face north)">
   <svg viewBox="-22 -22 44 44" aria-label="Compass: the arrow points north">
     <g id="compass-needle">
       <polygon points="0,-17 6,4 0,0 -6,4" fill="#ff7a45"/>
@@ -69,6 +76,10 @@
     </g>
   </svg>
 </div>
+
+<button id="home" class="panel" title="Reset the view" aria-label="Reset the view">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z" fill="#e8ecf1"/></svg>
+</button>
 
 <div id="readout" class="panel muted">Loading…</div>
 <div id="message" class="panel" hidden></div>

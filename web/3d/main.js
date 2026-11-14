@@ -7,8 +7,9 @@
 //   fps=1           render every frame and show frames per second
 //   spin=1          slowly orbit the camera (to measure fps without touching anything)
 //   check=shading   run a check from checks.js and show its result as JSON
+//   drag=pan        map-style mouse: drag moves, right-drag rotates (default: drag rotates)
 import * as THREE from 'three';
-import { MapControls } from 'three/addons/controls/MapControls.js';
+import { TerrainControls } from './controls.js';
 import { Terrain, BUILD_HINT } from './terrain.js';
 
 const ui = id => document.getElementById(id);
@@ -74,28 +75,14 @@ async function main() {
   scene.add(sun, sun.target);
   scene.add(new THREE.HemisphereLight(0xf0d6b8, 0x6b4a36, 1.1));
 
-  // Camera: start south of the box looking north, like a tilted map.
-  const controls = new MapControls(camera, canvas);
-  controls.target.set(0, terrain.heightAt(0, 0), 0);
-  camera.position.set(0, controls.target.y + 1500, 2000);
-  Object.assign(controls, {enableDamping: true, dampingFactor: 0.12, zoomToCursor: true,
-                           minDistance: 8, maxDistance: 7000, maxPolarAngle: THREE.MathUtils.degToRad(86)});
+  // Camera: an arcball on the terrain (controls.js). Start south of the box looking
+  // north, like a tilted map.
+  const controls = new TerrainControls(camera, canvas, terrain, scene,
+                                       {leftDrag: params.get('drag') === 'pan' ? 'pan' : 'rotate'});
   controls.autoRotate = params.get('spin') === '1';
-  controls.autoRotateSpeed = 2;
-  controls.update();
-
-  // Keep the point the camera orbits inside the box and on the ground.
-  const edge = terrain.half;
-  function settleTarget() {
-    const t = controls.target;
-    t.x = THREE.MathUtils.clamp(t.x, -edge, edge);
-    t.z = THREE.MathUtils.clamp(t.z, -edge, edge);
-    t.y = terrain.heightAt(t.x, t.z);
-    // Never let the camera sink below the ground.
-    const floor = terrain.heightAt(THREE.MathUtils.clamp(camera.position.x, -edge, edge),
-                                   THREE.MathUtils.clamp(camera.position.z, -edge, edge)) + 3;
-    if (camera.position.y < floor) camera.position.y = floor;
-  }
+  controls.home();
+  ui('compass').addEventListener('click', () => controls.faceNorth());
+  ui('home').addEventListener('click', () => controls.home());
 
   function resize() {
     const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -107,26 +94,30 @@ async function main() {
 
   // Render only when something changed, unless fps/spin ask for every frame.
   const continuous = params.get('fps') === '1' || controls.autoRotate;
-  let dirty = true, frames = 0, since = performance.now(), fps = 0;
-  controls.addEventListener('change', () => { dirty = true; });
+  let dirty = true, frames = 0, since = performance.now(), fps = 0, last = performance.now();
   window.addEventListener('resize', resize);
   resize();
 
   function readout() {
-    const [x, y] = terrain.toMars(controls.target.x, controls.target.z);
-    const text = `x ${x.toFixed(0)} m · y ${y.toFixed(0)} m · elevation ` +
-      `${terrain.elevation(terrain.heightAt(controls.target.x, controls.target.z, 1)).toFixed(0)} m`;
+    const centre = controls.centreGround();             // what is at the middle of the screen
+    let text = 'Looking at the sky';
+    if (centre && Math.abs(centre[0]) <= terrain.half && Math.abs(centre[2]) <= terrain.half) {
+      const [x, y] = terrain.toMars(centre[0], centre[2]);
+      text = `x ${x.toFixed(0)} m · y ${y.toFixed(0)} m · elevation ` +
+        `${terrain.elevation(terrain.heightAt(centre[0], centre[2], 1)).toFixed(0)} m`;
+    } else if (centre) {
+      text = 'Outside the study box';
+    }
     ui('readout').textContent = continuous ? `${text} · ${fps.toFixed(0)} fps` : text;
-    // The needle shows where north is on screen (north is -Z).
-    ui('compass-needle').setAttribute('transform',
-      `rotate(${THREE.MathUtils.radToDeg(controls.getAzimuthalAngle())})`);
+    // The needle shows where north is on screen: it turns against the heading.
+    ui('compass-needle').setAttribute('transform', `rotate(${-THREE.MathUtils.radToDeg(controls.yaw)})`);
   }
 
   function frame(now) {
     requestAnimationFrame(frame);
-    controls.update();                                   // applies damping and auto-rotate
+    if (controls.update((now - last) / 1000)) dirty = true;    // wheel easing, auto-rotate, drags
+    last = now;
     if (!dirty && !continuous) return;
-    settleTarget();
     renderer.render(scene, camera);
     dirty = false;
     frames++;

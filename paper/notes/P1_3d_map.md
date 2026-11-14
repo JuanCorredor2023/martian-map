@@ -45,11 +45,18 @@ Vertex normals come from the hillside, and the local relief is shaded by a norma
 **What the shading shows.** Hillside, knolls and scarps. It does **not** show the boxwork ridges: they are 1–3 m wide and the DEM does not resolve them. In the 3D view the boxwork network is recognised by the HiRISE photo draped on the terrain. The page says so on screen.
 
 ### Page (`web/3d/`, three.js r187 [threejs], WebGL)
-- A separate page at `/3d/`, served by the existing static mount; three.js is vendored (`web/3d/vendor/`, 10 files, MIT) so the page needs no internet.
+- A separate page at `/3d/`, served by the existing static mount; three.js is vendored (`web/3d/vendor/`, 8 files, MIT) so the page needs no internet.
 - three.js instead of deck.gl's `TerrainLayer` inside the HUD: shadows and terrain draping are experimental in deck.gl 9.1, live exaggeration reloads the mesh there, and a separate page does not collide with the HUD work.
 - Scene axes: X east, Y up, Z south, origin at the box centre. CRS coordinates (about 8.1 × 10⁶ m) are shifted in JavaScript (64-bit) before reaching the GPU (32-bit).
 - No custom shaders: `MeshStandardMaterial` with the photo and the normal map. In the high preset the four photo tiles share one UV set through per-texture transforms.
-- Rendering on demand (only when the camera moves), map-style controls, a compass, and a readout of CRS position and elevation.
+- Rendering on demand (only when the camera moves), a compass, and a readout of CRS position and elevation.
+
+### Camera: an arcball on the terrain (`web/3d/controls.js`, `web/3d/camera_math.js`)
+three.js' stock map controls orbit around a target that drifts away from what the user is looking at, so they were replaced. Every gesture acts on the **terrain point under the cursor**, found by casting a ray against the height grid (step proportional to the height above ground, then bisection):
+- **Rotate** (drag, or one finger): the view turns around that point, which stays fixed on screen. The camera has a heading and a tilt but never rolls, so the horizon stays level. A ring marks the point while rotating.
+- **Move** (right-drag, Shift + drag, or two fingers): the grabbed point follows the cursor and the camera keeps its altitude.
+- **Zoom** (wheel or pinch): towards that point, which stays under the cursor; two-finger twist turns the heading.
+- If the cursor is off the terrain, rotation and zoom use the terrain at the centre of the screen (or the box centre), never a point in empty space. The camera stays at least 2 m above the ground. `?drag=pan` swaps the two mouse drags (map style).
 
 ## Results
 Source of every number: `src/viz3d/build_terrain_assets.py` → `data/tiles/3d/terrain.json`, unless stated.
@@ -81,6 +88,7 @@ Local relief (smoothed): 1st to 99th percentile −3.9 to +6.9 m (`relief`).
 - **Assets against the DEM** (`tests/viz3d/test_terrain_assets.py`, 10 tests): stored heights equal the 2 × 2 m block means of the DEM within 2 cm everywhere; the north-west corner is the lowest and the south-east the highest, as in the DEM; slopes and normal map follow east and north with row 0 = north; a plane is reproduced with zero mesh error.
 - **Orientation in the browser:** the four corners read from the running page are −3850.4 (NW), −3726.0 (NE), −3573.8 (SW) and −3401.3 m (SE), the DEM's values, and NW projects to the far left of a north-looking view.
 - **Light from the right side** (`web/3d/checks.js`, `/3d/?check=shading`): the terrain without the photo is rendered from above lit from the north, south, east and west. The north-minus-south image correlates 0.94 with the north-facing slope of the shaded surface (hillside + k · detail) at k = 3; with the detail mirrored the correlation is −0.51, so a flipped normal map would be caught. East minus west: 0.95 against −0.41. At k = 1: 0.99 in both directions.
+- **Camera maths** (`tests/viz3d/camera_math.test.mjs`, 11 tests, `node --test`): the rotation pivot keeps its screen position and its distance; a pan puts the grabbed point back under the cursor at the same altitude; picking hits a floor, a ramp and the near face of a wall, and misses outside the block. In the running page, with synthetic pointer events: after a 240 px rotation drag the pivot is at the same pixel (700, 450); after a pan the grabbed point is exactly under the cursor; after a wheel zoom the point under the cursor has not moved; a two-finger gesture that doubles the spread and twists 45° halves the distance and turns the heading 45° with the midpoint fixed.
 - **Low preset shades like the high preset:** the same check gives the same numbers for `q=low` and `q=high` (k = 3: 0.939 / 0.946 against 0.940 / 0.946; mean brightness equal to 0.01 on a 0–255 scale).
 
 ## Limitations
@@ -101,6 +109,7 @@ From the repo root, with `data/base/` in place (`base-grid-v2`):
 ```
 python src/viz3d/build_terrain_assets.py      # writes data/tiles/3d/ (about 4 s)
 python -m pytest tests/viz3d -q
+node --test tests/viz3d/                      # camera maths (run with Node 26; nothing to install)
 python src/viz3d/paper_figures.py             # paper/figures/p1_fig1_relief_exaggeration.jpg
 python -m uvicorn api.main:app --port 8000    # then open http://localhost:8000/3d/
 ```
