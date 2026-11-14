@@ -11,8 +11,8 @@ from rasterio.transform import from_origin
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from fisica.metabolic import G_EARTH, G_MARS, G_MOON, TOTAL_MASS_KG, segment_cost  # noqa: E402
-from radiation.route_dose import (DoseRate, out_and_back, resample_line, route_timeline,  # noqa: E402
-                                  sample_raster, step_costs, walk)
+from radiation.route_dose import (DoseRate, out_and_back, resample_line, route_steps,  # noqa: E402
+                                  route_timeline, sample_raster, step_costs, walk)
 from radiation.sensitivity import budget_limited  # noqa: E402
 
 
@@ -25,6 +25,11 @@ def make_dem(tmp_path, slope_deg=0.0, size=200):
                        transform=from_origin(0.0, float(size), 1.0, 1.0), nodata=np.nan) as dst:
         dst.write(z, 1)
     return path
+
+
+def steps(dem, xy, step_m=1.0):
+    st = route_steps(np.asarray(xy, dtype=float), dem, step_m)
+    return st["points"], st["d_h"], st["alpha"]
 
 
 def test_step_costs_match_e3_segment_cost():
@@ -75,18 +80,17 @@ def test_stations_add_dwell_and_dose(tmp_path):
 
 def test_far_station_is_ignored(tmp_path):
     dem = make_dem(tmp_path, 0.0)
-    pts, s = resample_line(np.array([[10.0, 100.0], [110.0, 100.0]]), 1.0)
+    pts, d_h, alpha = steps(dem, [[10.0, 100.0], [110.0, 100.0]])
     far = [{"id": "far", "x": 60.0, "y": 160.0, "service_time_min": 30.0}]
-    w = walk(pts, s, sample_raster(dem, pts), stations=far)
+    w = walk(pts, d_h, alpha, stations=far)
     assert w["dwell_s"].sum() == 0.0
     assert w["stations_ignored"] == [{"id": "far", "dist_to_route_m": 60.0}]
 
 
 def test_gravity_changes_energy_not_time(tmp_path):
     dem = make_dem(tmp_path, 8.0)
-    pts, s = resample_line(np.array([[10.0, 100.0], [150.0, 100.0]]), 1.0)
-    z = sample_raster(dem, pts)
-    out = {g: walk(pts, s, z, g) for g in (G_MOON, G_MARS, G_EARTH)}
+    pts, d_h, alpha = steps(dem, [[10.0, 100.0], [150.0, 100.0]])
+    out = {g: walk(pts, d_h, alpha, g) for g in (G_MOON, G_MARS, G_EARTH)}
     times = [o["t_s"][-1] for o in out.values()]
     energies = [o["energy_j"][-1] for o in out.values()]
     assert np.ptp(times) == pytest.approx(0.0, abs=1e-9)
@@ -95,32 +99,29 @@ def test_gravity_changes_energy_not_time(tmp_path):
 
 def test_eta_modes(tmp_path):
     dem = make_dem(tmp_path, 0.0)
-    pts, s = resample_line(np.array([[10.0, 100.0], [110.0, 100.0]]), 1.0)
-    z = sample_raster(dem, pts)
-    base = walk(pts, s, z)
-    en = walk(pts, s, z, eta=2.0, eta_mode="energy")
-    sp = walk(pts, s, z, eta=2.0, eta_mode="speed")
+    pts, d_h, alpha = steps(dem, [[10.0, 100.0], [110.0, 100.0]])
+    base = walk(pts, d_h, alpha)
+    en = walk(pts, d_h, alpha, eta=2.0, eta_mode="energy")
+    sp = walk(pts, d_h, alpha, eta=2.0, eta_mode="speed")
     assert en["t_s"][-1] == pytest.approx(base["t_s"][-1])
     assert en["energy_j"][-1] == pytest.approx(2 * base["energy_j"][-1])
     assert sp["t_s"][-1] == pytest.approx(2 * base["t_s"][-1])
     assert base["energy_j"][-1] < sp["energy_j"][-1] < 2 * base["energy_j"][-1]
     with pytest.raises(ValueError):
-        walk(pts, s, z, eta=2.0, eta_mode="other")
+        walk(pts, d_h, alpha, eta=2.0, eta_mode="other")
 
 
-def test_return_time_retrace_and_loop(tmp_path):
+def test_return_along_route_retrace_and_loop(tmp_path):
     dem = make_dem(tmp_path, 5.0)
     one_way = np.array([[10.0, 100.0], [110.0, 100.0]])        # uphill eastwards
-    pts, s = resample_line(one_way, 1.0)
-    w = walk(pts, s, sample_raster(dem, pts))
+    w = walk(*steps(dem, one_way))
     dt_down, _ = segment_cost(1.0, -5.0)
-    assert w["return_s"][-1] == pytest.approx(100 * dt_down, rel=1e-3)   # walking back is downhill
+    assert w["return_route_s"][-1] == pytest.approx(100 * dt_down, rel=1e-3)   # walking back is downhill
     assert not w["closed"]
-    pts, s = resample_line(out_and_back(one_way), 1.0)
-    w = walk(pts, s, sample_raster(dem, pts))
+    w = walk(*steps(dem, out_and_back(one_way)))
     assert w["closed"]
-    assert w["return_s"][-1] == pytest.approx(0.0)
-    assert np.argmax(w["return_s"]) == pytest.approx(100, abs=1)       # farthest = turnaround
+    assert w["return_route_s"][-1] == pytest.approx(0.0)
+    assert np.argmax(w["return_route_s"]) == pytest.approx(100, abs=1)       # farthest = turnaround
 
 
 def test_series_rate_integrates_exactly():

@@ -10,18 +10,21 @@ now", and its cost depends on where you are, through the time to get back.
    past observations only. Alarm when the rate is > k_on x baseline for n_on
    consecutive observations; the event ends after n_on observations < k_off x.
    A threshold sweep reports alarms and delays for each (k_on, n_on).
-2. Return time map: fastest walk (time, not energy: dose is rate x time) from
-   every cell back to the habitat, a reverse Dijkstra on the E3 directed edges
-   (fisica.edge_cost, default slope limits). Raster sep_return_time_s.tif.
+2. Return time to the HABITAT, a user input (return_time.py): fastest walk back
+   (time, not energy: dose is rate x time) from E4's rv_time_s.tif, or E12's
+   provisional fallback with the same recipe until E4 delivers it.
 3. Replay: the provisional EVA (Curiosity's route out and back) placed so the
    real alarm of the strongest event arrives when the astronaut is farthest from
-   the habitat. Compares "ignore the alarm" with "return now", counting only the
-   dose received outside, for the real storm and for storms scaled x10 and x50
+   the habitat, and at 25 % / 75 % of the EVA time. Compares "ignore the alarm"
+   (finish the plan) with "return now" (fastest walk back), counting only the dose
+   received outside, for the real storm and for storms scaled x10 and x50
    (hypothetical: only the excess over the baseline is scaled).
 
 Usage:
-    python src/radiation/sep_alert.py [--route data/e2/trajectory.geojson] [--no-out-and-back]
-Writes data/e12/sep_alert.json, sep_thresholds.csv and sep_return_time_s.tif.
+    python src/radiation/sep_alert.py --habitat X Y [--route data/e2/trajectory.geojson]
+        [--no-out-and-back] [--return-raster rv_time_s.tif]
+Writes data/e12/sep_alert.json and sep_thresholds.csv (and the fallback return-time
+raster if no E4 raster is given).
 """
 import argparse
 import json
@@ -30,18 +33,14 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import rasterio
-from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import dijkstra
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from fisica.edge_cost import NEIGHBOURS, edge_costs  # noqa: E402
 from radiation.common import (BASE, E2_OUTPUT, E12_OUTPUT, NOMINAL_COLUMN, Q_GCR,  # noqa: E402
                               SECONDS_PER_DAY, posix_seconds, rad_rate_csv)
+from radiation.return_time import resolve_habitat, return_time_for  # noqa: E402
 from radiation.route_dose import (DoseRate, background_rate, load_route, out_and_back,  # noqa: E402
-                                  pixel_coords, repo_relative, route_timeline,
-                                  sample_raster)
+                                  repo_relative, route_timeline)
 
 K_ON, N_ON, K_OFF = 1.5, 2, 1.2
 BASELINE_WINDOW = "3D"
@@ -121,51 +120,6 @@ def threshold_sweep(rates, reference_onset):
     return pd.DataFrame(rows)
 
 
-# ----------------------------------------------------------------- return time
-
-def return_time_raster(dem_path, slope_path, habitat_xy):
-    """Fastest walking time (s) from every cell to the habitat cell; NaN = unreachable."""
-    with rasterio.open(dem_path) as src:
-        dem = src.read(1).astype(np.float64)
-        profile = src.profile
-        inv = ~src.transform
-    with rasterio.open(slope_path) as src:
-        slope = src.read(1).astype(np.float64)
-    time_s, _, _ = edge_costs(dem, 1.0, cell_slope_deg=slope)
-    rows_n, cols_n = dem.shape
-    idx = np.arange(rows_n * cols_n, dtype=np.int64).reshape(dem.shape)
-    src_nodes, dst_nodes, weights = [], [], []
-    for k, (dr, dc) in enumerate(NEIGHBOURS):
-        t = time_s[k]
-        ok = np.isfinite(t)
-        r, c = np.nonzero(ok)
-        # forward edge a=(r,c) -> b=(r+dr,c+dc); the reverse graph holds b -> a
-        src_nodes.append(idx[r + dr, c + dc].astype(np.int32))
-        dst_nodes.append(idx[r, c].astype(np.int32))
-        weights.append(t[ok].astype(np.float64))
-    n = rows_n * cols_n
-    graph = coo_matrix((np.concatenate(weights), (np.concatenate(src_nodes), np.concatenate(dst_nodes))),
-                       shape=(n, n)).tocsr()
-    col, row = pixel_coords(inv, habitat_xy[0], habitat_xy[1])
-    hr, hc = int(np.floor(row)), int(np.floor(col))
-    hr, hc = nearest_walkable(time_s, hr, hc)
-    dist = dijkstra(graph, directed=True, indices=int(idx[hr, hc]))
-    out = dist.reshape(dem.shape).astype(np.float32)
-    out[~np.isfinite(out)] = np.nan
-    profile.update(dtype="float32", nodata=np.nan, count=1, compress="deflate")
-    return out, profile, (hr, hc)
-
-
-def nearest_walkable(time_s, r, c):
-    """The cell itself if it has an outgoing edge, else the nearest one that does."""
-    walkable = np.isfinite(time_s).any(axis=0)
-    if walkable[r, c]:
-        return r, c
-    rr, cc = np.nonzero(walkable)
-    k = int(np.argmin((rr - r) ** 2 + (cc - c) ** 2))
-    return int(rr[k]), int(cc[k])
-
-
 # ---------------------------------------------------------------------- replay
 
 def scaled_series(rate, event, scale):
@@ -182,30 +136,30 @@ def scaled_series(rate, event, scale):
 def alarm_positions(tl):
     """Where on the EVA the alarm is replayed: farthest point and 25 % / 75 % of the time."""
     t = tl["t_s"].to_numpy()
-    pos = {"farthest": int(np.argmax(tl["return_s"].to_numpy()))}
+    pos = {"farthest": int(np.nanargmax(tl["return_s"].to_numpy()))}
     for f in ALARM_FRACTIONS:
         pos[f"{int(f * 100)}pct_of_eva"] = int(np.searchsorted(t, f * t[-1]))
     return pos
 
 
-def replay(tl, rate, event, i_far, return_shortest_s=None):
+def replay(tl, rate, event, i_far):
     """'Ignore the alarm' against 'return now' for one event and one timeline.
 
     The EVA starts so that the alarm arrives when the astronaut is at point i_far.
-    "Ignore" finishes the planned EVA; "return now" walks back by the faster of the
-    route (retrace or go on, see route_dose.walk) and the shortest-time path.
-    Only the dose received outside is counted.
+    "Ignore" finishes the planned EVA; "return now" takes the fastest walk back to
+    the habitat (return_s, from the R_T raster). Only the dose received outside is
+    counted. return_route_h (walking back along the route) is reported for context.
     """
     alarm = pd.Timestamp(event["alarm_utc"]).timestamp()
     start = alarm - float(tl["t_s"].iloc[i_far])
     end = start + float(tl["t_s"].iloc[-1])
-    t_retrace = float(tl["return_s"].iloc[i_far])
-    t_short = float(return_shortest_s[i_far]) if return_shortest_s is not None else np.nan
-    t_ret = min(t_retrace, t_short) if np.isfinite(t_short) else t_retrace
+    t_ret = float(tl["return_s"].iloc[i_far])
+    if not np.isfinite(t_ret):
+        raise SystemExit(f"route point {i_far} cannot reach the habitat on the E3 graph")
     out = {"eva_start_utc": pd.Timestamp(start, unit="s", tz="UTC").isoformat(),
            "alarm_point_index": i_far, "alarm_point_dist_m": round(float(tl["dist_m"].iloc[i_far]), 1),
-           "return_retrace_h": round(t_retrace / 3600, 3),
-           "return_shortest_h": None if not np.isfinite(t_short) else round(t_short / 3600, 3),
+           "return_fastest_h": round(t_ret / 3600, 3),
+           "return_route_h": round(float(tl["return_route_s"].iloc[i_far]) / 3600, 3),
            "remaining_plan_h": round((end - alarm) / 3600, 3), "scales": []}
     for s in STORM_SCALES:
         r = scaled_series(rate, event, s) if s != 1 else rate
@@ -223,6 +177,9 @@ def replay(tl, rate, event, i_far, return_shortest_s=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--route", default=str(E2_OUTPUT / "trajectory.geojson"))
+    ap.add_argument("--habitat", nargs=2, type=float, metavar=("X", "Y"),
+                    help="habitat in DEM metres (the same input E4 uses); else taken from the route file")
+    ap.add_argument("--return-raster", help="E4's rv_time_s.tif (R(v) in seconds for the same habitat)")
     ap.add_argument("--no-out-and-back", action="store_true",
                     help="use the route as given (it should already end at the habitat)")
     ap.add_argument("--dem", default=str(BASE / "dem_1m.tif"))
@@ -238,26 +195,25 @@ def main():
     sweep = threshold_sweep(rates, strongest["onset_utc"]) if strongest else pd.DataFrame()
     sweep.to_csv(args.out_dir / "sep_thresholds.csv", index=False)
 
-    # 2. return-time map, habitat = route start
+    # 2. return time to the habitat (user input; E4 raster or E12 fallback)
+    habitat_xy, habitat_source = resolve_habitat(args.habitat, args.route)
+    ret_path, ret_info = return_time_for(habitat_xy, args.return_raster, args.dem, args.slope)
     xy, stations = load_route(args.route)
     if not args.no_out_and_back:
         xy = out_and_back(xy)
-    ret, profile, habitat_cell = return_time_raster(args.dem, args.slope, tuple(xy[0]))
-    with rasterio.open(args.out_dir / "sep_return_time_s.tif", "w", **profile) as dst:
-        dst.write(ret, 1)
-    finite = ret[np.isfinite(ret)]
 
     # 3. replay on the provisional EVA
     replays = None
     if strongest:
-        tl = route_timeline(xy, args.dem, DoseRate.constant(background_rate()), stations=stations)
-        short = sample_raster(args.out_dir / "sep_return_time_s.tif", tl[["x", "y"]].to_numpy(), order=0)
+        tl = route_timeline(xy, args.dem, DoseRate.constant(background_rate()), stations=stations,
+                            return_raster=ret_path)
         series = DoseRate.series()
-        replays = {name: replay(tl, series, strongest, i, short) for name, i in alarm_positions(tl).items()}
+        replays = {name: replay(tl, series, strongest, i) for name, i in alarm_positions(tl).items()}
         replays["eva_time_h"] = round(float(tl["t_s"].iloc[-1]) / 3600, 3)
-        far = tl["return_s"].to_numpy() > 60        # skip the points next to the habitat
-        replays["return_shortest_vs_route_median"] = round(float(np.nanmedian(
-            short[far] / tl["return_s"].to_numpy()[far])), 3)
+        replays["step_method"] = tl.attrs.get("method")
+        far = tl["return_route_s"].to_numpy() > 60        # skip the points next to the habitat
+        replays["return_fastest_vs_route_median"] = round(float(np.nanmedian(
+            tl["return_s"].to_numpy()[far] / tl["return_route_s"].to_numpy()[far])), 3)
 
     summary = {
         "rule": {"column": COLUMN, "k_on": K_ON, "n_on": N_ON, "k_off": K_OFF, "baseline": BASELINE_WINDOW
@@ -266,13 +222,8 @@ def main():
         "events": events,
         "strongest_event": strongest,
         "threshold_sweep": sweep.to_dict(orient="records"),
-        "return_time_map": {
-            "file": "data/e12/sep_return_time_s.tif", "habitat_xy": [round(float(v), 3) for v in xy[0]],
-            "habitat_cell_row_col": list(habitat_cell), "weights": "E3 edge time_s (fisica.edge_cost defaults)",
-            "reachable_share_of_grid": round(float(finite.size / ret.size), 4),
-            "median_h": round(float(np.median(finite)) / 3600, 3),
-            "p95_h": round(float(np.percentile(finite, 95)) / 3600, 3),
-            "max_h": round(float(finite.max()) / 3600, 3)},
+        "habitat": {"xy": [round(habitat_xy[0], 3), round(habitat_xy[1], 3)], "source": habitat_source},
+        "return_time_map": ret_info,
         "replay": replays,
         "route": repo_relative(args.route), "out_and_back": not args.no_out_and_back,
         "notes": ["only the dose received outside is counted; the habitat dose is not modelled",

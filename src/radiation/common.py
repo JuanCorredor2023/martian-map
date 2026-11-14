@@ -25,6 +25,13 @@ Q_GCR = 3.05
 NOMINAL_COLUMN = "dose_e"
 
 
+def pixel_coords(inv, x, y):
+    """(col, row) in pixel units for map coordinates, given the INVERSE affine transform."""
+    import numpy as np
+    x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+    return inv.a * x + inv.b * y + inv.c, inv.d * x + inv.e * y + inv.f
+
+
 def posix_seconds(times):
     """UTC datetimes (Series, Index or array) -> float seconds since 1970.
 

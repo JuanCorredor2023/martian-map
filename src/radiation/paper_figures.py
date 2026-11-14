@@ -3,7 +3,7 @@
 Usage (repo root), after rad_data.py, route_dose.py --out-and-back, sensitivity.py
 and sep_alert.py:
     python src/radiation/paper_figures.py
-Inputs:  data/e12/*.json, rad_dose_rate.csv, sensitivity.csv, sep_return_time_s.tif,
+Inputs:  data/e12/*.json, rad_dose_rate.csv, sensitivity.csv, the return-time raster named in sep_alert.json,
          data/base/dem_1m.tif, slope_deg.tif, data/e2/trajectory.geojson, cell_sequence.csv
 Outputs: data/e12/e12_summary.json   every number quoted in the note
          paper/figures/e12_fig1_rad_dose_rate.png
@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fisica.edge_cost import NEIGHBOURS, edge_costs  # noqa: E402
 from radiation.common import BASE, E2_OUTPUT, E12_OUTPUT, REPO  # noqa: E402
 from radiation.route_dose import (DoseRate, background_rate, load_route, out_and_back,  # noqa: E402
-                                  route_timeline, sample_raster)
+                                  route_timeline)
 from radiation.sep_alert import BASELINE_WINDOW, K_ON, load_rates  # noqa: E402
 
 FIG_DIR = REPO / "paper" / "figures"
@@ -63,7 +63,12 @@ def load_json(name):
 # ------------------------------------------------------------------------ check
 
 def e3_edge_check(dem_path, slope_path):
-    """Curiosity's one-way route timed two ways: E12 resampling vs E3 edges on the cell sequence."""
+    """E12 route times against the sum of E3 edge times over E2's 8-connected cell sequence.
+
+    - the cell sequence given to route_timeline as a chain of cell centres must give
+      exactly the E3 edge sum (step method "e3_edges");
+    - Curiosity's free line (pose positions) is resampled every 1 m: compare per metre.
+    """
     with rasterio.open(dem_path) as src:
         dem = src.read(1).astype(np.float64)
     with rasterio.open(slope_path) as src:
@@ -84,10 +89,18 @@ def e3_edge_check(dem_path, slope_path):
             length += float(np.hypot(*NEIGHBOURS[k]))
         else:
             missing += 1
+    with rasterio.open(dem_path) as src:
+        T = src.transform
+    centres = np.column_stack([T.c + (c + 0.5) * T.a, T.f + (r + 0.5) * T.e])
+    tl_cells = route_timeline(centres, dem_path, DoseRate.constant(1.0))
+    t_cells = float(tl_cells["t_s"].iloc[-1])
     xy, _ = load_route(E2_OUTPUT / "trajectory.geojson")
     tl = route_timeline(xy, dem_path, DoseRate.constant(1.0))
     t_line, l_line = float(tl["t_s"].iloc[-1]), float(tl["dist_m"].iloc[-1])
-    return {"e3_edges_cell_sequence_h": round(total / 3600, 3), "e12_resampled_line_h": round(t_line / 3600, 3),
+    return {"e3_edges_cell_sequence_h": round(total / 3600, 4),
+            "e12_on_cell_chain_h": round(t_cells / 3600, 4), "e12_cell_chain_method": tl_cells.attrs["method"],
+            "e12_cell_chain_vs_e3_relative_difference": float(f"{t_cells / total - 1:.2e}"),
+            "e12_resampled_line_h": round(t_line / 3600, 3), "e12_line_method": tl.attrs["method"],
             "cell_path_length_m": round(length, 1), "line_length_m": round(l_line, 1),
             "cell_steps": int(len(seq) - 1), "steps_without_edge": missing,
             "time_relative_difference": round(t_line / total - 1, 4),
@@ -142,10 +155,10 @@ def fig2_timeline(sep, rate_bg):
     xy, _ = load_route(E2_OUTPUT / "trajectory.geojson")
     xy = out_and_back(xy)
     dem = BASE / "dem_1m.tif"
-    tl_bg = route_timeline(xy, dem, DoseRate.constant(rate_bg))
+    ret_raster = REPO / sep["return_time_map"]["file"]
+    tl_bg = route_timeline(xy, dem, DoseRate.constant(rate_bg), return_raster=ret_raster)
     far = sep["replay"]["farthest"]
     tl_sep = route_timeline(xy, dem, DoseRate.series(), start_utc=far["eva_start_utc"])
-    short = sample_raster(E12_OUTPUT / "sep_return_time_s.tif", tl_bg[["x", "y"]].to_numpy(), order=0)
     h = tl_bg["t_s"] / 3600
     fig, (a, b) = plt.subplots(1, 2, figsize=(9.2, 3.3))
     a.plot(h, tl_bg["dose_ugy"], color=SERIES[0], label=f"Boxwork background ({rate_bg:.0f} µGy/day)")
@@ -164,8 +177,8 @@ def fig2_timeline(sep, rate_bg):
     a.set_title("(a) Dose along the provisional EVA (out and back)")
     a.legend(loc="lower right", fontsize=7.5, bbox_to_anchor=(1.0, 0.0))
 
-    b.plot(h, tl_bg["return_s"] / 3600, color=SERIES[0], label="Along the route (retrace or go on)")
-    b.plot(h, short / 3600, color=SERIES[2], label="Shortest-time path (E3 edges)")
+    b.plot(h, tl_bg["return_route_s"] / 3600, color=SERIES[0], label="Along the route (retrace or go on)")
+    b.plot(h, tl_bg["return_s"] / 3600, color=SERIES[2], label="Fastest path to the habitat (E3 edges)")
     b.set_xlabel("EVA time (h)")
     b.set_ylabel("Walking time back to the habitat (h)")
     b.set_title("(b) Time to shelter if the alarm comes now")
@@ -211,7 +224,7 @@ def fig3_sensitivity():
 
 
 def fig4_map(sep):
-    with rasterio.open(E12_OUTPUT / "sep_return_time_s.tif") as src:
+    with rasterio.open(REPO / sep["return_time_map"]["file"]) as src:
         ret = src.read(1) / 60.0
         b = src.bounds
     xy, _ = load_route(E2_OUTPUT / "trajectory.geojson")
@@ -221,8 +234,8 @@ def fig4_map(sep):
     ext = [0, b.right - b.left, 0, b.top - b.bottom]
     im = ax.imshow(ret, cmap=cmap, extent=ext, interpolation="nearest")
     ax.plot(xy[:, 0] - b.left, xy[:, 1] - b.bottom, color=SERIES[1], lw=1.4, label="Curiosity's route (provisional EVA)")
-    hx, hy = sep["return_time_map"]["habitat_xy"]
-    ax.plot(hx - b.left, hy - b.bottom, marker="s", ms=7, color=TEXT, ls="none", label="Habitat (route start)")
+    hx, hy = sep["habitat"]["xy"]
+    ax.plot(hx - b.left, hy - b.bottom, marker="s", ms=7, color=TEXT, ls="none", label="Habitat (input)")
     ax.grid(False)
     ax.set_xlabel("Easting in the crop (m)")
     ax.set_ylabel("Northing in the crop (m)")
@@ -254,7 +267,7 @@ def main():
         "route_out_and_back": route,
         "timeline_figure": timeline,
         "sensitivity": sens,
-        "sep": {k: sep[k] for k in ["rule", "events", "return_time_map", "replay"]},
+        "sep": {k: sep[k] for k in ["rule", "events", "habitat", "return_time_map", "replay"]},
         "sep_threshold_sweep": sep["threshold_sweep"],
         "check_against_e3_edges": e3_edge_check(BASE / "dem_1m.tif", BASE / "slope_deg.tif"),
     }

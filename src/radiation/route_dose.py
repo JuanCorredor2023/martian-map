@@ -5,11 +5,14 @@ comes from walking the route with the E3 model (src/fisica, Sebas), plus the tim
 spent at each station.
 
 Steps:
-1. Resample the route every --step-m metres (horizontal) and read the DEM there
-   (bilinear), so each step has a horizontal length d_h and a slope alpha.
+1. Steps of the route, two cases:
+   - the route is a chain of neighbouring grid cells (what E4/E5 produce, vertices
+     on cell centres): each step is one E3 edge, d_h = 1 or sqrt(2) m and
+     alpha = atan(dz / d_h) between the two cells, exactly as fisica.edge_cost;
+   - any other line (Curiosity's traverse): resampled every --step-m metres with
+     the DEM read bilinearly. Same formulas, different sampling.
 2. Time and energy of each step with E3 (Apollo speed, Santee 2001 power):
-   dt = d_h / (V(alpha) cos alpha), E = P(alpha, V, g) dt. Same formulas as
-   fisica.edge_cost; only the grid sampling differs.
+   dt = d_h / (V(alpha) cos alpha), E = P(alpha, V, g) dt.
 3. Terrain factor eta (sensitivity; Santee has none, see sensitivity.py):
    mode "energy": E x eta, time unchanged (Pandolf-style surface factor);
    mode "speed":  V / eta, so time x eta and power at the slower speed.
@@ -17,14 +20,16 @@ Steps:
 4. Stations: each one adds its service_time_min at the nearest route point.
 5. Dose: constant boxwork background (default) or the real RAD series from
    --start-utc on, integrated exactly over the piecewise-linear series.
-6. Return time: time to walk back to the start retracing the route (reverse
-   slopes). Used by the SEP alert (sep_alert.py).
+6. Return time to the HABITAT, a user input (return_time.py): return_s is the
+   fastest walk back from E4's rv_time_s.tif (--return-raster) or, until it
+   exists, from E12's provisional fallback. return_route_s is the walk back along
+   the route itself (meaningful only when the route starts at the habitat).
 
 Usage:
-    python src/radiation/route_dose.py [--route data/e2/trajectory.geojson]
-        [--stations FILE] [--start-utc 2025-11-11T10:00:00Z] [--g 3.71]
-        [--eta 1.0 --eta-mode energy] [--sand-raster FILE] [--step-m 1] [--every-m 5]
-        [--out data/e12/route_dose.geojson]
+    python src/radiation/route_dose.py --habitat X Y [--route data/e2/trajectory.geojson]
+        [--out-and-back] [--stations FILE] [--return-raster rv_time_s.tif]
+        [--start-utc 2025-11-11T10:00:00Z] [--g 3.71] [--eta 1.0 --eta-mode energy]
+        [--sand-raster FILE] [--step-m 1] [--every-m 5] [--out data/e12/route_dose.geojson]
 Writes the GeoJSON (Point per output step) and <out>_summary.json.
 """
 import argparse
@@ -42,11 +47,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fisica.edge_cost import SPEED_ZERO_SLOPE_DEG, santee_power_array  # noqa: E402
 from fisica.metabolic import G_MARS, J_PER_WH, TOTAL_MASS_KG, apollo_speed  # noqa: E402
 from radiation.common import (BASE, E2_OUTPUT, E12_OUTPUT, NOMINAL_COLUMN, Q_GCR, REPO,  # noqa: E402
-                              SECONDS_PER_DAY, crs_wkt, posix_seconds, rad_rate_csv)
+                              SECONDS_PER_DAY, crs_wkt, pixel_coords, posix_seconds, rad_rate_csv)
+from radiation.return_time import resolve_habitat, return_time_for  # noqa: E402
 
 EDGE_SLOPE_LIMIT_DEG = 20.0     # E3/E4 planning limit; steps above it are only counted
 LOOP_TOLERANCE_M = 5.0          # a route that ends this close to its start is a loop
 MAX_STATION_DIST_M = 25.0       # stations farther than this from the route are ignored
+CELL_CENTRE_TOL_M = 0.05        # vertices this close to cell centres count as a cell chain
 
 
 # ----------------------------------------------------------------------------- route
@@ -99,6 +106,11 @@ def repo_relative(path):
         return str(path)
 
 
+def out_and_back(xy):
+    """Close a one-way route by retracing it back to the start (EVA loop)."""
+    return np.vstack([xy, xy[::-1][1:]])
+
+
 def resample_line(xy, step_m):
     """Points every step_m metres (horizontal) along the polyline, ends included.
 
@@ -118,12 +130,6 @@ def resample_line(xy, step_m):
     return np.column_stack([x, y]), s
 
 
-def pixel_coords(inv, x, y):
-    """(col, row) in pixel units for map coordinates, given the INVERSE affine transform."""
-    x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
-    return inv.a * x + inv.b * y + inv.c, inv.d * x + inv.e * y + inv.f
-
-
 def sample_raster(path, xy, order=1):
     """Raster value at each (x, y): bilinear (order=1) or nearest cell (order=0).
 
@@ -141,6 +147,48 @@ def sample_raster(path, xy, order=1):
     out = map_coordinates(a, np.vstack([rows - 0.5, cols - 0.5]), order=order, mode="nearest")
     out[outside] = np.nan
     return out
+
+
+def cell_chain(xy, transform, shape, tol_m=CELL_CENTRE_TOL_M):
+    """(rows, cols) if the polyline is a chain of 8-neighbour cells through cell centres, else None."""
+    cols, rows = pixel_coords(~transform, xy[:, 0], xy[:, 1])
+    r, c = np.floor(rows).astype(int), np.floor(cols).astype(int)
+    if (r < 0).any() or (c < 0).any() or (r >= shape[0]).any() or (c >= shape[1]).any():
+        return None
+    cx = transform.c + (c + 0.5) * transform.a
+    cy = transform.f + (r + 0.5) * transform.e
+    if np.max(np.hypot(xy[:, 0] - cx, xy[:, 1] - cy)) > tol_m:
+        return None
+    keep = np.concatenate([[True], (np.diff(r) != 0) | (np.diff(c) != 0)])
+    r, c = r[keep], c[keep]
+    if len(r) < 2 or np.any(np.abs(np.diff(r)) > 1) or np.any(np.abs(np.diff(c)) > 1):
+        return None
+    return r, c
+
+
+def route_steps(route_xy, dem_path, step_m=1.0):
+    """Points, distances, elevations, step lengths and slopes of a route (see step 1)."""
+    with rasterio.open(dem_path) as src:
+        dem = src.read(1).astype(np.float64)
+        transform = src.transform
+    chain = cell_chain(route_xy, transform, dem.shape)
+    if chain is not None:
+        r, c = chain
+        points = np.column_stack([transform.c + (c + 0.5) * transform.a, transform.f + (r + 0.5) * transform.e])
+        z = dem[r, c]
+        diagonal = (np.diff(r) != 0) & (np.diff(c) != 0)
+        d_h = abs(transform.a) * np.where(diagonal, np.sqrt(2.0), 1.0)
+        method = "e3_edges"
+    else:
+        points, dist = resample_line(route_xy, step_m)
+        z = sample_raster(dem_path, points)
+        d_h = np.diff(dist)
+        method = f"resampled_{step_m:g}m"
+    if np.isnan(z).any():
+        raise SystemExit(f"{int(np.isnan(z).sum())} route points fall on DEM nodata or outside the DEM")
+    alpha = np.degrees(np.arctan(np.diff(z) / d_h))
+    return {"points": points, "dist": np.concatenate([[0.0], np.cumsum(d_h)]), "z": z,
+            "d_h": d_h, "alpha": alpha, "method": method}
 
 
 # ------------------------------------------------------------------------- walking
@@ -178,32 +226,24 @@ def station_indices(points, stations):
     return out
 
 
-def out_and_back(xy):
-    """Close a one-way route by retracing it back to the start (EVA loop)."""
-    return np.vstack([xy, xy[::-1][1:]])
-
-
-def walk(points, dist, z, g_mps2=G_MARS, eta=None, eta_mode="energy", stations=(), mass_kg=TOTAL_MASS_KG,
+def walk(points, d_h, alpha, g_mps2=G_MARS, eta=None, eta_mode="energy", stations=(), mass_kg=TOTAL_MASS_KG,
          close_tol_m=LOOP_TOLERANCE_M, max_station_dist_m=MAX_STATION_DIST_M):
-    """Timeline of the route: arrays with one value per point.
+    """Timeline of the route: arrays with one value per point (d_h, alpha: one per step).
 
     Returns dict with t_s (elapsed time when LEAVING the point: walking plus every
     dwell up to and including this point), walk_s (walking time only), energy_j
     (cumulative walking energy), alpha_deg (slope of the step that ARRIVES at the
     point; 0 for the first), dwell_s (service time spent at the point) and
-    return_s (walking time back to the start, without stations: retracing the
-    route, or, when the route is a loop, the shorter of retracing and going on
-    to the end). Stations farther than max_station_dist_m from the route are not
-    visited (listed in "stations_ignored").
+    return_route_s (walking time back to the route START along the route itself:
+    retracing it, or, for a loop, the shorter of retracing and going on). eta may be
+    one value per point; the value of the arriving point applies to each step.
+    Stations farther than max_station_dist_m from the route are not visited
+    (listed in "stations_ignored").
     """
-    d_h = np.diff(dist)
-    dz = np.diff(z)
-    alpha = np.degrees(np.arctan2(dz, d_h))
-    eta_steps = None if eta is None or np.isscalar(eta) else np.asarray(eta)[1:]
-    eta_used = eta if eta_steps is None else eta_steps
+    eta_used = eta if eta is None or np.isscalar(eta) else np.asarray(eta)[1:]
     dt, e = step_costs(d_h, alpha, g_mps2, mass_kg, eta_used, eta_mode)
     # walking back over the same step: same length, opposite slope
-    dt_back, _ = step_costs(d_h, -alpha, g_mps2, mass_kg, eta_used, eta_mode)
+    dt_back, _ = step_costs(d_h, -np.asarray(alpha), g_mps2, mass_kg, eta_used, eta_mode)
 
     dwell = np.zeros(len(points))
     ignored = []
@@ -214,17 +254,17 @@ def walk(points, dist, z, g_mps2=G_MARS, eta=None, eta_mode="energy", stations=(
         dwell[i] += 60.0 * s["service_time_min"]
     walk_t = np.concatenate([[0.0], np.cumsum(dt)])
     t = walk_t + np.cumsum(dwell)          # dwell at point i happens on arrival at i
-    return_s = np.concatenate([[0.0], np.cumsum(dt_back)])
+    return_route = np.concatenate([[0.0], np.cumsum(dt_back)])
     closed = bool(np.hypot(*(points[-1] - points[0])) <= close_tol_m)
     if closed:
-        return_s = np.minimum(return_s, walk_t[-1] - walk_t)
+        return_route = np.minimum(return_route, walk_t[-1] - walk_t)
     return {
         "t_s": t,
         "walk_s": walk_t,
         "dwell_s": dwell,
         "energy_j": np.concatenate([[0.0], np.cumsum(e)]),
         "alpha_deg": np.concatenate([[0.0], alpha]),
-        "return_s": return_s,
+        "return_route_s": return_route,
         "closed": closed,
         "stations_ignored": ignored,
     }
@@ -284,45 +324,48 @@ def background_rate(summary_path=None):
 
 
 def route_timeline(route_xy, dem_path, dose_rate, start_utc=None, step_m=1.0, g_mps2=G_MARS,
-                   eta=1.0, eta_mode="energy", sand_raster=None, stations=()):
-    """Full E12 timeline of one route as a DataFrame (one row per resampled point)."""
-    points, dist = resample_line(route_xy, step_m)
-    z = sample_raster(dem_path, points)
-    if np.isnan(z).any():
-        raise SystemExit(f"{int(np.isnan(z).sum())} route points fall on DEM nodata or outside the DEM")
+                   eta=1.0, eta_mode="energy", sand_raster=None, stations=(), return_raster=None):
+    """Full E12 timeline of one route as a DataFrame (one row per route point).
+
+    return_raster: R_T raster (s) to the habitat; adds return_s (nearest cell).
+    The table's attrs carry the step method ("e3_edges" or "resampled_<step>m").
+    """
+    st = route_steps(route_xy, dem_path, step_m)
+    points = st["points"]
     eta_arg = eta
     if sand_raster is not None and eta != 1.0:
         sand = sample_raster(sand_raster, points, order=0)
         eta_arg = np.where(np.nan_to_num(sand) >= 0.5, eta, 1.0)
-    w = walk(points, dist, z, g_mps2, eta_arg, eta_mode, stations)
+    w = walk(points, st["d_h"], st["alpha"], g_mps2, eta_arg, eta_mode, stations)
     if w["stations_ignored"]:
         print(f"{len(w['stations_ignored'])} station(s) farther than {MAX_STATION_DIST_M} m from the route "
               f"were ignored: {w['stations_ignored']}")
     t0 = 0.0 if start_utc is None else pd.Timestamp(start_utc).timestamp()
     t_abs = t0 + w["t_s"]
     dose = dose_rate.dose_between(t0, t_abs)
-    return pd.DataFrame({
-        "x": points[:, 0], "y": points[:, 1], "dist_m": dist, "elev_m": z,
+    tl = pd.DataFrame({
+        "x": points[:, 0], "y": points[:, 1], "dist_m": st["dist"], "elev_m": st["z"],
         "alpha_deg": w["alpha_deg"], "t_s": w["t_s"], "walk_s": w["walk_s"], "dwell_s": w["dwell_s"],
         "energy_wh": w["energy_j"] / J_PER_WH,
         "rate_ugy_h": dose_rate.at(t_abs) / 24.0,
         "dose_ugy": dose, "dose_usv_est": dose * Q_GCR,
-        "return_s": w["return_s"],
+        "return_route_s": w["return_route_s"],
     })
-
-
-def add_return_raster(tl, return_raster):
-    """Shortest walking time back to the habitat from each point (sep_alert.py raster)."""
-    tl["return_shortest_s"] = sample_raster(return_raster, tl[["x", "y"]].to_numpy(), order=0)
+    if return_raster is not None:
+        tl["return_s"] = sample_raster(return_raster, points, order=0)
+    tl.attrs["method"] = st["method"]
     return tl
 
 
-def summarise(tl, dose_rate, args_dict, stations):
+def summarise(tl, dose_rate, args_dict, stations, habitat=None, return_info=None):
     steep = np.abs(tl["alpha_deg"].to_numpy()[1:]) > EDGE_SLOPE_LIMIT_DEG
     last = tl.iloc[-1]
-    return {
+    out = {
         "route": repo_relative(args_dict.get("route")),
         "stations_file": repo_relative(args_dict.get("stations")),
+        "step_method": tl.attrs.get("method"),
+        "habitat": habitat,
+        "return_time": return_info,
         "dose_rate": dose_rate.label,
         "start_utc": args_dict.get("start_utc"),
         "g_mps2": args_dict.get("g"), "eta": args_dict.get("eta"), "eta_mode": args_dict.get("eta_mode"),
@@ -342,7 +385,6 @@ def summarise(tl, dose_rate, args_dict, stations):
         "dose_ugy": round(float(last["dose_ugy"]), 2),
         "dose_usv_est": round(float(last["dose_usv_est"]), 1),
         "dose_ugy_per_km": round(float(last["dose_ugy"]) / (float(last["dist_m"]) / 1000), 2),
-        "max_return_time_h": round(float(tl["return_s"].max()) / 3600, 3),
         "steps_steeper_than_edge_limit": int(steep.sum()),
         "steps_steeper_than_edge_limit_pct": round(100 * float(steep.mean()), 2),
         "alpha_abs_p95_deg": round(float(np.percentile(np.abs(tl["alpha_deg"]), 95)), 2),
@@ -350,6 +392,13 @@ def summarise(tl, dose_rate, args_dict, stations):
         "units": {"coordinates": "m (DEM CRS)", "time": "s", "energy": "Wh", "dose": "uGy absorbed",
                   "dose_usv_est": "uSv, estimate = uGy x Q_GCR"},
     }
+    if "return_s" in tl:
+        out["max_return_time_h"] = round(float(np.nanmax(tl["return_s"])) / 3600, 3)
+        out["points_without_return"] = int(tl["return_s"].isna().sum())
+        if habitat is not None:
+            out["route_starts_at_habitat"] = bool(np.hypot(tl["x"].iloc[0] - habitat["xy"][0],
+                                                           tl["y"].iloc[0] - habitat["xy"][1]) <= LOOP_TOLERANCE_M)
+    return out
 
 
 def _round_or_none(v, nd):
@@ -365,15 +414,15 @@ def to_geojson(tl, every_m, props):
     feats = []
     for i in keep:
         r = tl.iloc[i]
+        p = {"i": int(i), "dist_m": round(r.dist_m, 1), "t_s": round(r.t_s, 1), "elev_m": round(r.elev_m, 2),
+             "energy_wh": round(r.energy_wh, 2), "rate_ugy_h": round(r.rate_ugy_h, 3),
+             "dose_ugy": round(r.dose_ugy, 3), "dose_usv_est": round(r.dose_usv_est, 2),
+             "dwell_s": round(r.dwell_s, 1), "return_route_s": round(r.return_route_s, 1)}
+        if "return_s" in tl:
+            p["return_s"] = _round_or_none(r.return_s, 1)
         feats.append({"type": "Feature",
                       "geometry": {"type": "Point", "coordinates": [round(r.x, 3), round(r.y, 3)]},
-                      "properties": {"i": int(i), "dist_m": round(r.dist_m, 1), "t_s": round(r.t_s, 1),
-                                     "elev_m": round(r.elev_m, 2), "energy_wh": round(r.energy_wh, 2),
-                                     "rate_ugy_h": round(r.rate_ugy_h, 3), "dose_ugy": round(r.dose_ugy, 3),
-                                     "dose_usv_est": round(r.dose_usv_est, 2),
-                                     "return_s": round(r.return_s, 1), "dwell_s": round(r.dwell_s, 1),
-                                     **({"return_shortest_s": _round_or_none(r.return_shortest_s, 1)}
-                                        if "return_shortest_s" in tl else {})}})
+                      "properties": p})
     return {"type": "FeatureCollection", "crs": {"type": "name", "properties": {"name": crs_wkt()}},
             "properties": props, "features": feats}
 
@@ -382,39 +431,43 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--route", default=str(E2_OUTPUT / "trajectory.geojson"),
                     help="GeoJSON with a LineString (default: Curiosity's trajectory, provisional)")
+    ap.add_argument("--habitat", nargs=2, type=float, metavar=("X", "Y"),
+                    help="habitat in DEM metres (the same input E4 uses); else taken from the route file")
     ap.add_argument("--out-and-back", action="store_true",
                     help="close a one-way route by walking it back to the start")
     ap.add_argument("--stations", help="GeoJSON or stations_manual.gpkg with service_time_min")
-    ap.add_argument("--return-raster", help="shortest return time raster from sep_alert.py")
+    ap.add_argument("--return-raster", help="E4's rv_time_s.tif (R(v) in seconds for the same habitat)")
     ap.add_argument("--dem", default=str(BASE / "dem_1m.tif"))
+    ap.add_argument("--slope", default=str(BASE / "slope_deg.tif"), help="used by the return-time fallback")
     ap.add_argument("--start-utc", help="use the real RAD series from this time (default: constant background)")
     ap.add_argument("--g", type=float, default=G_MARS)
     ap.add_argument("--eta", type=float, default=1.0)
     ap.add_argument("--eta-mode", choices=["energy", "speed"], default="energy")
     ap.add_argument("--sand-raster", help="sand probability raster (E8); eta only where >= 0.5")
-    ap.add_argument("--step-m", type=float, default=1.0)
+    ap.add_argument("--step-m", type=float, default=1.0, help="resampling step for lines that are not cell chains")
     ap.add_argument("--every-m", type=float, default=5.0, help="spacing of the output points")
     ap.add_argument("--out", type=Path, default=E12_OUTPUT / "route_dose.geojson")
     args = ap.parse_args()
 
+    habitat_xy, habitat_source = resolve_habitat(args.habitat, args.route)
     xy, stations = load_route(args.route)
     if args.out_and_back:
         xy = out_and_back(xy)
     if args.stations:
         stations = load_stations(args.stations)
+    ret_path, ret_info = return_time_for(habitat_xy, args.return_raster, args.dem, args.slope)
     rate = DoseRate.series() if args.start_utc else DoseRate.constant(background_rate())
     tl = route_timeline(xy, args.dem, rate, args.start_utc, args.step_m, args.g, args.eta,
-                        args.eta_mode, args.sand_raster, stations)
-    if args.return_raster:
-        tl = add_return_raster(tl, args.return_raster)
-    summary = summarise(tl, rate, vars(args), stations)
+                        args.eta_mode, args.sand_raster, stations, return_raster=ret_path)
+    habitat = {"xy": [round(habitat_xy[0], 3), round(habitat_xy[1], 3)], "source": habitat_source}
+    summary = summarise(tl, rate, vars(args), stations, habitat, ret_info)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(to_geojson(tl, args.every_m, summary)), encoding="utf-8")
     summary_path = args.out.with_name(args.out.stem + "_summary.json")
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(f"{summary['length_m']} m, {summary['eva_time_h']} h, {summary['energy_wh']} Wh, "
-          f"{summary['dose_ugy']} uGy (~{summary['dose_usv_est']} uSv); "
-          f"{summary['steps_steeper_than_edge_limit_pct']} % of steps > {EDGE_SLOPE_LIMIT_DEG} deg")
+          f"{summary['dose_ugy']} uGy (~{summary['dose_usv_est']} uSv); steps: {summary['step_method']}; "
+          f"return time: {ret_info['source']}")
     print(f"wrote {args.out} and {summary_path.name}")
 
 

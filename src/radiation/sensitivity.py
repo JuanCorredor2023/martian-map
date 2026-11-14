@@ -35,8 +35,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fisica.metabolic import G_EARTH, G_MARS, G_MOON, J_PER_WH  # noqa: E402
 from radiation.common import BASE, E2_OUTPUT, E12_OUTPUT, SECONDS_PER_DAY  # noqa: E402
-from radiation.route_dose import (background_rate, load_route, repo_relative,  # noqa: E402
-                                  resample_line, sample_raster, walk)
+from radiation.route_dose import (background_rate, load_route, repo_relative, route_steps,  # noqa: E402
+                                  sample_raster, walk)
 
 GRAVITIES = {"moon": G_MOON, "mars": G_MARS, "earth": G_EARTH}
 ETAS = [1.0, 1.2, 1.5, 1.8, 2.1]
@@ -51,19 +51,19 @@ def budget_limited(t_s, energy_j, budget_j):
 
 
 def run(route_xy, dem_path, rate_ugy_day, stations=(), sand_raster=None, step_m=1.0):
-    points, dist = resample_line(route_xy, step_m)
-    z = sample_raster(dem_path, points)
+    st = route_steps(route_xy, dem_path, step_m)
+    points, d_h, alpha = st["points"], st["d_h"], st["alpha"]
     sand = None
     if sand_raster is not None:
         sand = np.nan_to_num(sample_raster(sand_raster, points, order=0)) >= 0.5
-    nominal = walk(points, dist, z, G_MARS, None, "energy", stations)
+    nominal = walk(points, d_h, alpha, G_MARS, None, "energy", stations)
     budget_j = float(nominal["energy_j"][-1])
     rows = []
     for g_name, g in GRAVITIES.items():
         for mode in MODES:
             for eta in ETAS:
                 eta_arg = eta if sand is None else np.where(sand, eta, 1.0)
-                w = walk(points, dist, z, g, eta_arg, mode, stations)
+                w = walk(points, d_h, alpha, g, eta_arg, mode, stations)
                 t, e = w["t_s"], w["energy_j"]
                 t_budget, stopped = budget_limited(t, e, budget_j)
                 rows.append({
