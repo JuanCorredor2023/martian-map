@@ -70,6 +70,18 @@ Source for every number: `src/fisica/paper_figures.py` → `data/e3/e3_summary.j
 
 The minimum edge energy on the real DEM (338.75 J for a 1 m move) equals the analytic c_min,h, which is an independent check of the vectorised code.
 
+### Human cost: E3 combined with E1 (`src/fisica/human_cost.py`)
+Ready before E1's weights arrive (hours 20–24), following the original plan: for the human, the slope term of the learned cost is replaced by the metabolic cost, and what E1 learns about terrain is kept.
+
+cost_human(u → v) = energy_E3(u → v) × factor(v), with factor(v) = 1 + scale · Σ_k w_k f_k(v) over the non-slope features.
+
+- Slope features (`slope_deg`, `slope_mean_5m`, `slope_mean_15m`, or any marked `"slope": true`) are dropped, because E3 already charges slope with physics.
+- The factor is taken at the arrival cell, so each arc keeps its own directed E3 energy (up ≠ down).
+- E1 fits weights ≥ 0 on features scaled to [0, 1], so factor ≥ 1 and costs stay positive. A negative weight is rejected.
+- The output stays in joules, so R(v), walkback and E5's checks keep their meaning. If E1 learns a per-step (distance) weight, scale = 1 / w_dist turns the learned cost into a price per step relative to bare rock.
+- `build_cost_layers.py --e1-weights data/e1/e1_weights.json` writes `edges_human.npz` (energy_j = human cost, time_s unchanged, terrain factor) and `costo_humano.tif`.
+- Pipeline check with **placeholder** weights (not E1 results): the factor ranges 1.0–1.8 and the route to Nevado Sajama moves up to 50 m to avoid rough cells and ridges. The numbers will be reported only with E1's learned weights.
+
 ### Sensitivity (`src/fisica/sensitivity.py` → `data/e3/e3_sensitivity.json`)
 One parameter at a time from the nominal model (Santee 2001, 124.2 kg, signed Apollo speed, g = 3.71 m/s², 30° cell block). The habitat is at the box centre. The route goes to Curiosity's drilled ridge, Nevado Sajama, about 665 m away. The Pandolf + CF branch (`pandolf_cf_power`, guide sections 5–7) is implemented only for this comparison, with its own tests (315.87 W on flat ground).
 
@@ -115,7 +127,7 @@ What it shows:
 ## What other pieces can use
 - **E4 and baselines (Aaron):** `data/base/edges_e3.npz` or `edge_costs()` directly; J and s inside the engine. Dijkstra on the reversed graph must keep the cost of the original arc. Use `time_s` for the 30 min contingency line (R_T = 1800 s) and `energy_j` for R_E.
 - **E5 (Diana):** the station cost matrix must come from these directed costs (one Dijkstra per station), plus R_E and R_T for the final return check.
-- **E1 (Juan):** for the human cost, the slope term of the learned cost is replaced by this metabolic cost (hours 20–24); E2 showed that slope explains the valley choice but not the path inside the valley, so sand and rocks are the missing terms.
+- **E1 (Juan):** `fisica.human_cost` combines E3 with your weights. It expects `data/e1/e1_weights.json` with, per feature, `weight` (≥ 0), the `raster` name, `min`/`max` (the same scaling you fit with), an optional `transform` (`positive`/`negative` for the ridge/hollow split of TPI) and `slope: true` on slope features. Optionally add `distance_weight`. Slope features are dropped because E3 already charges slope. E2 showed that slope explains the valley choice but not the path inside the valley, so sand and rocks are the missing terms.
 - **A\* (Aaron):** admissible heuristic h = horizontal Euclidean distance × 338.75 J/m (signed speed, slopes within ±20°); with |alpha| speed use 351.00 J/m.
 
 ## Reproduce
@@ -125,6 +137,7 @@ python -m pytest tests/fisica -q
 python src/fisica/build_cost_layers.py data/base/dem_1m.tif data/base --slope-raster data/base/slope_deg.tif
 python src/fisica/paper_figures.py
 python src/fisica/sensitivity.py
+python src/fisica/build_cost_layers.py data/base/dem_1m.tif data/base --slope-raster data/base/slope_deg.tif --e1-weights data/e1/e1_weights.json   # when E1 delivers
 ```
 
 ## Outputs
