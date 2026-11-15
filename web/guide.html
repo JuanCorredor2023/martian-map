@@ -119,6 +119,12 @@
       <div class="track" id="e-track" role="meter" aria-label="Spare energy after returning" aria-valuemin="0" aria-valuemax="100">
         <div id="e-fill" class="fill"></div></div>
     </div>
+    <div class="meter" id="k-meter" hidden>
+      <div class="meter-label"><span>Spare energy, learned use (k p90)</span>
+        <span><span class="state" id="k-state"></span><span class="val" id="k-val"></span></span></div>
+      <div class="track" id="k-track" role="meter" aria-label="Spare energy after returning, with this walk's learned energy use" aria-valuemin="0" aria-valuemax="100">
+        <div id="k-fill" class="fill"></div></div>
+    </div>
     <div class="meter">
       <div class="meter-label"><span>Margin to the 30 min oxygen line</span>
         <span><span class="state" id="t-state"></span><span class="val" id="t-val"></span></span></div>
@@ -162,6 +168,7 @@
       <button id="speed-btn" aria-label="Walking speed of the simulation"></button>
       <button id="detour-btn"></button>
       <button id="sep-btn"></button>
+      <button id="ktrue-btn" aria-label="Simulated energy use of this astronaut against the model"></button>
     </div>
   </details>
   <div class="note">Simulated walk: there is no GPS on Mars. A real suit would locate itself with habitat and rover
@@ -207,6 +214,8 @@ let request = 0;           // answers to an older click are dropped
 let walkLog = null;        // what is walked, for "plan against the walk" (P6)
 let storm = false;         // a solar storm alert is driving the walk home
 let follow = true, viewZoom = 4.5, lastStates = {};
+let adaptive = G.createAdaptive();   // X2 (#101): learned energy factor k, simulated real use
+let kAlarm = false;                  // the "return now" banner is on screen
 const pendingCards = [];   // station cards waiting for the one on screen to be closed
 const skipped = new Set();
 const voice = G.createVoice();
@@ -274,11 +283,13 @@ function setLabels() {
   ui("speed-btn").textContent = `Speed ×${speed}`;
   ui("detour-btn").innerHTML = `${icon("detour")} Step off route`;
   ui("sep-btn").innerHTML = `${icon("storm")} Solar storm`;
+  ui("ktrue-btn").textContent = `Use ×${adaptive.kTrue.toFixed(1)}`;
   ui("recentre").innerHTML = icon("locate");
 }
 
 function setRoute(r) {
   route = r; idx = 0; spoken.clear(); lastStates = {};
+  G.adaptiveNewRoute(adaptive, r);
   // Radio along this route (E11): asked in the background; the line appears when it answers.
   G.attachComms(r, plan.plan.properties.habitat).then(() => { if (route === r) update(idx); });
 }
@@ -381,6 +392,7 @@ function update(i) {
   warnOnCrossing("e", m.energy, x => x.state === "out" ? "Turn back now: not enough energy to return." : "Energy is getting low. Plan to turn back.");
   warnOnCrossing("t", m.back, x => x.state === "out" ? "Beyond the 30 minute oxygen line. Turn back now." : "Close to the 30 minute oxygen line. Turn back soon.");
   if (m.eva) warnOnCrossing("v", m.eva, x => x.state === "out" ? "Walk time is up. Head home now." : "Walk time is almost up.");
+  adaptiveStep(r, i);
   const radio = G.radioState(r, i);
   ui("radio-meter").hidden = !radio;
   if (radio) { ui("r-val").textContent = radio.text; ui("r-val").style.color = radio.good ? "var(--good)" : "var(--warn)"; }
@@ -394,9 +406,31 @@ function update(i) {
   if (i >= r.coords.length - 1) arrived();
 }
 
+// --- adaptive walkback (X2, #101): learn the real energy use, re-check the way home ----
+function adaptiveStep(r, i) {
+  G.adaptiveStep(adaptive, r, i).then(res => {
+    if (!res) return;
+    const km = G.kMeter(res);
+    ui("k-meter").hidden = false;
+    meter("k", km);
+    warnOnCrossing("k", km, x => x.state === "out" ? G.kAlarmMessage(res).speech : "Your energy use is above the plan. Plan to turn back.");
+    // The return-now banner: a storm keeps the banner; at home there is nothing to say.
+    const home = r.kind === "home";
+    if (res.return_now && !storm && !home && !kAlarm) {
+      kAlarm = true;
+      const banner = ui("alert");
+      banner.innerHTML = G.kAlarmMessage(res).html;
+      banner.hidden = false;
+      G.logEvent(walkLog, "k_alarm", "return now: way home at k p90 does not fit", r, i);
+    } else if (kAlarm && (home || !res.return_now) && !storm) {
+      kAlarm = false; ui("alert").hidden = true;
+    }
+  });
+}
+
 function arrived() {
   stop();
-  storm = false;
+  storm = false; kAlarm = false;
   ui("alert").hidden = true;
   ui("maneuver").classList.remove("alarm"); ui("maneuver").classList.add("safe");
   ui("arrow").innerHTML = icon("habitat");
@@ -523,7 +557,8 @@ function finishWalk() {
   ui("walk-table").innerHTML = "<tr><th></th><th>Plan</th><th>Walked</th></tr>" +
     G.summaryRows(s).filter(([a]) => a !== "Farthest from the plan")
       .map(([a, b, c]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td>${esc(c)}</td></tr>`).join("") +
-    `<tr><td>Farthest off the route</td><td>—</td><td>${s.walked.maxOffRouteM.toFixed(0)} m</td></tr>`;
+    `<tr><td>Farthest off the route</td><td>—</td><td>${s.walked.maxOffRouteM.toFixed(0)} m</td></tr>` +
+    G.adaptiveRows(adaptive).map(([a, b, c]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td>${esc(c)}</td></tr>`).join("");
   const notes = [];
   if (missed) notes.push(`Not visited: ${s.skipped.join(", ")}${wentHome ? " (went home)" : ""}`);
   const minutes = (s.delta.timeS / 60).toFixed(0);
@@ -538,6 +573,13 @@ ui("walk-close").addEventListener("click", () => { ui("walk-card").hidden = true
 ui("walk-btn").addEventListener("click", walk);
 ui("detour-btn").addEventListener("click", simulateDetour);
 ui("sep-btn").addEventListener("click", solarStorm);
+ui("ktrue-btn").addEventListener("click", () => {
+  const ch = G.K_TRUE_CHOICES, next = ch[(ch.indexOf(adaptive.kTrue) + 1) % ch.length];
+  if (!adaptive.history.length) { adaptive = G.createAdaptive({kTrue: next}); if (route) G.adaptiveNewRoute(adaptive, route); }
+  else adaptive.kTrue = next;
+  ui("ktrue-btn").textContent = `Use ×${next.toFixed(1)}`;
+  ui("status").textContent = `Simulated energy use: ${next.toFixed(1)}× the model (demo).`;
+});
 ui("speed-btn").addEventListener("click", () => {
   speed = speed === 60 ? 180 : speed === 180 ? 30 : 60; ui("speed-btn").textContent = `Speed ×${speed}`; });
 ui("voice-btn").addEventListener("click", () => {
