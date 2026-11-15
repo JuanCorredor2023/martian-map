@@ -176,4 +176,9 @@ We used AI coding agents (Anthropic Claude Code and OpenAI Codex) to write and r
 | Juan Corredor ([@JuanCorredor2023](https://github.com/JuanCorredor2023)) | Curiosity traverse (E2), learned terrain price (E1), radiation (E12), 3D map and rover photos, results table |
 
 Independent project for the NASA Space Apps Challenge 2026; not affiliated with or endorsed by NASA.
-<!-- TODO before submission: add a LICENSE file and a License section (#6 in docs/Huecos…). -->
+
+## License
+
+- **Code** (`src/`, `api/`, `web/`, `tests/`, `tools/`, and scripts anywhere else): [MIT](LICENSE).
+- **Paper, notes, figures and documentation** (`paper/`, `docs/`): [Creative Commons Attribution 4.0 International](LICENSE-CC-BY-4.0.txt) (CC BY 4.0).
+- **Third-party libraries, data and models** keep their own licenses and terms: [THIRD_PARTY.md](THIRD_PARTY.md). The vendored JavaScript libraries carry their license files next to them, and the data releases stay under the terms of the NASA, USGS and ESA sources they come from.
