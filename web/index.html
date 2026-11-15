@@ -2229,5 +2229,6 @@ ui("wx-sol").addEventListener("change", loadWeather);
 ui("max-min").addEventListener("change", loadWeather);
 main().then(refreshBlockInfo).then(loadStations).then(loadRadiation).then(loadSources).then(loadWeather).then(loadMinerals).catch(err => { ui("status").textContent = "Error: " + err.message; console.error(err); });
 </script>
+<script type="module" src="/tips.js"></script>
 </body>
 </html>
