@@ -134,7 +134,7 @@
         <div id="k-fill" class="fill"></div></div>
     </div>
     <div class="meter">
-      <div class="meter-label"><span title="Time to walk home from here; the emergency oxygen covers 30 min">Time home (limit 30 min)</span>
+      <div class="meter-label"><span title="Time to walk home from here; the emergency oxygen covers 30 min">Home in · limit 30</span>
         <span><span class="state" id="t-state"></span><span class="val" id="t-val"></span></span></div>
       <div class="track" id="t-track" role="meter" aria-label="Margin to the 30 minute emergency-oxygen line" aria-valuemin="0" aria-valuemax="100">
         <div id="t-fill" class="fill"></div></div>
@@ -142,7 +142,7 @@
     <div class="meter" id="eva-meter" hidden>
       <div class="meter-label"><span>EVA time left</span>
         <span><span class="state" id="v-state"></span><span class="val" id="v-val"></span></span></div>
-      <div class="track" id="v-track" role="meter" aria-label="Walk time left" aria-valuemin="0" aria-valuemax="100">
+      <div class="track" id="v-track" role="meter" aria-label="EVA time left" aria-valuemin="0" aria-valuemax="100">
         <div id="v-fill" class="fill"></div></div>
     </div>
     <div class="radio-line" id="radio-meter" hidden><span>Radio</span><b id="r-val"></b></div>
@@ -180,7 +180,7 @@
     </div>
   </details>
   <div class="note">Simulated walk: there is no GPS on Mars. A real suit would locate itself with habitat and rover
-    beacons and motion sensors. <a href="/3d/">Same walk in 3D</a> · <a href="/card.html">Wrist card</a> · <a href="/">Planner</a></div>
+    beacons and motion sensors. <a href="/3d/">3D</a> · <a href="/card.html">Wrist card</a> · <a href="/">Planner</a></div>
 </div>
 
 <div id="walk-card" class="sheet" role="dialog" aria-modal="true" aria-labelledby="walk-title" hidden>
@@ -212,7 +212,9 @@
 // 2D map and owns the alert hierarchy: safety first, at the top, in words and voice.
 // Same coordinate convention as the HUD: 1 world unit = tile_z0_m / 256 m.
 // ---------------------------------------------------------------------------
+import "/terms.js";
 import * as G from "/guide_core.js";
+const T = globalThis.TERMS;
 
 const {Deck, OrthographicView, TileLayer, BitmapLayer, PathLayer, ScatterplotLayer, TextLayer} = deck;
 const ui = id => document.getElementById(id);
@@ -293,9 +295,9 @@ function setLabels() {
   }
   ui("repeat-btn").innerHTML = `${icon("repeat")} Repeat`;
   ui("home-btn").innerHTML = `${icon("home")} Return home`;
-  ui("st-home").innerHTML = `${icon("home")} Go home`;
+  ui("st-home").innerHTML = `${icon("home")} Return home`;
   ui("speed-btn").textContent = `Speed ×${speed}`;
-  ui("detour-btn").innerHTML = `${icon("detour")} Step off route`;
+  ui("detour-btn").innerHTML = `${icon("detour")} Off route`;
   ui("sep-btn").innerHTML = `${icon("storm")} Solar storm`;
   ui("ktrue-btn").textContent = `Use ×${adaptive.kTrue.toFixed(1)}`;
   ui("recentre").innerHTML = icon("locate");
@@ -401,7 +403,7 @@ function update(i) {
     const leftS = Math.max(0, r.t[r.t.length - 1] - r.t[i]);
     ui("arrow").innerHTML = icon(ARROW_ICON[next.arrow] || "up");
     ui("man-dist").textContent = distText === "now" ? "Now" : distText.replace(/^in /, "");
-    ui("man-text").textContent = `${next.text} · home in ${(leftS / 60).toFixed(1)} min`;   // same format as the meter
+    ui("man-text").textContent = `${next.text} · home in ${T.minutes(leftS)} min`;   // same format as the meter
   }
   const said = `${ui("man-dist").textContent}. ${ui("man-text").textContent}`;
   if (ui("sr-man").dataset.text !== ui("man-text").textContent) {      // only when the instruction changes
@@ -419,7 +421,7 @@ function update(i) {
   meter("e", m.energy); meter("t", m.back); if (m.eva) meter("v", m.eva);
   warnOnCrossing("e", m.energy, x => x.state === "out" ? "Turn back now: not enough energy to return." : "Energy is getting low. Plan to turn back.");
   warnOnCrossing("t", m.back, x => x.state === "out" ? "Beyond the 30 minute oxygen line. Turn back now." : "Close to the 30 minute oxygen line. Turn back soon.");
-  if (m.eva) warnOnCrossing("v", m.eva, x => x.state === "out" ? "Walk time is up. Head home now." : "Walk time is almost up.");
+  if (m.eva) warnOnCrossing("v", m.eva, x => x.state === "out" ? "EVA time is up. Return home now." : "EVA time is almost up.");
   adaptiveStep(r, i);
   const radio = G.radioState(r, i);
   ui("radio-meter").hidden = !radio;
@@ -580,7 +582,7 @@ async function solarStorm() {
   banner.hidden = false;
   banner.innerHTML = G.STORM_PENDING;
   G.logEvent(walkLog, "storm", "solar storm alert: return home", route, idx);
-  voice.say("Solar storm alert. Return to the habitat now.", {priority: "alert"});
+  voice.say("Solar storm alert. Return home now.", {priority: "alert"});
   if (!(await returnHome())) { banner.innerHTML = G.stormFailedHtml("retrace the grey line (where you walked) back to the habitat"); return; }
   const s = G.stormMessage(route, radInfo);
   banner.innerHTML = G.stormHtml(s);

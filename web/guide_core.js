@@ -13,6 +13,11 @@
 //    kind: "plan" | "home"}  "home" after Return home (drawn red, no station cards)
 //
 // prepareRoute(route) adds `d` (cumulative distance) and `events` (maneuvers).
+//
+// Names, state words, thresholds and number formats come from the shared glossary
+// (web/terms.js, #166), the same one the HUD and the wrist card use.
+import "./terms.js";
+const T = globalThis.TERMS;
 
 export const OFF_ROUTE_M = 15;          // farther than this from the route: off route
 export const REJOIN_AHEAD_M = 30;       // rejoin this far ahead of the nearest point
@@ -169,24 +174,25 @@ export function meters(r, i, limitS = null) {
   const back = r.rvTime ? r.rvTime[i] : r.t[r.t.length - 1] - r.t[i];
   // Every bar means "how much is left": full is good, empty is the limit. Each also
   // carries a state word, so meaning never rests on colour alone.
-  const eState = left <= 0 ? "out" : left <= 0.25 * r.usable ? "low" : "ok";
-  const bState = back > EMERGENCY_RETURN_S ? "out" : back > 1500 ? "low" : "ok";
+  const L = T.LIMITS;
+  const eState = left <= 0 ? "out" : left <= L.spareLowFrac * r.usable ? "low" : "ok";
+  const bState = back > EMERGENCY_RETURN_S ? "out" : back > L.homeLowS ? "low" : "ok";
   const out = {
     energy: {leftWh: left, usableWh: r.usable, frac: left / r.usable, good: eState === "ok", state: eState,
-             word: {ok: "OK", low: "LOW", out: "TURN BACK"}[eState],
+             word: T.word(eState),
              text: `${left.toFixed(0)} of ${r.usable.toFixed(0)} Wh`},
     back: {s: back, marginS: EMERGENCY_RETURN_S - back, frac: 1 - back / EMERGENCY_RETURN_S, good: bState === "ok", state: bState,
-           word: {ok: "OK", low: "TURN SOON", out: "OVER 30 MIN"}[bState],
-           text: `home in ${(back / 60).toFixed(1)} min`},
+           word: T.word(bState),
+           text: `home in ${T.minutes(back)} min`},
     eva: null,
   };
   if (limitS) {
     const elapsed = r.t[i], leftS = limitS - elapsed, endS = elapsed + back;   // back home if you turn now
-    const vState = endS > limitS ? "out" : leftS <= 0.1 * limitS ? "low" : "ok";
+    const vState = endS > limitS ? "out" : leftS <= L.evaLowFrac * limitS ? "low" : "ok";
     out.eva = {elapsedS: elapsed, limitS, leftS, frac: leftS / limitS, state: vState,
                good: vState === "ok", overrun: r.t[r.t.length - 1] > limitS,
-               word: {ok: "OK", low: "LOW", out: "TURN BACK"}[vState],
-               text: `${Math.max(0, leftS / 60).toFixed(0)} of ${(limitS / 60).toFixed(0)} min left`};
+               word: T.word(vState),
+               text: `${T.minutes(Math.max(0, leftS))} of ${T.minutes(limitS)} min left`};
   }
   return out;
 }
@@ -264,7 +270,7 @@ export async function returnHome(r, i, saved, here = r.coords[i], now = null) {
                               used: p.used_wh.map(v => v + u0), rv: p.used_wh.map(v => p.energy_wh - v),
                               rvTime: p.t_s.map(v => p.time_s - v),
                               usable: r.usable, turnIndex: null, goalName: "", kind: "home"});
-  const base = `Way home: ${(p.time_s / 60).toFixed(1)} min, ${p.length_m.toFixed(0)} m, ${p.energy_wh.toFixed(0)} Wh.`;
+  const base = `${T.NAMES.returnHome}: ${T.min(p.time_s)}, ${p.length_m.toFixed(0)} m, ${p.energy_wh.toFixed(0)} Wh.`;
   if (p.feasible === false) {
     const what = limitingWords(p.diagnosis) || "resources";
     return {route, summary: p, feasible: false,
@@ -347,13 +353,13 @@ export function stormHtml(s) {
   const dose = s.realUgy != null
     ? `Dose on the way back: ${s.realUgy.toFixed(1)} µGy` +
       (s.x50Ugy != null ? ` (${s.x50Ugy.toFixed(0)} µGy if it were 50× stronger).` : ".") : "";
-  return `<b>SOLAR STORM · go home now</b>` +
+  return `<b>SOLAR STORM · return home now</b>` +
     `<details class="more"><summary>Why and how much</summary>${dose}` +
     ` <span class="muted">Alarm when the radiation rate on Curiosity exceeds 1.5× its recent median twice in a row.</span></details>`;
 }
-export const STORM_PENDING = "<b>SOLAR STORM · return to the habitat now</b> · finding the fastest way…";
+export const STORM_PENDING = "<b>SOLAR STORM · return home now</b> · finding the fastest way…";
 export const stormFailedHtml = why =>
-  `<b>SOLAR STORM · return to the habitat now</b> · the way home could not be computed: ${why}`;
+  `<b>SOLAR STORM · return home now</b> · the way home could not be computed: ${why}`;
 
 // --- radio (E11, JB): line of sight to the habitat antenna, and the pair relay ----------
 // POST /comms/check answers, per route vertex, radio_ok (one astronaut sees the habitat
@@ -513,7 +519,7 @@ export function walkSummary(log) {
 
 // Rows for a "plan against the walk" table: [label, plan, walked].
 export function summaryRows(s) {
-  const min = v => `${(v / 60).toFixed(1)} min`, wh = v => `${v.toFixed(0)} Wh`, m = v => `${v.toFixed(0)} m`;
+  const min = T.min, wh = v => `${v.toFixed(0)} Wh`, m = v => `${v.toFixed(0)} m`;
   const rows = [["Time", min(s.plan.timeS), min(s.walked.timeS)],
                 ["Energy", wh(s.plan.energyWh), wh(s.walked.energyWh)],
                 ["Distance", m(s.plan.lengthM), m(s.walked.lengthM)],
@@ -618,7 +624,7 @@ export function kMeter(res) {
   const [lo, hi] = res.k.ci90;
   return {state, frac: left / budget, good: state === "ok", k: res.k.median, ci90: [lo, hi],
           kReserve: res.k.reserve, returnNow: res.return_now,
-          word: {ok: "OK", low: "LOW", out: "RETURN NOW"}[state],
+          word: T.word(state),             // the RETURN NOW banner stays kAlarmMessage's
           text: `k ${res.k.median.toFixed(2)} (90 % ${lo.toFixed(2)}–${hi.toFixed(2)}) · ${Math.max(0, left).toFixed(0)} Wh`};
 }
 
