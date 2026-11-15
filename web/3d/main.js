@@ -74,7 +74,7 @@ window.addEventListener('pointerdown', e => {
 
 async function main() {
   if (window.innerWidth < 700 || window.innerHeight < 500) {
-    ui('about').open = ui('plan-box').open = ui('sun-box').open = ui('photos-box').open = false;
+    ui('about').open = ui('plan-box').open = ui('sun-box').open = ui('photos-box').open = ui('layers-box').open = false;
   }
   const quality = pickQuality();
   const canvas = ui('view');
@@ -359,6 +359,7 @@ async function main() {
     markers.set(model ? planMarkers(model, got.stationTypes || {}) : []);
     shadows.invalidate();                      // the habitat dome casts one
     window.viz3d.plan = {...got, model};
+    window.viz3d.mapLayers?.setPlan(model);    // the radio antenna and the steep limit follow the plan
 
     const route = model && mainRoute(model), facts = [], warnings = ui('plan-warnings');
     const origin = model && model.properties.source ? ` (${model.properties.source})` : '';
@@ -488,6 +489,17 @@ async function main() {
   const planReady = params.get('plan') === 'default' ? planDefault() : reloadPlan();
   const photosReady = loadPhotos();
   window.viz3d.photosReady = photosReady;
+  // Map layers of the 2D planner on the terrain (map_layers.js): nothing is asked until one
+  // is picked, and an error in that part leaves the rest of the map as it is.
+  window.viz3d.mapLayersReady = (async () => {
+    try {
+      const {setupMapLayers} = await import('./map_layers.js');
+      window.viz3d.mapLayers = setupMapLayers(window.viz3d);
+    } catch (err) {
+      console.error(err);
+      ui('layer-note').textContent = `Map layers not available (${err.message}).`;
+    }
+  })();
 
   // ?photo=<id>: its card and the photo view, once the plan has drawn (it hides the card).
   const startPhoto = params.get('photo');
@@ -512,6 +524,7 @@ async function main() {
     const {CHECKS} = await import('./checks.js');
     await planReady;
     await photosReady;
+    await window.viz3d.mapLayersReady;
     const result = CHECKS[check] ? await CHECKS[check](window.viz3d) : {error: `unknown check: ${check}`};   // guide is async
     window.viz3d.checkResult = result;
     console.log(JSON.stringify(result));

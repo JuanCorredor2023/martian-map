@@ -1,9 +1,9 @@
 # 3D map of the boxwork box (`/3d/`)
 
 A page that shows the 2 × 2 km study box in 3D: the DEM with the HiRISE photo on it, the
-plan of the 2D planner drawn on the ground (route, stations, habitat), a walk-through of
-the route at eye height, and the light and shadows of the Sun of Mars at a sol and a local
-time. It reads the plan; it never makes one unless asked. three.js is vendored
+plan of the 2D planner drawn on the ground (route, stations, habitat), one of its map layers
+draped on the relief, a walk-through of the route at eye height, and the light and shadows
+of the Sun of Mars at a sol and a local time. It reads the plan; it never makes one unless asked. three.js is vendored
 (`vendor/`), so the page needs no internet. Method, numbers and limits:
 `paper/notes/P1_3d_map.md`.
 
@@ -72,6 +72,13 @@ or press "Reload plan". With no saved plan the terrain still works.
   says the speed and how far the route is. Space and the photo view's Escape are not used.
   Leaving puts the free-flight view, the relief and the route lines back as they were.
 - **Sun**: Curiosity sol, local true solar time, "Relief only" (hide the photo), "Shadows".
+- **Map layer**: one layer of the 2D planner draped on the terrain, Off by default: Radio
+  coverage (E11), Slope, Too steep to cross, Sand (E8), Walking cost (E3) or Boulders (E9), with the
+  2D's images, opacity slider, legend and note. The radio is seen from the plan's habitat (else
+  its start, else the box centre) and the steep cells are those over the plan's own limit.
+  Nothing is asked from the server until a layer is picked; one the server cannot give says
+  "Unavailable: …". It stays on while rehearsing and with "Relief only"; the photo view hides
+  it until "Exit".
 - **Rover photos**: orange camera pins where Curiosity's Navcam took photos ("Show photo stops"
   hides them; they are hidden while rehearsing). A pin opens the stop's card: the photo, one
   button per view, date, sol, local time, direction and credit. Pins on top of each other
@@ -108,7 +115,8 @@ All optional; they combine with `&`.
 
 `/3d/?check=<name>` runs a measurement in the running page and shows the result (also in
 `viz3d.checkResult` and the console). Add `&q=low` for the low preset. They ask nothing
-from the server and leave the page as they found it.
+from the server (but `guide`, as its row says; `layers` only GETs the images and info JSON
+the 2D asks for, which changes nothing there) and leave the page as they found it.
 
 | Name | What it answers |
 |---|---|
@@ -121,6 +129,7 @@ from the server and leave the page as they found it.
 | `photos` | for three photos of different sols (`&ids=a,b,c` to choose): camera position, eye height, heading, pitch and field against the catalogue, relief ×1, the photo's Sun, the photo on the centred square; does Exit put everything back? Whether photo and terrain agree: `src/viz3d/photo_skyline.py` |
 | `stations` | for every station of the plan: its nearest rover photo (or that there is none within 150 m) as its card shows it; then each rehearsal stop: the photo is in the card, the clock, the walker and the tasks stay as they were, and the photo pins are hidden |
 | `walk` | "Walk freely" driven through its own key, pad and drag handlers: speeds walking, running, fast, diagonal, backwards and with the pad; the eye above the ground after every step; a drag turns the view as much as in free flight, the pitch stops at ±85°; fast travel straight at each box edge and at the habitat dome; the chase view; does leaving (Escape, and Exit from the chase view) put everything back? |
+| `layers` | is each map layer on the right 1 m cells? Each one alone from straight above (1 px a cell) against the image the 2D shows: share within 3 levels, best shift within ±3 cells, error if flipped north–south; again at relief ×5; the slope tiles over the plan's limit against the steep cells; "Relief only" keeps the layer, the photo view hides it; terrain and page as before (about 8 s) |
 
 From the console, `viz3d` gives the page's objects, and `viz3d.showPlan({fc})` draws any
 plan answer without touching the server (how the test fixtures were looked at).
@@ -142,6 +151,9 @@ plan answer without touching the server (how the test fixtures were looked at).
 | `photos_model.js` | the photo catalogue → stops, views, card facts, camera pose, the photo's Sun, the square of the view |
 | `photos.js` | rover photos: pins, the stop's card, the photo view and its bar, the photo laid over the view |
 | `photos.css` | styles of the photo card, the bar and the laid photo |
+| `map_layers_model.js` | the 2D planner's map layers as data: list, URLs, legends, the slope tiles of the box; the image comparisons of `?check=layers` |
+| `map_layers.js` | the "Map layer" section and the layer drawn on the terrain (meshes sharing the terrain's geometry) |
+| `map_layers.css` | styles of the "Map layer" section and its legends |
 | `rehearse_model.js` | where the walker is at a time of the plan: clock, stops, camera path |
 | `rehearse.js` | the rehearsal mode: camera, player, stops, walkback on pause |
 | `walk_model.js` | walking freely: keys to direction, speeds, box and dome limits, mouse look, distance to the route, start next to the habitat, the path strip |
@@ -164,9 +176,12 @@ import nothing from three.js and are tested in Node.
 From the repo root (Node 26, nothing to install):
 
 ```
-node --test tests/viz3d/            # camera, plan, rehearsal, Sun, shadow camera, view link, photos, walking
+node --test tests/viz3d/            # camera, plan, rehearsal, Sun, shadow camera, view link, photos, walking, map layers
 python -m pytest tests/viz3d -q     # the terrain assets against the DEM
 ```
+
+`map_layers_model.test.mjs` also fails if a legend string copied from the 2D is no longer in
+`web/index.html`, or if the slope tile colours of `src/gis/tiles.py` change.
 
 Fixtures in `tests/viz3d/fixtures/` are real answers of the API: an E4 round trip, the
 fixed route with no profile, and a multi-station E5 tour
@@ -217,8 +232,8 @@ already present and logs size and SHA-256 in `navcam_p3/_download_log.json`. Tes
 - "Plan with default settings" and `plan=default` replace the saved plan that the guide
   screen loads. A copied view link never carries `plan`.
 - The view link is of the free-flight view (not offered while rehearsing) and does not
-  carry "Relief only". The page keeps the camera 2 m above the shown ground and the pitch
-  between 2° and 89.5°, also when it opens a link.
+  carry "Relief only" or the map layer. The page keeps the camera 2 m above the shown ground
+  and the pitch between 2° and 89.5°, also when it opens a link.
 - "Copy link" writes to the clipboard only on `localhost` or https; from another machine of
   the local network the link is shown in a box to copy by hand.
 - "Save image" saves the canvas at its size on screen (times the pixel ratio, at most 2;
@@ -231,3 +246,9 @@ already present and logs size and SHA-256 in `navcam_p3/_download_log.json`. Tes
   is measured on the map, not along the slope. Frames longer than 0.1 s count as 0.1 s, so
   on a very slow machine the walker is slower, not jumpier. The arrow pad shows only on
   screens whose main pointer is a finger.
+- Map layer: one at a time (the 2D stacks several), with the plan's steep limit (not the 2D's
+  slider) and no radio from a base set in the 2D. The slope legend is the 2D's, whose colours
+  are not those of the slope tiles (`src/gis/tiles.py`); the fix belongs in the 2D. The hatch
+  swatch of the steep cells is dark on the dark panel, as in the 2D. Night temperature (81 m
+  pixels), climate, minerals and dose are not draped. A few route pixels at depth ties with the
+  ground are still tinted.

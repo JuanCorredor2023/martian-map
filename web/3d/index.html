@@ -162,6 +162,7 @@
   }
 </style>
 <link rel="stylesheet" href="photos.css">
+<link rel="stylesheet" href="map_layers.css">
 </head>
 <body>
 <canvas id="view"></canvas>
@@ -208,6 +209,15 @@
     <!-- Cast shadows of the sun light (shadows.js). -->
     <label class="check muted" title="Shadows cast by the relief as shown and by the habitat">
       <input type="checkbox" id="shadows" checked>Shadows</label>
+  </details>
+  <!-- One layer of the 2D planner draped on the terrain (map_layers.js); the rest of the list comes from JS. -->
+  <details id="layers-box" open>
+    <summary class="muted">Map layer</summary>
+    <select id="layer-pick" aria-label="Map layer drawn on the terrain"><option value="">Off</option></select>
+    <label class="muted" id="layer-opacity-label" for="layer-opacity">Opacity</label>
+    <input type="range" id="layer-opacity" min="0" max="1" step="0.05" value="1" disabled>
+    <div id="layer-legend"></div>
+    <div class="muted" id="layer-note"></div>
   </details>
   <!-- Curiosity's own photos, pinned where the camera was (photos.js, P3). -->
   <details id="photos-box" open>
