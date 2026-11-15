@@ -652,22 +652,47 @@ function overlayLayers() {
     out.push(new BitmapLayer({id: "cost", image: "/layers/cost.png", bounds: boxBounds(),
                               opacity: Math.pow(0.75, 2.2)}));
   }
-  const limit = blockLimit();
-  if (limit !== null) {
-    out.push(new BitmapLayer({id: "blocked", image: `/layers/blocked.png?max_cell_slope_deg=${limit}`,
-                              bounds: boxBounds()}));
+  if (blockLimit() !== null && blockedImg) {
+    out.push(new BitmapLayer({id: "blocked", image: blockedImg, bounds: boxBounds()}));
   }
   return out;
 }
 
-async function refreshBlockInfo() {
+// The block mask is one 2000 x 2000 PNG per slope limit. Handing deck.gl a new URL on every
+// slider step started dozens of image loads at once, and while deck.gl swapped the texture it
+// drew the layer with another one: a slope tile flashed, stretched over the whole map. So the
+// HUD loads the mask itself: only once the slider pauses, fully decoded, ignoring answers to
+// older requests, and keeps the previous mask on screen until the new one is ready.
+let blockedImg = null, blockedImgLimit = null, blockedSeq = 0, blockedTimer = null;
+function requestBlockedImage(delayMs = 120) {
+  clearTimeout(blockedTimer);
   const limit = blockLimit();
+  if (limit === null || limit === blockedImgLimit) return;
+  blockedTimer = setTimeout(async () => {
+    const seq = ++blockedSeq;
+    try {
+      const mask = {limit, image: `/layers/blocked.png?max_cell_slope_deg=${limit}`};   // same URL as the 3D view
+      const res = await fetch(mask.image);
+      if (!res.ok) { ui("block-info").textContent = `Error ${res.status} loading the block mask`; return; }
+      const bmp = await createImageBitmap(await res.blob());
+      if (seq !== blockedSeq) { bmp.close(); return; }       // the slider moved on meanwhile
+      blockedImg = bmp; blockedImgLimit = limit; redraw();
+    } catch (err) { console.error(err); }
+  }, delayMs);
+}
+
+let blockInfoSeq = 0;
+async function refreshBlockInfo() {
+  const limit = blockLimit(), seq = ++blockInfoSeq;
   ui("block-value").textContent = ui("block-slope").value;
   ui("block-slope").disabled = limit === null;
+  requestBlockedImage(blockedImg ? 120 : 0);
   if (limit === null) { ui("block-info").textContent = "Off: only single steps steeper than 20° are avoided."; return; }
   const res = await fetch(`/layers/blocked?max_cell_slope_deg=${limit}`);
+  if (seq !== blockInfoSeq) return;                         // an answer for an older slider value
   if (!res.ok) { ui("block-info").textContent = `Error ${res.status} loading the block mask`; return; }
   const r = await res.json();
+  if (seq !== blockInfoSeq) return;
   ui("block-info").textContent = `${(r.blocked_fraction * 100).toFixed(1)} % of the area is off limits`;
 }
 
