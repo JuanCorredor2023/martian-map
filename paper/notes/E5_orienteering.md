@@ -1,6 +1,6 @@
 # E5 · Station selection and order (orienteering)
 
-Owner: Diana (`@dianagrz`) · Issues: #9, #111, #119 · PRs: #37, #78, #83, #114 (time windows from the light), #131 (diagnosis and guarantee scope), #119's API PR (diagnosis in `/plan` and the HUD) · Status: done (in `main` since #37: `/plan` plans the multi-station tour through `plan_tour`; DP up to 20 nodes, CP-SAT above; E8 stations v0 integrated; a v1 is not committed (JB, #9) and would only need a rerun; time windows now come from the light, #111) · Last update: 2026-11-15
+Owner: Diana (`@dianagrz`) · Issues: #9, #111, #119 · PRs: #37, #78, #83, #114 (time windows from the light), #131 (diagnosis and guarantee scope), #133 (diagnosis in `/plan` and the HUD) · Status: done (in `main` since #37: `/plan` plans the multi-station tour through `plan_tour`; DP up to 20 nodes, CP-SAT above; E8 stations v0 integrated; a v1 is not committed (JB, #9) and would only need a rerun; time windows now come from the light, #111; why there is no plan and the guarantee's scope, #119) · Last update: 2026-11-15
 
 ## Question
 Given N science stations with a value, which subset should the astronaut visit, and in what order, to collect the most value without breaking the energy budget, the EVA duration, the stations' time windows or the walkback rule (always able to walk home)?
@@ -177,7 +177,7 @@ Numbers from `src/orienteering/paper_diagnosis.py` → `data/e5/diagnosis.json`.
   - the diagnosis (#119): the code, resource and closest station for energy, O2 and duration shortfalls; raising the budget as advised makes the station fit; input errors name the field; a CP-SAT timeout is not reported as "nothing fits"; unreachable stations; reasons for skipped stations; the smallest margin and its vertex
   - time windows from the light: light profiles to windows (the longest stretch with room for the service; stations without one dropped), a hand-made instance where an afternoon shadow fixes the order, the DP against brute force on 60 random instances with windows made from random light profiles, and, on the real terrain, every stop worked in sunlight at 06:00, 11:00 and 16:00 (P6's rule, sampled every 30 s), the morning shadows changing the stations and the evening ones the order
 - **Same cost as `/plan`:** with `human=True`, E5's station matrix equals the one built by `api.planner.graph(base, 30.0, human=True)` (maximum relative difference 0.0 on the 13 stations).
-- **`/plan` integration:** in `main`, `/plan` delegates to `plan_tour` (#64) and refuses a tour that still fails the walkback after the re-plans (#68). The tour and plan tests of `tests/api` pass (20 tests), unchanged by the diagnosis: its exceptions are subclasses of the ones `/plan` already catches.
+- **`/plan` integration:** in `main`, `/plan` delegates to `plan_tour` (#64) and refuses a tour that still fails the walkback after the re-plans (#68). The tour and plan tests of `tests/api` pass (24 tests), unchanged by the diagnosis: its exceptions are subclasses of the ones `/plan` already catches.
 - **Route against solver:** the energy of the written route, recomputed cell by cell with E4's `Graph.path_cost`, equals the solver's energy.
 - **Visual check** (Figure 1): the routes pass through every visited station in the reported order, and stay off the steep scarp in the south-west of the map.
 
@@ -202,7 +202,7 @@ Numbers from `src/orienteering/paper_diagnosis.py` → `data/e5/diagnosis.json`.
 - **E8 (JB):** `stations_e8.gpkg` is read together with the manual stations (`read_station_files`, `run.py --stations A B`). Two of the 15 are unreachable from the habitat's component, and only two are worth their 20 min of service in the nominal tour.
 - **E11 (JB):** a limit on the minutes without radio would enter E5 as one more additive resource per leg, like the duration, or need no E5 change at all if the graph prices the cells without radio (#76).
 - **P6 and the HUD (Sebas):** `light_windows.sweep` gives, for each departure, the points, the stations and their windows; the HUD could show the station windows next to the *Best time to leave* line (issue #111, optional, Sebas's files).
-- **E6 (Diana):** the benchmark of the exact solvers against ILS and simulated annealing is in the [E6 note](E6_benchmark.md): at E5's sizes the exact solvers are as fast and always right.
+- **E6 (Diana):** the benchmark of the exact solvers against four metaheuristics (ILS, simulated annealing, ant colony system and a genetic algorithm) is in the [E6 note](E6_benchmark.md): at E5's sizes the exact solvers are as fast and always right.
 
 ## Reproduce
 ```powershell
