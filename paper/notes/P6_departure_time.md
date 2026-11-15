@@ -1,6 +1,6 @@
 # P6 · Best time to leave, and working without Earth
 
-Owner: Diana (`@dianagrz`), handed over from Juan with the lead's approval (JB, #45, 2026-11-15) · Issue: #45 · PRs: #97 (module, note), HUD hookup (this PR) · Status: in review · Last update: 2026-11-15
+Owner: Diana (`@dianagrz`), handed over from Juan with the lead's approval (JB, #45, 2026-11-15) · Issue: #45 (closed) · PRs: #97 (module, note), #100 (API and HUD line) · Status: done · Last update: 2026-11-15
 
 Two of the quick extras of P6. "EVA as a pair", "plan against the walk" and "wrist card" are done by JB and Sebas ([E11 note](E11_comms.md), [product note](product_api_hud.md)).
 
