@@ -184,6 +184,10 @@ It stays a context layer and is not a cost term (`tests/api/test_api.py::test_th
 - **Coarse orbital data are context, not cost.** THEMIS night IR at 81 m does not see E8's sand (ρ = −0.001); the nearest CRISM/OMEGA detection is 16 km away.
 - **One guide, two views.** The same module drives the arm tablet and the 3D rehearsal, so both show the same maneuvers, meters and alerts for the same walk.
 
+![Figure 1](../figures/product_fig1_redline_tour_radio.png)
+
+*Figure 1. Habitat at the box centre, 30° cell block, human cost (E3 × E1 sand), 1,000 Wh with 10 % margin. (a) The terrain-aware 30 min line (R_T = 1800 s, red) against the fixed-radius rules. Inside the 1.35 km circle, 15.6 % of the cells have no way back (violet: blocked or cut off by scarps) and 20.7 % are too slow (yellow: detours make the return longer than 30 min), so 36 % of what the circle calls safe is not. The 1.35 km circle only clips the box corners and the 1.7 km Apollo circle lies entirely outside the 2 × 2 km box. (b) Zoom on the 120 min E5 tour of the 13 saved stations: 8 visited (numbers: visiting order), 111 min, 448 Wh. Yellow: cells the 3 m habitat antenna sees from a 1.7 m suit radio (22.5 % of the box). Magenta: 575 m (41 %) of the route with no direct radio. Source: `api/paper_figures.py` → `data/product/product_fig1.json`.*
+
 - Blocked share of the box by the cell limit: 12.4 % at 30°, 29.6 % at 20° (`/layers/blocked`, from `slope_deg.tif`).
 - Cost layer colour scale starts at 0.0941 Wh per cell = 338.75 J/m, the analytic c_min,h of E3 (`/layers/cost`; test `test_cost_layer_png_and_legend`).
 - Fixed test route: Curiosity's 3,900.3 m trajectory falls on the valley floor of the orthophoto, entering at cell (row 30, col 1999) as in E2.
@@ -232,10 +236,12 @@ python -m api.check_data                        # which releases are missing, wi
 python -m pytest tests/api -q
 node --test tests/web/
 python -m uvicorn api.main:app --port 8000      # then open http://localhost:8000/
+python -m api.paper_figures                     # Figure 1 and data/product/product_fig1.json
 ```
 Required inputs: `data/base/` (base-grid-v2), `data/tiles/` (tiles-v2), `data/e2/` (e2-trajectory-v1). Optional: `stations-v1`, `stations-e8-v0`, `e12-dose-v1`, `e8-v0`, `e1-sand-v1`, `rems-v1`, `minerals-v1`, `themis-v1`. Walkthrough: `docs/demo.md`.
 
 ## Outputs
 - `data/stations/stations_manual.gpkg` and `stations_rubric.json` (written from the HUD; not in git).
 - `docs/research/station_value_rubric.md` and `docs/research/station_value_notes/`.
+- `paper/figures/product_fig1_redline_tour_radio.png` and `data/product/product_fig1.json` (its numbers).
 - Releases made for the product: `rems-v1` (REMS feed), `minerals-v1` (27 deduplicated CRISM/OMEGA detections within 300 km), `themis-v1` (the THEMIS night IR tile).
