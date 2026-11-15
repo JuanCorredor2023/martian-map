@@ -2,7 +2,8 @@
 //   node --test tests/viz3d/
 //
 // Simplifying the interface must not drop a feature that works. For each of the 31
-// features of the 3D view (the list of #124, in its order) this reads the files and checks
+// features of the 3D view (the list of #124, in its order), and for the adaptive walkback
+// that #160 added to the rehearsal (32), this reads the files and checks
 // that the feature's control or way in is still there and still wired: the element ids of
 // web/3d/index.html (buttons stay buttons, inputs stay inputs), the handlers behind them,
 // the URL parameters, the ?check= modes and the keys. Layout and colours are not checked,
@@ -445,6 +446,25 @@ test('31. messages and the ten ?check= modes', () => {
     assert.ok(modes[name], `?check=${name} is gone`);
     inCode('checks', new RegExp(`\\bfunction ${modes[name]}\\(`), `?check=${name} runs ${modes[name]}(), which is gone`);
   }
+});
+
+test('32. adaptive walkback (#160): the ×k demo button, the meter at your pace, RETURN NOW, the summary rows', () => {
+  // The demo button cycles the simulated energy use (k_true) through the choices of guide_core.
+  buttons('rh-ktrue');
+  const clicks = listenersOf('rh-ktrue').filter(l => l.type === 'click');
+  assert.ok(clicks.length, 'nothing listens to "click" on #rh-ktrue any more');
+  const cycles = l => [l.text, ...[...l.text.matchAll(/(?<![\w$])([\w$]+)\(/g)].map(m => bodyOf(l.file, m[1]))]
+    .some(text => /\bG\.K_TRUE_CHOICES\b/.test(text));
+  assert.ok(clicks.some(cycles), '#rh-ktrue: its click no longer cycles the demo choices of k (G.K_TRUE_CHOICES)');
+  assert.match(GUIDE, /export const K_TRUE_CHOICES\s*=/, 'web/guide_core.js no longer offers the demo choices of k');
+  // "Spare energy at your pace": hidden until the first answer of POST /walkback/update.
+  present('rh-k-label', 'rh-m-k', 'rh-v-k');
+  assert.equal(element('rh-k-track').attrs.role, 'meter', '#rh-k-track is no longer a meter');
+  inCode('rehearse', /\bG\.adaptiveStep\(/, 'the rehearsal no longer learns k as it plays');
+  // RETURN NOW comes from guide_core and shows in #rh-alert (the storm wins).
+  inCode('rehearse', /\bG\.kAlarmMessage\(/, 'the rehearsal no longer raises RETURN NOW');
+  // The adaptive rows of "Plan against the walk".
+  inCode('rehearse', /\badaptiveCardRows\(/, 'the end summary no longer has the adaptive rows');
 });
 
 test('every id that the 3D code looks up is in the page, or made by the code', () => {
