@@ -103,3 +103,22 @@ test('"Try it" opens the planner on 1 Terrain, in the header and the hero (#173)
   }
   assert.match(read('index.html'), /<section class="hero"[\s\S]*?>Try it<\/a>[\s\S]*?<\/section>/);
 });
+
+test('the paper has its own section, its link hidden until the paper is public (#196)', () => {
+  const html = read('index.html');
+  const section = html.match(/<section[^>]*id="paper"[\s\S]*?<\/section>/)?.[0];
+  assert.ok(section, 'section#paper');
+  assert.match(section, /<h2 id="paper-title">/);
+  const a = section.match(/<a[^>]*data-paper-link[^>]*>/)?.[0];
+  assert.ok(a, 'data-paper-link anchor');
+  if (/href="#"/.test(a)) {
+    assert.match(a, /\shidden[\s>]/, 'a placeholder link must stay hidden');
+    assert.match(section, /class="paper__soon"/, 'say the paper is coming while there is no link');
+  }
+});
+
+test('the colour bands still alternate after the paper section', () => {
+  const html = read('index.html');
+  const bands = [...html.matchAll(/<section class="section( band-alt)?"[^>]*id="([^"]+)"/g)].map(m => [m[2], !!m[1]]);
+  for (let i = 1; i < bands.length; i++) assert.notEqual(bands[i][1], bands[i - 1][1], `${bands[i - 1][0]} → ${bands[i][0]}`);
+});

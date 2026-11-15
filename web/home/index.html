@@ -215,8 +215,32 @@
     </div>
   </section>
 
+  <!-- The paper (#196): what it asks and finds. Its link stays hidden until the paper is public. -->
+  <section class="section band-alt" id="paper" aria-labelledby="paper-title">
+    <div class="wrap paper">
+      <div class="section__title">
+        <p class="eyebrow">The paper</p>
+        <h2 id="paper-title">The science behind it.</h2>
+      </div>
+      <div class="paper__body">
+        <p class="paper__name">Planning astronaut EVAs in the Gale crater boxwork: terrain-aware walkback, station tours and a learned terrain price, tested against Curiosity's traverse</p>
+        <p class="paper__by">Mars EVA Planner team · NASA Space Apps Challenge 2026 · draft</p>
+        <p>We price every step of a suited walk on a 1&nbsp;m elevation model under Mars gravity, check the way home from every point, and choose the science stations with an exact solver. Then we test the terrain model against the route Curiosity actually drove.</p>
+        <ul class="paper__results">
+          <li>Simple rules call <strong class="num">21–46&nbsp;%</strong> of their goals safe when their own route cannot complete them. The planner never does.</li>
+          <li>About <strong class="num">a third</strong> of the area inside a fixed 1.35&nbsp;km radius cannot be left and re-entered within the 30&nbsp;min emergency oxygen reserve.</li>
+          <li>The terrain explains which valley Curiosity chose, not its path within the boxwork. Only sand earns a small learned price.</li>
+          <li>An adaptive reserve cuts oxygen exhaustion from <strong class="num">90&nbsp;%</strong> to <strong class="num">4.7&nbsp;%</strong> of simulated walks when the astronaut uses 1.5 times the predicted energy.</li>
+        </ul>
+        <p class="paper__soon">Paper coming soon. It will be linked here with the submission.</p>
+        <!-- When the paper is public: put its URL in href, remove "hidden" and the line above. -->
+        <a class="btn btn-primary" data-paper-link href="#" hidden>Read the paper</a>
+      </div>
+    </div>
+  </section>
+
   <!-- Team and credits -->
-  <section class="section band-alt" id="credits" aria-labelledby="team-title">
+  <section class="section" id="credits" aria-labelledby="team-title">
     <div class="wrap credits">
       <div>
         <h2 id="team-title">Team</h2>
