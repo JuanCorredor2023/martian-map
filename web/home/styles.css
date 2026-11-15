@@ -1,4 +1,4 @@
-/* Mars EVA Planner: landing and demo pages (design mock for issue #126).
+/* Mars EVA Planner: landing and demo pages (web/home/, issue #126).
    System fonts only and no external files, so it works offline like the app.
 
    Layout: a 75rem stage for screenshots and a 40rem measure for text; bands alternate
@@ -17,8 +17,6 @@
   --redline: #d4362a;        /* the app's 30 min line */
   --shot-line: rgba(21, 24, 29, 0.14);
   --shadow: 0 1px 2px rgba(21, 24, 29, 0.06), 0 18px 40px -18px rgba(21, 24, 29, 0.35);
-  --toast-bg: #15181d;
-  --toast-ink: #f3f4f6;
 
   --font-text: system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-display: system-ui, -apple-system, "Segoe UI Variable Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -54,8 +52,6 @@
     --redline: #ff5a4f;
     --shot-line: rgba(255, 255, 255, 0.12);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 18px 44px -18px rgba(0, 0, 0, 0.8);
-    --toast-bg: #e8ecf1;
-    --toast-ink: #0b0e12;
     color-scheme: dark;
   }
 }
@@ -72,14 +68,11 @@
   --redline: #ff5a4f;
   --shot-line: rgba(255, 255, 255, 0.12);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 18px 44px -18px rgba(0, 0, 0, 0.8);
-  --toast-bg: #e8ecf1;
-  --toast-ink: #0b0e12;
   color-scheme: dark;
 }
 
-/* A band that is dark in both themes (video, hero B): it redefines the tokens it uses. */
-.band-dark,
-html[data-hero="b"] .hero {
+/* A band that is dark in both themes (video): it redefines the tokens it uses. */
+.band-dark {
   --bg: #05070a;
   --bg-alt: #0d1116;
   --ink: #e8ecf1;
@@ -268,7 +261,7 @@ strong { font-weight: 650; color: var(--ink); }
   font-variant-numeric: tabular-nums;
 }
 
-/* Hero (A by default; B is set on <html data-hero="b"> by mock.js) */
+/* Hero: title and buttons, then a large shot of the 3D view */
 .hero { position: relative; overflow: hidden; }
 .hero__text {
   display: grid;
@@ -282,11 +275,11 @@ strong { font-weight: 650; color: var(--ink); }
   line-height: 1.02;
   letter-spacing: -0.032em;
 }
-/* Hero A on wide screens: title left, text and buttons right, so the 3D shot starts higher. */
+/* Wide screens: title left, text and buttons right, so the 3D shot starts higher. */
 @media (min-width: 1080px) {
-  html:not([data-hero="b"]) .hero__text { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); align-items: end; }
-  html:not([data-hero="b"]) .hero h1 { max-width: none; font-size: clamp(3.5rem, 1rem + 4.2vw, 4.75rem); }
-  html:not([data-hero="b"]) .hero .lede { font-size: 1.25rem; }
+  .hero__text { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); align-items: end; }
+  .hero h1 { max-width: none; font-size: clamp(3.5rem, 1rem + 4.2vw, 4.75rem); }
+  .hero .lede { font-size: 1.25rem; }
 }
 .redline {
   text-decoration-line: underline;
@@ -312,49 +305,6 @@ strong { font-weight: 650; color: var(--ink); }
   box-shadow: var(--shadow);
   background: #0b0e12;
 }
-.hero__bg, .hero__credit { display: none; }
-
-html[data-hero="b"] .hero__shot { display: none; }
-html[data-hero="b"] .hero__bg {
-  display: block;
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: 40% 50%;
-}
-html[data-hero="b"] .hero::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(90deg, rgba(5, 7, 10, 0.9) 0%, rgba(5, 7, 10, 0.72) 42%, rgba(5, 7, 10, 0.18) 78%, rgba(5, 7, 10, 0.05) 100%),
-    linear-gradient(0deg, rgba(5, 7, 10, 0.55) 0%, rgba(5, 7, 10, 0) 35%);
-}
-html[data-hero="b"] .hero__text {
-  position: relative;
-  z-index: 1;
-  padding-block: clamp(5rem, 3rem + 9vw, 11rem) clamp(4rem, 2.5rem + 6vw, 8rem);
-}
-html[data-hero="b"] .hero__credit {
-  display: block;
-  position: absolute;
-  z-index: 1;
-  right: max(16px, env(safe-area-inset-right, 0px));
-  bottom: 12px;
-  max-width: min(32rem, calc(100% - 32px));
-  text-align: right;
-  font-size: 0.8125rem;
-  color: var(--ink-2);
-}
-@media (max-width: 720px) {
-  html[data-hero="b"] .hero::after {
-    background: linear-gradient(0deg, rgba(5, 7, 10, 0.92) 0%, rgba(5, 7, 10, 0.78) 55%, rgba(5, 7, 10, 0.45) 100%);
-  }
-  html[data-hero="b"] .hero__credit { position: relative; right: auto; bottom: auto; text-align: left; padding: 0 16px 16px; }
-}
-
 /* Figures */
 .shot img {
   width: 100%;
@@ -607,46 +557,3 @@ figcaption > span:first-child { max-width: 72ch; }
 .honest ul { list-style: none; padding: 0; max-width: 46rem; }
 .honest li { padding-block: 0.875rem; border-top: 1px solid var(--line); }
 .honest li:last-child { border-bottom: 1px solid var(--line); }
-
-/* Mock-only controls (mock.js) */
-.mock-bar {
-  position: fixed;
-  z-index: 25;
-  left: calc(12px + env(safe-area-inset-left, 0px));
-  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 4px 4px 12px;
-  border-radius: 999px;
-  background: var(--toast-bg);
-  color: var(--toast-ink);
-  font: 600 0.8125rem/1 var(--font-text);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
-}
-.mock-bar button {
-  min-height: 32px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-.mock-bar button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
-.mock-toast {
-  position: fixed;
-  z-index: 26;
-  left: 50%;
-  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-  transform: translateX(-50%);
-  width: max-content;
-  max-width: calc(100% - 32px);
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: var(--toast-bg);
-  color: var(--toast-ink);
-  font-size: 0.9375rem;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
-}

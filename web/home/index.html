@@ -5,10 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>Mars EVA Planner</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <meta name="description" content="Plan an astronaut's walk through the boxwork of Gale crater with a way home from every point, rehearse it in 3D and follow it on an arm tablet.">
 <link rel="stylesheet" href="styles.css">
-<script src="mock.js" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -18,21 +16,15 @@
     <a class="wordmark" href="index.html">Mars EVA Planner</a>
     <nav class="site-nav" aria-label="Main">
       <a class="nav-demo" href="demo.html">Watch the demo</a>
-      <a class="btn btn-primary btn-sm" href="/" data-app-link="the 2D planner">Plan (2D)</a>
+      <a class="btn btn-primary btn-sm" href="/">Plan (2D)</a>
     </nav>
   </div>
 </header>
 
 <main id="main">
 
-  <!-- Hero. A (default): title, then a large shot of the 3D view.
-       B (mock.js sets <html data-hero="b">): the same text over the real boxwork from orbit. -->
+  <!-- Hero: title and the four entry points, then a large shot of the 3D view. -->
   <section class="hero" aria-labelledby="hero-title">
-    <img class="hero__bg"
-         src="assets/hirise-boxwork-1600.webp"
-         srcset="assets/hirise-boxwork-960.webp 960w, assets/hirise-boxwork-1600.webp 1600w, assets/hirise-boxwork-2560.webp 2560w"
-         sizes="100vw" width="1600" height="800" loading="lazy" decoding="async"
-         alt="The boxwork of Gale crater seen from orbit: pale ridges, dark sand in the hollows and layered slopes.">
     <div class="wrap hero__text">
       <div class="hero__title">
         <p class="eyebrow">Gale crater, Mars</p>
@@ -41,9 +33,9 @@
       <div class="hero__side">
         <p class="lede">Mars EVA Planner plans an astronaut's walk through the boxwork of Gale crater and checks, at every point, that there is enough energy and time to get back. Then you rehearse it in 3D and follow it on an arm tablet.</p>
         <div class="actions">
-          <a class="btn btn-primary" href="/" data-app-link="the 2D planner">Plan (2D)</a>
-          <a class="btn btn-secondary" href="/3d/" data-app-link="the 3D view">Open in 3D</a>
-          <a class="btn btn-secondary" href="/guide.html" data-app-link="the arm-tablet guide">Guide (tablet)</a>
+          <a class="btn btn-primary" href="/">Plan (2D)</a>
+          <a class="btn btn-secondary" href="/3d/">Open in 3D</a>
+          <a class="btn btn-secondary" href="/guide.html">Guide (tablet)</a>
           <a class="btn btn-link" href="demo.html">
             <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 5.2v5.6L11 8z" fill="currentColor"/></svg>
             Watch the demo
@@ -62,7 +54,6 @@
         <span class="spec">2 × 2 km box · 1 m grid · Sun of sol 4711</span>
       </figcaption>
     </figure>
-    <p class="hero__credit">Orbital photo: HiRISE colour mosaic of Gale crater, NASA/JPL-Caltech/University of Arizona; mosaic by USGS Astrogeology.</p>
   </section>
 
   <!-- Video placeholder: no YouTube embed, so it looks the same offline. -->
@@ -103,7 +94,7 @@
         </div>
         <div class="text">
           <p>Set the habitat, the time and the energy, and the planner picks which science stations to visit and in what order. With <strong class="num">13</strong> stations and <strong class="num">120</strong> minutes, it visits <strong class="num">8</strong> and keeps a way back from every point.</p>
-          <a class="more" href="/" data-app-link="the 2D planner">Plan (2D)</a>
+          <a class="more" href="/">Plan (2D)</a>
         </div>
       </div>
       <figure class="shot">
@@ -152,7 +143,7 @@
         </div>
         <div class="text">
           <p>The 3D view lays the plan on the HiRISE terrain, under the Sun of the same sol, with the same meters. Curiosity's <strong class="num">383</strong> Navcam photos sit where they were taken.</p>
-          <a class="more" href="/3d/" data-app-link="the 3D view">Open in 3D</a>
+          <a class="more" href="/3d/">Open in 3D</a>
         </div>
       </div>
       <div class="shots-2">
@@ -186,7 +177,7 @@
         </div>
         <div class="text">
           <p>A radio signal takes <strong class="num">3–22</strong> minutes each way between Mars and Earth, so the arm tablet works alone. It speaks the next turn, shows energy, time back and radio, and turns home in a solar storm.</p>
-          <a class="more" href="/guide.html" data-app-link="the arm-tablet guide">Guide (tablet)</a>
+          <a class="more" href="/guide.html">Guide (tablet)</a>
         </div>
       </div>
       <div class="screens">
@@ -256,7 +247,7 @@
 <footer class="site-footer">
   <div class="wrap">
     <span>Mars EVA Planner</span>
-    <span>Design mock for issue #126. Not the product.</span>
+    <span>NASA Space Apps Challenge 2026 · Runs offline on the habitat's server</span>
   </div>
 </footer>
 </body>

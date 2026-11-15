@@ -49,6 +49,7 @@ Un solo servidor (FastAPI) sirve la API, el HUD y las teselas en `http://localho
    python -m uvicorn api.main:app --port 8000
    ```
    Abre **http://localhost:8000/** (HUD). Desde el HUD, después de planificar: **modo Guiar** (`/guide.html`) y **vista 3D** (`/3d/`). El primer plan tarda unos 10 s mientras se arma el grafo; los siguientes, menos de 3 s. Antes de presentar, planifica una vez para dejarlo en caché.
+   La **portada** (qué es la app, botones a las tres vistas, la demo paso a paso y el video) está en **http://localhost:8000/home/**.
 4. **Comprobar** (opcional): `http://localhost:8000/health` y `python -m pytest tests -q`.
 
 Problemas comunes:

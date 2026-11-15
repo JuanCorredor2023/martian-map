@@ -1,28 +1,31 @@
-# Landing page mock (issue #126)
+# Landing page (issue #126)
 
-A design mock of the landing page and of the "Watch the demo" page, for the team to review. It is not the product: it lives in `docs/`, and the app does not serve it.
+The app's front page and its "Watch the demo" page. The app serves them at **http://localhost:8000/home/** (and `/home/demo.html`) from `web/home/`.
 
-From here on, Diana (@dianagrz) reviews and completes it. Juan's Claude made this first version on 2026-11-15.
+Juan's Claude made the design mock (PR #153, 2026-11-15); Diana's Claude moved it into the app. This file and `review.md` are the design notes. The pages themselves live in `web/home/`.
 
 ## How to view it
 
-- Open `index.html` in a browser. A double click is enough: everything is local, with no internet, CDN or web fonts.
-- Or serve the folder: `python -m http.server 8050 --directory docs/mocks/landing`, then open http://localhost:8050/.
-- **App buttons.** *Plan (2D)*, *Open in 3D* and *Guide (tablet)* point to `/`, `/3d/` and `/guide.html`, so they work once the app serves this page. Outside the app, `mock.js` shows a short notice instead.
-- **Two heroes.** The small "Hero A / B" switch at the bottom left compares two versions of the top section: A shows the 3D view, B shows the boxwork from orbit. `?hero=b` opens B; `?clean` hides the switch.
-- **Previews without running anything:** `screenshots/` has the whole landing page at 1440 and 375 px, the whole demo page at 1440 px, and hero B.
+- Start the app as in the README, then open http://localhost:8000/home/.
+- *Plan (2D)*, *Open in 3D* and *Guide (tablet)* open `/`, `/3d/` and `/guide.html`; *Watch the demo* opens `demo.html` next to it.
+- Without the server: `python -m http.server 8061 --directory web`, then http://localhost:8061/home/ (the app buttons then open the static pages, without the API).
+- Checks: `node --test tests/web/` (`tests/web/landing.test.mjs`: every link and image resolves in `web/`, no external files, the video slot stays hidden until it has a link, every image in `assets/` is used).
 
 ## Files
 
 | File | What it is |
 |---|---|
-| `index.html` | Landing page: what the app does in two sentences, the four buttons, the video placeholder, four sections with real screenshots (Plan, Check the way back, Rehearse, Follow), limits, team and credits. |
-| `demo.html` | The seven-minute walkthrough of `docs/demo.md`, step by step: what to press, what to look for and a screenshot for each step. |
-| `styles.css` | Shared styles: system fonts, light and dark themes, works from 320 px. |
-| `mock.js` | Mock-only helpers (hero switch, app-link notice). Delete it when the page moves into the app. |
-| `assets/` | Screenshots of the real app as WebP, in three widths each (6 MB). |
-| `screenshots/` | Captures of the mock itself. |
-| `review.md` | Design and accessibility self-review, with the fixes made. |
+| `web/home/index.html` | Landing page: what the app does in two sentences, the four buttons, the video slot, four sections with real screenshots (Plan, Check the way back, Rehearse, Follow), limits, team and credits. |
+| `web/home/demo.html` | The seven-minute walkthrough of `docs/demo.md`, step by step: what to press, what to look for and a screenshot for each step. |
+| `web/home/styles.css` | Shared styles: system fonts, light and dark themes, works from 320 px. |
+| `web/home/assets/` | Screenshots of the real app as WebP, in three widths each (5.3 MB). |
+| `docs/landing/review.md` | Design and accessibility self-review of the mock, with the fixes made. |
+
+## Decided
+
+- **Where it lives:** `/home/`, its own folder. The 2D planner stays at `/`, so no existing link, test or the deploy guard changes. Moving the landing page to `/` later means moving the HUD and updating the links listed under "Still open".
+- **Hero:** A (the 3D view under the title). Hero B (the boxwork from orbit) and the mock's hero switch were removed with its images.
+- **Product name:** Mars EVA Planner, the app's own title.
 
 ## Design decisions
 
@@ -63,22 +66,14 @@ Two numbers from `docs/demo.md` were left out because the notes disagree:
 - "three are Curiosity's real drill sites" (the E5 note lists one Curiosity site);
 - "rank correlation 0.00" (the note gives −0.001).
 
-## To decide and complete
+## Still open
 
-1. Whether the landing page becomes `/`, and where the 2D planner moves (with @Seredial0326, who owns `web/`).
-2. **The video (#123):** add the link when it exists.
-3. **Links that change if the landing page takes `/`:**
-   - "← 2D planner" in `web/3d/index.html`;
-   - "Planner" in `web/guide.html`;
-   - "Open http://localhost:8000/" in `docs/demo.md` and the README.
-   - The wrist card's QR (`web/card.html`) points to `/guide.html`, so it stays as long as the guide stays.
-4. **One name per view (#124).**
-   - Today the 3D view is "3D view" in the HUD, "Open in 3D" on the photo card and "Same walk in 3D" in the guide.
-   - The 2D planner is "2D planner" in the 3D view and "Planner" in the guide.
-5. Product name: "Mars EVA Planner" (the app's title) or "Martian Map" (the challenge and repo).
-6. Hero A or B.
-7. **Retake the app screenshots on the demo machine.** The laptop used here lacked the REMS, minerals and THEMIS releases. So the HUD's source chip reads "4 data types from 2 missions", and step 9 (weather) has no screenshot yet.
-8. Add "HiRISE: NASA/JPL-Caltech/University of Arizona" to `paper/references.md`. It is the usual HiRISE credit and is used here.
+1. **The video (#123):** when it exists, put its URL in the `<a data-youtube-link>` of both pages and remove `hidden`. The test checks that a placeholder link stays hidden.
+2. **Links into the landing page** (files owned by Sebas, asked on the board): a link to `/home/` from the HUD, the guide and the 3D view; the demo script (`docs/demo.md`). If the landing page later takes `/`, also "← 2D planner" in `web/3d/index.html`, "Planner" in `web/guide.html`, the deploy guard (`api/public_mode.py`, PR #152) and the README. The wrist card's QR points to `/guide.html` and stays.
+3. **Deploy (#122, PR #152):** its guard treats `/`, `.html`, `.js`, `.css`, `/tiles/`, `/vendor/` and `/3d/` as static; the `.webp` images under `/home/assets/` would count as computational requests. Needs `.webp` (or `/home/`) in that list.
+4. **One name per view (#124).** The 3D view is "3D view" in the HUD, "Open in 3D" on the photo card and here, and "Same walk in 3D" in the guide.
+5. **Retake the app screenshots on the demo machine.** The laptop used for the mock lacked the REMS, minerals and THEMIS releases. So the HUD's source chip reads "4 data types from 2 missions", and step 9 (weather) has no screenshot yet.
+6. Add "HiRISE: NASA/JPL-Caltech/University of Arizona" to `paper/references.md`. It is the usual HiRISE credit and is used here.
 
 ## How the app screenshots were made
 
