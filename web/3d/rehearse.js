@@ -173,7 +173,9 @@ export class Rehearsal {
 
   play() {
     if (!this.active || this.playing) return;
-    if (this.time >= this.model.end) this.seek(this.model.start);      // at the end: start again
+    // At the end: start again. The scrubber dragged to its end stops a hair before it
+    // (a range input keeps 15 digits of its value), and that is the end too.
+    if (this.model.end - this.time < 1e-3) this.seek(this.model.start);
     this._clearWalkback();
     if (this._stopCard) hideCard();
     this.playing = true;
