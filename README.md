@@ -37,6 +37,11 @@ The reason is that walking back is not walking out: coming back can cost half as
 | **3D rehearsal** `/3d/` | Everyone | The 1 m terrain at eye height under the Sun of the EVA's sol, with the route, the map layers and 383 Curiosity Navcam photos at their real camera poses. |
 | **Wrist card** `/card.html` | Astronaut | A printable step list with turn-back rules and a QR code to the guide. |
 
+<table><tr>
+<td width="32%"><img src="docs/img/guide_walk.jpg" alt="Arm tablet guide mid-walk: the next maneuver in large type, meters for spare energy, spare energy at the astronaut's own pace, time home against the 30 min limit and EVA time left, the map, and the card of the station just reached."></td>
+<td><img src="docs/img/rehearse_3d.jpg" alt="3D rehearsal at eye height on the 1 m terrain: the planned route, the station markers, the station card and the rehearsal player with the same meters as the tablet."></td>
+</tr><tr><td><sub>Arm tablet guide, arriving at a station</sub></td><td><sub>3D rehearsal at eye height, 24 min into the walk</sub></td></tr></table>
+
 **How a plan is made:**
 1. **Energy of every step (E3).** Metabolic cost of walking on Mars (Santee 2001, 124 kg suited astronaut, g = 3.71 m/s²) for each of the 8 moves out of every 1 m cell. Cells steeper than 30° are blocked; the limit is adjustable.
 2. **The way home from everywhere (E4).** A reversed shortest-path search gives, for every cell, the energy and time to walk back to the habitat. Every plan is checked at every vertex: what you have used + what you need to get home must fit the budget.
