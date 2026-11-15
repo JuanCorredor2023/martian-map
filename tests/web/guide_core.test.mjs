@@ -150,7 +150,7 @@ test('return home while standing at a stop keeps the real clock and energy', asy
 
 test('storm alert text is shared by both views', () => {
   const html = G.stormHtml({minutes: 11, realUgy: 2.2, x50Ugy: 54, rule: 'r'});
-  assert.ok(html.includes('go home now') && html.includes('2.2 µGy') && html.includes('54 µGy'));
+  assert.ok(html.includes('return home now') && html.includes('2.2 µGy') && html.includes('54 µGy'));
   assert.ok(!html.includes('11.0 min'));                 // no frozen time: the live one is on the card
   assert.ok(G.stormFailedHtml('no path').includes('no path'));
 });
@@ -227,7 +227,7 @@ test('meters carry a state word and full always means good', () => {
   assert.equal(m.energy.word, 'OK'); assert.equal(m.back.word, 'OK');
   assert.ok(m.back.frac > 0.99 && m.back.text.startsWith('home in'));   // at the habitat: full margin
   const far = {...r, rvTime: r.rvTime.map(() => 1900)};
-  assert.equal(G.meters(far, 10, 7200).back.word, 'OVER 30 MIN');
+  assert.equal(G.meters(far, 10, 7200).back.word, 'TURN BACK');                 // same words in every view (#166)
   assert.equal(G.meters({...r, rv: r.rv.map(() => r.usable)}, 10, null).energy.word, 'TURN BACK');
 });
 

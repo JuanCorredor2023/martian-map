@@ -91,7 +91,7 @@
   .walk-status .state { grid-column: 1 / -1; display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
   .walk-status .state { align-items: center; }
   .walk-status .state b { font-weight: 750; letter-spacing: 0.04em; color: var(--good); font-size: 16px;
-                          padding: 2px 10px; border-radius: 999px; border: 1px solid currentColor; }
+                          padding: 2px 10px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
   .walk-status .state b.low { color: var(--warn); } .walk-status .state b.out { color: var(--bad); }
   .walk-status .where { grid-column: 1 / -1; color: var(--muted); font-size: 12.5px; }
   .walk-status.bad { border-color: rgba(255, 90, 79, 0.6); }
@@ -423,7 +423,7 @@
       </div>
       <button id="habitat-reset" class="link" hidden>Back to the centre</button>
       <h2>Limits</h2>
-      <div class="field"><span>Longest walk</span><input type="number" id="max-min" aria-label="Longest walk, minutes" min="15" max="480" step="5" value="120" required><span class="unit">min</span></div>
+      <div class="field"><span>EVA length</span><input type="number" id="max-min" aria-label="EVA length, minutes" min="15" max="480" step="5" value="120" required><span class="unit">min</span></div>
       <div class="field"><span>Energy budget</span><input type="number" id="budget-wh" aria-label="Energy budget, Wh" min="50" max="2800" step="50" value="1000" required><span class="unit">Wh</span></div>
       <div class="field"><span>Reserve kept unused</span><input type="number" id="margin-pct" aria-label="Reserve kept unused, percent" min="0" max="90" step="5" value="10"><span class="unit">%</span></div>
       <div class="hint">Wh: suit energy (a full suit ≈ 2,800). Enter plans.</div>
@@ -447,15 +447,15 @@
     <section class="tabpanel" id="panel-walk" role="tabpanel" aria-labelledby="tab-walk" hidden>
       <p class="lead">Rehearse the walk and check, at any point, how far the astronaut can still go and get back.</p>
       <div id="walk-status" class="walk-status" hidden>
-        <div><div class="k">Back at the habitat in</div><div class="v"><span id="ws-back">–</span> <small>of 30 min</small></div></div>
-        <div><div class="k">Spare after returning</div><div class="v"><span id="ws-spare">–</span> <small>Wh</small></div></div>
-        <div class="state"><span>Oxygen margin to the 30 min line</span><b id="ws-word"></b></div>
+        <div><div class="k">Home in</div><div class="v"><span id="ws-back">–</span> <small>min · limit 30</small></div></div>
+        <div><div class="k">Spare energy</div><div class="v"><span id="ws-spare">–</span> <small>Wh</small></div></div>
+        <div class="state"><span>Margin to the 30 min line</span><b id="ws-word"></b></div>
         <div class="meter" id="ws-track" role="meter" aria-label="Oxygen margin to the 30 min line" aria-valuemin="0" aria-valuemax="30"><i id="ws-bar"></i></div>
         <div class="where" id="ws-where"></div>
       </div>
       <div id="walk-empty" class="empty">Plan a walk in step 3 to rehearse it here. To check one point now, open <b>Try another point</b> below.</div>
       <div id="profile" hidden>
-        <h2>Rehearse the plan</h2>
+        <h2>Rehearse</h2>
         <div class="budget" role="img" aria-label="Energy along the route: used, needed to return, spare">
           <div id="bar-used" class="seg-used"></div><div id="bar-rv" class="seg-rv"></div><div id="bar-free" class="seg-free"></div>
         </div>
@@ -470,8 +470,8 @@
           <span class="muted">Space plays or pauses.</span>
         </div>
         <div class="btn-row">
-          <a class="btn ext" href="/guide.html" target="_blank" title="Turn-by-turn guide for the arm tablet">Guide (tablet)</a>
-          <a class="btn ext" href="/3d/" target="_blank" title="Walk the route at eye height">3D view</a>
+          <a class="btn ext" href="/guide.html" target="_blank" title="Turn-by-turn guide for the arm tablet">Tablet</a>
+          <a class="btn ext" href="/3d/" target="_blank" title="Walk the route at eye height">3D</a>
           <a class="btn ext" href="/card.html" target="_blank" title="Printable step list">Wrist card</a>
         </div>
       </div>
@@ -498,7 +498,7 @@
         <svg id="rad-chart" width="226" height="86" role="img" aria-label="Accumulated dose against EVA time"></svg>
         <div id="rad-tip"></div>
         <select id="sep-scenario" style="width:100%;margin-top:4px" aria-label="Solar storm scenario"></select>
-        <button id="sep-btn" class="secondary">Simulate a solar storm alert</button>
+        <button id="sep-btn" class="secondary">Simulate a solar storm</button>
         <div id="sep-info"></div>
       </details>
       <details class="section" open>
@@ -556,6 +556,7 @@
   <div id="readout" class="float">Move the cursor over the map</div>
 </main>
 
+<script src="/terms.js"></script>
 <script>
 // ---------------------------------------------------------------------------
 // Coordinate system (guide sections 31 and 37)
@@ -1340,7 +1341,7 @@ async function requestWalkback() {
   ui("walk-empty").hidden = true;
   ui("fit-walk").hidden = false;
   if (walkFitPending && currentTab === "walk") { walkFitPending = false; fitWalk(); }
-  announce(`Back at the habitat in ${(p.return_time_s / 60).toFixed(1)} minutes, ${Math.max(0, p.energy_left_after_return_wh).toFixed(0)} watt-hours spare.`);
+  announce(`Home in ${TERMS.minutes(p.return_time_s)} minutes, ${Math.max(0, p.energy_left_after_return_wh).toFixed(0)} watt-hours spare.`);
   ui("wb-info").innerHTML =
     (ui("show-radius").checked && circles.length
       ? `<div class="callout">` + oneLine(
@@ -1588,7 +1589,7 @@ async function simulateSEP() {
   const beyond = backS > 1800;
   const doseBack = tH * sc.rate_ugy_h, doseCalm = tH * radInfo.background_ugy_h;
   const ev = radInfo.real_event, rule = radInfo.sep_rule;
-  ui("storm-text").innerHTML = `Way home: <b>${(backS / 60).toFixed(1)} min</b>` +
+  ui("storm-text").innerHTML = `Return home: <b>${TERMS.min(backS)}</b>` +
     `${beyond ? " (beyond the 30 min line)" : ""}, the amber dashed line. ` +
     (short ? `<b>Not enough energy for it.</b> ` : "") +
     `Radiation on the way back: ${doseBack.toFixed(1)} µGy.`;
@@ -1596,7 +1597,7 @@ async function simulateSEP() {
   if (sepPath) fitStorm();
   renderLegend();
   ui("sep-info").innerHTML = `<div class="alert">` + oneLine(
-    `${icon("warn")} <b>Solar storm:</b> way home ${(backS / 60).toFixed(1)} min${beyond ? " (beyond the 30 min line)" : ""}` +
+    `${icon("warn")} <b>Solar storm:</b> return home, ${TERMS.min(backS)}${beyond ? " (beyond the 30 min line)" : ""}` +
     `${short ? ", not enough energy for it" : ""}. See the map.`,
     `The amber dashed line on the map is the way home. ` +
     `Dose on the way back: <b>${doseBack.toFixed(1)} µGy</b> (${doseCalm.toFixed(1)} µGy without the storm). ` +
@@ -1636,8 +1637,8 @@ function setWalkStatus(backS, spareWh, where) {
   if (backS == null || !isFinite(backS)) { box.hidden = true; return; }
   box.hidden = false;
   // The bar is the margin left to the 30 min line: full is good, empty is the limit.
-  const over = backS > 1800, tight = backS > 1500, state = over ? "out" : tight ? "low" : "ok";
-  ui("ws-back").textContent = (backS / 60).toFixed(1);
+  const over = backS > TERMS.LIMITS.homeS, tight = backS > TERMS.LIMITS.homeLowS, state = over ? "out" : tight ? "low" : "ok";
+  ui("ws-back").textContent = TERMS.minutes(backS);
   ui("ws-spare").textContent = spareWh == null ? "–" : Math.max(0, spareWh).toFixed(0);
   const marginMin = Math.max(0, (1800 - backS) / 60);
   const bar = ui("ws-bar");
@@ -1645,9 +1646,9 @@ function setWalkStatus(backS, spareWh, where) {
   bar.className = state === "ok" ? "" : state;
   ui("ws-track").classList.toggle("out", over);
   ui("ws-track").setAttribute("aria-valuenow", marginMin.toFixed(1));
-  ui("ws-track").setAttribute("aria-valuetext", over ? "Over the 30 minute line" : `${marginMin.toFixed(1)} minutes of margin`);
+  ui("ws-track").setAttribute("aria-valuetext", `${TERMS.word(state)}, ` + (over ? "over the 30 minute line" : `${marginMin.toFixed(0)} minutes of margin`));
   const word = ui("ws-word");
-  word.textContent = {ok: `OK · ${marginMin.toFixed(0)} min spare`, low: `TURN SOON · ${marginMin.toFixed(0)} min spare`, out: "OVER 30 MIN"}[state];
+  word.textContent = state === "out" ? TERMS.word(state) : `${TERMS.word(state)} · ${marginMin.toFixed(0)} min spare`;
   word.className = state === "ok" ? "" : state;
   box.classList.toggle("bad", over || (spareWh != null && spareWh < 0));
   ui("ws-where").innerHTML = (over ? `${icon("warn")} Beyond the 30 min of emergency oxygen. ` : "") +
@@ -1671,7 +1672,7 @@ function showRouteIdx(i, settle) {
   const free = Math.max(0, usable - used - rv);
   const pct = v => `${Math.max(0, 100 * v / usable)}%`;
   ui("bar-used").style.width = pct(used); ui("bar-rv").style.width = pct(rv); ui("bar-free").style.width = pct(free);
-  const t = r.t_s[i], mm = s => { const r = Math.round(s); return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, "0")}`; };
+  const t = r.t_s[i], mm = TERMS.clock;
   const dose = radInfo ? (t / 3600) * radInfo.background_ugy_h : null;
   ui("profile-info").innerHTML =
     `<b style="color:var(--text)">${mm(t)}</b> of ${mm(r.t_s[r.t_s.length - 1])} · used ${used.toFixed(0)} Wh, ` +
@@ -1715,7 +1716,7 @@ function togglePlay() {
 }
 
 // Limits outside a sensible range are caught before the request, next to the field.
-const LIMIT_NAMES = {"max-min": "Longest walk", "budget-wh": "Energy budget", "margin-pct": "Reserve", "o2-l": "Oxygen budget"};
+const LIMIT_NAMES = {"max-min": "EVA length", "budget-wh": "Energy budget", "margin-pct": "Reserve", "o2-l": "Oxygen budget"};
 function checkLimits() {
   for (const id of Object.keys(LIMIT_NAMES)) {
     const el = ui(id);
@@ -1816,7 +1817,7 @@ async function requestPlan() {
     btn.removeAttribute("aria-busy"); btn.classList.remove("busy");
     ui("plan-info").style.opacity = "";
     btn.textContent = planFC ? "Plan again" : "Plan the walk";
-    btn.classList.toggle("secondary", Boolean(planFC));        // after a plan, "Rehearse it" is the primary
+    btn.classList.toggle("secondary", Boolean(planFC));        // after a plan, "Rehearse" is the primary
   }
 }
 
@@ -1899,7 +1900,7 @@ function renderPlanSummary() {
     (order.length && left.length ? `<div class="muted">Left out, they do not fit in the limits: ${left.map(esc).join(", ")}. ` +
       (limitMin && timeMin > 0.85 * limitMin ? "A longer walk would add more." : "") + `</div>` : "") +
     warnings.map(w => `<div class="warn">${icon("warn")} ${esc(w)}</div>`).join("") +
-    (route.used_wh ? `<div class="btn-row"><button id="walk-it">${icon("play")} Rehearse it</button></div>` +
+    (route.used_wh ? `<div class="btn-row"><button id="walk-it">${icon("play")} Rehearse</button></div>` +
       `<div class="hint">The tablet guide, the 3D view and the wrist card are in step 4.</div>` : "") +
     `<details class="more"><summary>Details</summary>` +
       (hasNumbers ? `<div>Oxygen: about ${route.o2_l.toFixed(0)} L (estimated from the energy).</div>` : "") +
@@ -1953,7 +1954,7 @@ function renderLegend() {
   const dot = (c, t) => it.push(`<div class="lg"><i class="dotk" style="background:${c}"></i>${t}</div>`);
   if (planFC) line("#00c8ff", "Planned route");
   if (ui("show-radio").checked && radioFC) line("#ff40c8", "Route with no direct radio");
-  if (sepPath) line("#ffb020", "Way home (storm)");
+  if (sepPath) line("#ffb020", "Return home (storm)");
   if (wbFC && currentTab === "walk") {
     line("#ff3b30", "30 min from the habitat");
     fill("rgba(6,8,12,.75)", "Out of reach with the energy left");
