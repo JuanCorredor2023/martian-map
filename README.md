@@ -127,7 +127,7 @@ Open **http://localhost:8000/**:
 1. **Plan the walk** in step 3. The first plan takes 10–30 s while the terrain graph is built.
 2. Then use step 4 for the tablet guide, the 3D view and the wrist card.
 
-`docs/demo.md` is a 6-minute walkthrough.
+`docs/demo.md` is a 6-minute walkthrough. The same server also has a **landing page**, **http://localhost:8000/home/** (what the app is, in one page), and the demo step by step with screenshots, **http://localhost:8000/home/demo.html**.
 
 **Tests:** `python -m pytest tests -q` (most run without the data) and `node --test tests/web tests/viz3d`.
 
