@@ -262,13 +262,56 @@ function standStill(route) {
 //                  point looked at), leg ('outbound', 'return' or null), standing, stop,
 //                  profile (interpolated values or null)}
 //   cameraAt(d), headingAt(d)  the camera path by distance along the route.
-export function buildRehearsal(route, points = []) {
+// ---- simulated energy-use bias (X2, #101) -------------------------------------------
+// The adaptive walkback learns the astronaut's own factor k (real use = k x E3's
+// prediction) from each walked segment. In a rehearsal there is no sensor, so the "real"
+// use is simulated: every BIAS_SEG_M metres of route, k_true x the predicted use x
+// lognormal noise (seeded, repeatable). Nothing else in the rehearsal changes: the
+// profile keeps E3's values and the bias only adds used_real_wh beside them.
+export const BIAS_SEG_M = 30;          // m per observed segment, as web/guide_core.js
+export const BIAS_NOISE = 0.15;        // sd of log(real / predicted) per segment
+
+function seeded(seed) {                // mulberry32
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Segments of BIAS_SEG_M metres over the route and the simulated real use per vertex.
+//   used  E3's cumulative use per vertex (Wh, profile.used_wh); dist: cumulative metres.
+// Returns {kTrue, noise, seed, segments: [{from, to, predicted, observed}], realUsed}
+// with realUsed[v] the simulated cumulative real use, starting at used[0].
+export function biasSegments(used, dist, {kTrue = 1, noise = BIAS_NOISE, seed = 101} = {}) {
+  const n = used.length, rand = seeded(seed), segments = [];
+  const realUsed = new Float64Array(n);
+  realUsed[0] = used[0];
+  let from = 0;
+  while (from < n - 1) {
+    let to = from + 1;
+    while (to < n - 1 && dist[to] - dist[from] < BIAS_SEG_M) to++;
+    const u = Math.max(rand(), 1e-12), v = rand();
+    const factor = kTrue * Math.exp(noise * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v));
+    for (let k = from + 1; k <= to; k++) realUsed[k] = realUsed[k - 1] + factor * (used[k] - used[k - 1]);
+    segments.push({from, to, predicted: used[to] - used[from], observed: realUsed[to] - realUsed[from]});
+    from = to;
+  }
+  return {kTrue, noise, seed, segments, realUsed};
+}
+
+// bias (optional): {kTrue, noise, seed}. Without it the rehearsal is exactly as before.
+export function buildRehearsal(route, points = [], bias = null) {
   if (route.coords.length === 1) route = standStill(route);
   const {coords, profile} = route, n = coords.length;
   const dist = cumulativeLength(coords), length = dist[n - 1];
   const clockOf = timeline(route, dist), {t, walk, wait} = clockOf;
   const stops = findStops(route, points, clockOf);
   const turn = route.turnIndex;
+  const biasModel = bias && profile && profile.used_wh ? biasSegments(profile.used_wh, dist, bias) : null;
 
   // The camera path passes exactly through the ends, the stops and the turn.
   const anchors = [...new Set([0, n - 1, ...stops.map(s => s.index), ...(turn != null ? [turn] : [])])]
@@ -334,6 +377,7 @@ export function buildRehearsal(route, points = []) {
         const f = key === 'rv_wh' || key === 'rv_time_s' ? moved : clockF;
         values[key] = lerp(profile[key][i], profile[key][i + 1], f);
       }
+      if (biasModel) values.used_real_wh = lerp(biasModel.realUsed[i], biasModel.realUsed[i + 1], clockF);
     }
     const stop = standing ? stops.find(s => s.index === i + 1) || null : null;
     return {
@@ -349,6 +393,7 @@ export function buildRehearsal(route, points = []) {
     start: t[0], end: t[n - 1], duration: t[n - 1] - t[0], length,
     usableWh: route.totals.usable_wh, stops, anchors, maxOffRoute: maxOff, turnIndex: turn,
     times: t, distances: dist, stateAt,
+    bias: biasModel,                 // null unless a bias was asked for (X2, #101)
     // Camera path (Mars x, y) and heading at a distance along the route, on the piece
     // being walked towards (at a stop: arriving).
     cameraAt(d) { return onPiece(pieces[pieceAtDistance(d)], d); },
