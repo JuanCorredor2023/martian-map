@@ -17,12 +17,12 @@ The usual answer is a rule like "stay within X km of the habitat". On this terra
 
 | Return rule | Goals it calls safe that its own route cannot complete |
 | --- | --- |
-| Fixed radius around the habitat | **45.5 %**; it would need a 4× safety factor to be safe everywhere |
+| Fixed radius around the habitat | **45.5 %**; it would need a 4× safety factor to be safe in 99 % of cases |
 | A* on slope only | 28.5 % |
 | Linear oxygen budget | 22.4 % |
 | **This planner** (exact return cost from every point, E4) | **0 %** |
 
-<sub>21 habitats × 2,028 goals (42,588 evaluations). Registry rows `base-false-safe-*` and `base-safety-factor-b2`.</sub>
+<sub>21 habitats × 2,028 goals (42,588 evaluations), budget 50 % of the costliest round trip. False safes on the human cost (E3 × E1 sand); safety factor on E3. Registry rows `base-false-safe-*` and `base-safety-factor-b2`.</sub>
 
 The reason is that walking back is not walking out: coming back can cost half as much as going out, or 1.7 times as much (5th–95th percentile, `e4-return-ratio-*`). No circle captures that.
 
@@ -66,7 +66,7 @@ We used Curiosity's real drive through this box (5,247 localized poses, sols 436
 - **Choice of valley vs path inside it.** Terrain explains the choice of valley (AUC 0.73 over the box) but not the path inside it (0.53 in a 50 m corridor, about chance). Learning a terrain price from the drive (maximum-entropy inverse RL, E1) found **no DEM price** that beats distance on held-out drives.
 - **Sand.** Only sand from the orbital photo earns a small price (up to +11.5 % energy). It moves the route to the Nevado Sajama drill site by up to 23 m (+1.8 % energy).
 - **Sand map (E8, U-Net).** Precise but misses most sand: precision 0.93, recall 0.11 on blind points. Its effect on routes is evaluated separately.
-- **Boulders (E9).** A distilled BoulderNet runs in 8.6 s on the whole box. Boulder prices did not hold up on held-out drives, so boulders stay out of the nominal cost.
+- **Boulders (E9).** A distilled BoulderNet runs in 8.6 s on the whole box (BoulderNet: 362 s) and matches its boulder cover (r = 0.66), but finds single boulders poorly (F1 0.27 against human labels). Boulder prices did not hold up on held-out drives, so boulders stay out of the nominal cost.
 - **3D placement.** Where the DEM skyline sits above a Navcam photo's skyline, the gap has a median of 0.07° (23 photos; one-sided check).
 
 ## How it compares
