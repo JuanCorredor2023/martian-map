@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mars EVA Planner · 3D</title>
 <link rel="icon" href="data:,">   <!-- no favicon: stops the browser asking for /favicon.ico (404) -->
 <!-- three.js is vendored (web/3d/vendor/README.md): the page needs no internet. -->
@@ -24,6 +24,8 @@
   }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d10; color: var(--text);
                font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  /* The page can be zoomed (pinch on a panel, WCAG 1.4.4), never from the view: its touches
+     are the 3D's own (controls.js: one finger turns, two move, a pinch zooms the camera). */
   #view { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
   .panel { position: absolute; background: var(--panel); border: 1px solid var(--border);
            border-radius: 8px; padding: 12px 14px; backdrop-filter: blur(4px); }
@@ -68,6 +70,29 @@
   #plan-box button:disabled { opacity: 0.5; cursor: default; }
   #rehearse-note { margin-top: 4px; }
   #plan-default-note { margin-top: 4px; }
+  /* Touch screens (#124): every control of the panel is at least 44 px tall (Apple's 44 pt,
+     WCAG 2.5.5): section titles, buttons, ticks with their words, fields, and the sliders'
+     thumbs (a 28 px dot in a clear ring of 44 px). Fields get 16 px text: smaller text makes
+     iOS zoom in on focus, now that the page can be zoomed. A double tap does not zoom it. */
+  @media (hover: none) and (pointer: coarse) {
+    #info { touch-action: manipulation; }
+    #info summary { line-height: 44px; margin: 0; }
+    #info button { min-height: 44px; }
+    #info .check { display: flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 0; }
+    #info .check input { flex: none; width: 20px; height: 20px; margin: 0; }
+    #info select, #sun-sol, #view-link { box-sizing: border-box; min-height: 44px; font-size: 16px; }
+    #sun-sol { width: 80px; }
+    #info input[type="range"] { -webkit-appearance: none; appearance: none; height: 44px; margin: 0;
+                                background: transparent; }
+    #info input[type="range"]:disabled { opacity: 0.6; }
+    #info input[type="range"]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: var(--muted); }
+    #info input[type="range"]::-moz-range-track { height: 6px; border-radius: 3px; background: var(--muted); }
+    #info input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; box-sizing: border-box;
+      width: 44px; height: 44px; margin-top: -19px; border: 8px solid transparent; border-radius: 50%;
+      background: var(--accent) padding-box; }
+    #info input[type="range"]::-moz-range-thumb { box-sizing: border-box; width: 44px; height: 44px;
+      border: 8px solid transparent; border-radius: 50%; background: var(--accent) padding-box; }
+  }
   #readout { bottom: 16px; left: 16px; font-variant-numeric: tabular-nums; }
   /* The compass is a button, whose box includes padding and border: 58 px keeps the 44 px
      dial and the size it had as a plain box (44 + 2 x 6 + 2 x 1). */
@@ -251,7 +276,8 @@
   <label class="muted" id="relief-label" for="relief">Relief at true scale</label>
   <input type="range" id="relief" min="1" max="5" step="0.5" value="1" disabled>
   <hr>
-  <!-- The sections are closed by main.js on small screens so the panel does not cover the map. -->
+  <!-- Only Plan is open when the page opens, at every screen size (#124): the other sections
+       are one click on their title away, and the panel covers less of the map. -->
   <details id="plan-box" open>
     <!-- The link to the 2D planner shares this line: no extra row in the closed panel. -->
     <summary class="muted">Plan<a class="back" href="/">← 2D planner</a></summary>
@@ -273,7 +299,7 @@
     </div>
   </details>
   <!-- The Sun of Mars at the box centre for a sol and a local solar time (sun.js). -->
-  <details id="sun-box" open>
+  <details id="sun-box">
     <summary class="muted">Sun</summary>
     <div class="sun-row">
       <label class="muted" for="sun-sol">Curiosity sol</label>
@@ -290,7 +316,7 @@
       <input type="checkbox" id="shadows" checked>Shadows</label>
   </details>
   <!-- One layer of the 2D planner draped on the terrain (map_layers.js); the rest of the list comes from JS. -->
-  <details id="layers-box" open>
+  <details id="layers-box">
     <summary class="muted">Map layer</summary>
     <select id="layer-pick" aria-label="Map layer drawn on the terrain"><option value="">Off</option></select>
     <label class="muted" id="layer-opacity-label" for="layer-opacity">Opacity</label>
@@ -299,13 +325,15 @@
     <div class="muted" id="layer-note"></div>
   </details>
   <!-- Curiosity's own photos, pinned where the camera was (photos.js, P3). -->
-  <details id="photos-box" open>
+  <details id="photos-box">
     <summary class="muted">Rover photos</summary>
+    <!-- Off when the page opens (#124: their 100 pins covered the route); opening a photo, by
+         link or from a card, turns them on (photos.js). -->
     <label class="check muted" title="Pins at the stops where Curiosity's Navcam took photos (2025–2026)">
-      <input type="checkbox" id="photos-show" checked disabled>Show photo stops</label>
+      <input type="checkbox" id="photos-show" disabled>Show photo stops</label>
     <div class="muted" id="photos-note">Loading the photo catalogue…</div>
   </details>
-  <details id="about" open>
+  <details id="about">
     <summary class="muted">About this view</summary>
     <div class="muted">Gale boxwork, 2 × 2 km.<br>
       <b>Mouse:</b> drag to rotate around the point under the cursor, right-drag (or Shift + drag)
@@ -339,7 +367,7 @@
   <svg viewBox="-22 -22 44 44" aria-hidden="true">
     <g id="compass-needle">
       <polygon points="0,-17 6,4 0,0 -6,4" fill="#ff7a45"/>
-      <text x="0" y="17" text-anchor="middle" font-size="10" font-weight="600" fill="#e8ecf1">N</text>
+      <text x="0" y="17" text-anchor="middle" font-size="12" font-weight="600" fill="#e8ecf1">N</text>
     </g>
   </svg>
 </button>

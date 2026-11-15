@@ -34,6 +34,12 @@ or press "Reload plan". With no saved plan the terrain still works.
 - Compass (top right, a button that the keyboard reaches too): face north. Under it, the frame
   (four corners): back to the opening view. The house icon is only the rehearsal's "Return home".
 - **Relief slider**: ×1 is the DEM; ×1.5 to ×5 exaggerate only the local relief.
+- **Panel**: only *Plan* is open when the page opens, at every screen size; *Sun*, *Map layer*,
+  *Rover photos* and *About this view* are one click on their title away (the photo view hides
+  them and gives them back as they were). No text under 12 px. On touch screens every control
+  of the panel (section titles, buttons, ticks with their words, fields, slider thumbs) is at
+  least 44 px tall. The page can be zoomed on a phone by pinching a panel; a pinch on the view
+  is the 3D's own zoom.
 - **Plan**: where the plan comes from, length, time and energy; the plan's own messages in
   plain words, with their numbers ("8 of 13 stations visited · science value 37 · order
   R3 → R2 → …", "Left out, they do not fit in the limits: …", "Power used at the stations:
@@ -124,14 +130,17 @@ or press "Reload plan". With no saved plan the terrain still works.
   Nothing is asked from the server until a layer is picked; one the server cannot give says
   "Unavailable: …". It stays on while rehearsing and with "Relief only"; the photo view hides
   it until "Exit".
-- **Rover photos**: orange camera pins where Curiosity's Navcam took photos ("Show photo stops"
-  hides them; they are hidden while rehearsing). A pin opens the stop's card: the photo, one
-  button per view, date, sol, local time, direction and credit. Pins on top of each other
-  offer a list of stops. "View from here" puts the camera where the Navcam was (relief ×1, the
-  Sun of the photo's sol and time) and lays the corrected photo over the view: the slider
-  fades it, "Previous"/"Next" change view, "Realign" flies back after a drag, "Exit" (or
-  Escape) puts camera, relief and Sun back as they were. A camera pose that does not fit the
-  ground (under it, or more than 4 m above it) is said in the bar, not corrected.
+- **Rover photos**: orange camera pins at the stops where Curiosity's Navcam took photos, off
+  when the page opens (they covered the route): "Show photo stops" shows them, and opening a
+  photo (`?photo=`, the 2D planner's "Open in 3D", "View the rover photo" on a station's card)
+  turns them on, so they are there after "Exit". They are hidden while rehearsing. A pin opens
+  the stop's card: the photo, one button per view, date, sol, local time, direction and credit.
+  Pins on top of each other offer a list of stops. "View from here" puts the camera where the
+  Navcam was (relief ×1, the Sun of the photo's sol and time) and lays the corrected photo over
+  the view: the slider fades it, "Previous"/"Next" change view, "Realign" flies back after a
+  drag, "Exit" (or Escape) puts camera, relief and Sun back as they were. A camera pose that
+  does not fit the ground (under it, or more than 4 m above it) is said in the bar, not
+  corrected.
 - **About this view**: "Copy link to this view" (the address of the free-flight view, with
   relief, sol, time and the shadows switch) and "Save image" (the picture without the
   panels, as a PNG, through the browser's download).
@@ -153,7 +162,7 @@ All optional; they combine with `&`.
 | `plan=default` | on load, ask the server for a plan with the default settings. **It replaces the saved plan**, like the button |
 | `fps=1` | draw every frame and show frames per second in the readout |
 | `spin=1` | slowly orbit the camera (to measure speed without touching anything) |
-| `photo=<id>` | open a rover photo (its Navcam image id) in the photo view |
+| `photo=<id>` | open a rover photo (its Navcam image id) in the photo view; the photo stops are shown after it. An id that is not in the catalogue opens the *Rover photos* section, which says so |
 | `check=<name>` | run a check (below) and show its result as JSON |
 
 ## Checks in the page
@@ -173,8 +182,8 @@ check in the address the page does not ask for the best time to leave: the Sun s
 | `sun` | is the light where the Sun of Mars is at five times of the sol; morning against afternoon; does the Sun follow the rehearsal? |
 | `guide` | does the rehearsal carry the arm-tablet guide? banner and meters at start, middle and end; Return home, detour and solar storm (asks the server); the plan is back after exit |
 | `shadows` | rendered shadows against a ray march over the mesh, 07:00, 15:00 and 17:00 at ×1 and ×5 (about 12 s; 7 s in the low preset) |
-| `photos` | for three photos of different sols (`&ids=a,b,c` to choose): camera position, eye height, heading, pitch and field against the catalogue, relief ×1, the photo's Sun, the photo on the centred square; does Exit put everything back? Whether photo and terrain agree: `src/viz3d/photo_skyline.py` |
-| `stations` | for every station of the plan: its nearest rover photo (or that there is none within 150 m) as its card shows it; then each rehearsal stop: the photo is in the card, the clock, the walker and the tasks stay as they were, and the photo pins are hidden |
+| `photos` | for three photos of different sols (`&ids=a,b,c` to choose): camera position, eye height, heading, pitch and field against the catalogue, relief ×1, the photo's Sun, the photo on the centred square; does Exit put everything back? It leaves the photo stops on, as opening any photo does. Whether photo and terrain agree: `src/viz3d/photo_skyline.py` |
+| `stations` | for every station of the plan: its nearest rover photo (or that there is none within 150 m) as its card shows it; then each rehearsal stop: the photo is in the card, the clock, the walker and the tasks stay as they were, and the photo pins are hidden (since #124 the stops start off, so this holds even if the rehearsal did not hide them) |
 | `walk` | "Walk freely" driven through its own key, pad and drag handlers: speeds walking, running, fast, diagonal, backwards and with the pad; the eye above the ground after every step; a drag turns the view as much as in free flight, the pitch stops at ±85°; fast travel straight at each box edge and at the habitat dome; the chase view; does leaving (Escape, and Exit from the chase view) put everything back? |
 | `layers` | is each map layer on the right 1 m cells? Each one alone from straight above (1 px a cell) against the image the 2D shows: share within 3 levels, best shift within ±3 cells, error if flipped north–south; again at relief ×5; the slope tiles over the plan's limit against the steep cells; "Relief only" keeps the layer, the photo view hides it; terrain and page as before (about 8 s) |
 

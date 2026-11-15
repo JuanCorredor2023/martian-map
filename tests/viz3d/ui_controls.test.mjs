@@ -178,6 +178,14 @@ test('1. free flight: drag, right-drag or Shift + drag, wheel and touch; ?drag=p
   inCode('controls', /e\.button === 2/, 'the right button no longer moves the map');
   inCode('controls', /e\.shiftKey/, 'Shift + drag no longer moves the map');
   inCode('controls', /type:\s*'two'/, 'two fingers no longer move, pinch and twist');
+  // The page can be zoomed on a phone (#124: WCAG 1.4.4), but not from the view: a pinch
+  // there is the camera's zoom, so the view keeps every touch for itself.
+  const viewport = TAGS.find(t => t.tag === 'meta' && t.attrs.name === 'viewport');
+  assert.ok(viewport, 'web/3d/index.html has no viewport meta');
+  const vp = Object.fromEntries((viewport.attrs.content ?? '').split(',').map(p => p.split('=').map(s => s.trim().toLowerCase())));
+  assert.ok(!(Number(vp['maximum-scale']) < 2) && !['no', '0'].includes(vp['user-scalable']),
+            `the viewport stops zooming the page again: "${viewport.attrs.content}"`);
+  assert.match(PAGE, /#view\s*\{[^}]*\btouch-action:\s*none\b/, 'a pinch on the view would zoom the page: #view lost touch-action: none');
 });
 
 test('2. compass (face north) and home (reset the view)', () => {
@@ -303,6 +311,16 @@ test('16. rover photo stops: pins and cards', () => {
   inputs('photos-show');
   present('photos-note');
   wired('photos-show', 'change');
+  // Off when the page opens (#124: 100 pins covered the route). Opening a photo turns them on,
+  // so they are there after the photo view: ?photo=, a stop's card and a station's card all go
+  // through enter(), and main.js ticks the box when it does.
+  assert.equal(element('photos-show').attrs.checked, undefined, '#photos-show starts ticked again');
+  const enter = bodyOf('photos', 'enter');
+  const reached = [enter, ...[...enter.matchAll(/\bthis\.([\w$]+)\(/g)].map(m => bodyOf('photos', m[1]))];
+  assert.ok(reached.some(text => /\bthis\.visible\s*=\s*true\b/.test(text) && /\bthis\.onShowPins\(/.test(text)),
+            'web/3d/photos.js: opening a photo no longer turns the photo stops on');
+  inCode('main', /\bonShowPins:[^;]*\bui\(\s*'photos-show'\s*\)\.checked\s*=\s*true\b/,
+         'a photo view that turns the stops on no longer ticks "Show photo stops"');
   inCode('main', /import\(\s*'\.\/photos\.js'\s*\)/, 'the rover photos are no longer loaded');
   inCode('main', /\bphotoMarkers\.pickAll\(/, 'a click no longer picks a photo stop');
   inCode('main', /\bphotos\.openGroup\(/, 'a photo stop no longer opens its card');

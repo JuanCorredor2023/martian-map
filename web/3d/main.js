@@ -21,7 +21,7 @@
 //                   below the horizon in degrees (view_link.js). "Copy link to this view"
 //                   in the About section writes it.
 //   photo=<id>      open a rover photo (P3, photos.js) in the photo view, from where the
-//                   Navcam took it
+//                   Navcam took it; the photo stops are shown after it
 import * as THREE from 'three';
 import { loadLastPlan, loadRubric, requestDefaultPlan } from './api.js';
 import { hideCard, showCard, stationCard } from './card.js';
@@ -79,9 +79,9 @@ window.addEventListener('pointerdown', e => {
 });
 
 async function main() {
-  if (window.innerWidth < 700 || window.innerHeight < 500) {
-    ui('about').open = ui('plan-box').open = ui('sun-box').open = ui('photos-box').open = ui('layers-box').open = false;
-  }
+  // Only Plan starts open (#124); on a phone or a small window it starts closed too, so the
+  // panel does not cover most of the view.
+  if (window.innerWidth < 700 || window.innerHeight < 500) ui('plan-box').open = false;
   const quality = pickQuality();
   const canvas = ui('view');
   // The stencil buffer is used by the route's see-through pass (overlays.js).
@@ -303,7 +303,9 @@ async function main() {
       const {PhotoLayer} = await import('./photos.js');
       const layer = new PhotoLayer({terrain, controls, camera, canvas, relief, sunView, markers: photoMarkers,
                                     showCard, hideCard, onChange: () => { dirty = true; },
-                                    isBusy: busy});
+                                    isBusy: busy,
+                                    // Opening a photo turned the stops on (photos.js): the box says so.
+                                    onShowPins: () => { ui('photos-show').checked = true; }});
       const got = await layer.load();
       if (!got.ok) {
         // How to build them: web/3d/README.md, "Rover photos" (for the team, not on screen).
@@ -314,7 +316,8 @@ async function main() {
       window.viz3d.photos = layer;
       ui('photos-show').disabled = false;
       photosNote(`${got.count} Navcam photos (black and white, 2025–2026) at the stops where they were ` +
-                 'taken. Click a camera pin for the photo; "View from here" lays it over the terrain.');
+                 'taken. Show the stops, then click a camera pin for its photo; "View from here" lays it ' +
+                 'over the terrain.');
       showPhotoPins();
       dirty = true;
     } catch (err) {
@@ -518,6 +521,7 @@ async function main() {
   })();
 
   // ?photo=<id>: its card and the photo view, once the plan has drawn (it hides the card).
+  // Entering the view turns the photo stops on, so they are there after Exit (photos.js).
   const startPhoto = params.get('photo');
   if (startPhoto) {
     Promise.all([planReady, photosReady]).then(async () => {
@@ -529,6 +533,7 @@ async function main() {
       } else {
         photosNote(photos ? `The address asks for photo "${startPhoto}", which is not in the catalogue.`
                           : ui('photos-note').textContent);
+        ui('photos-box').open = true;          // the section that says why starts closed (#124)
       }
       dirty = true;
     });
