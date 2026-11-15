@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from fisica.edge_cost import cell_cost_wh, edge_costs  # noqa: E402
 
-BLOCKED_RGBA = (230, 40, 40, 170)
+BLOCKED_RGBA = (14, 16, 20, 190)      # near-black hatch (see blocked_layer)
 
 
 def _png(rgba):
@@ -63,11 +63,17 @@ def blocked_layer(base_dir, max_cell_slope_deg):
     with np.errstate(invalid="ignore"):
         blocked = ~(slope <= max_cell_slope_deg)                  # NaN counts as blocked
     rgba = np.zeros(slope.shape + (4,), dtype=np.uint8)
-    rgba[blocked] = BLOCKED_RGBA
+    # A dark neutral hatch, not a colour: red is kept for the 30 min return line on the
+    # map, and these cells sit right under it. 12 m diagonal stripes stay readable at
+    # the whole-area zoom and do not alias into a flat tint.
+    rows, cols = np.indices(slope.shape)
+    stripe = ((rows + cols) // 12) % 2 == 0
+    rgba[blocked & stripe] = BLOCKED_RGBA
+    rgba[blocked & ~stripe] = BLOCKED_RGBA[:3] + (BLOCKED_RGBA[3] // 2,)
     return _png(rgba), float(blocked.mean())
 
 
-SAND_RGB = (255, 196, 64)
+SAND_RGB = (250, 246, 235)          # warm white: no station type, slope band or line uses it
 
 
 @lru_cache(maxsize=1)
