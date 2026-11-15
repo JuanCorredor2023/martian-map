@@ -59,19 +59,23 @@ python src/ml/fit_irl.py --piece-m 250 --cell 5 --whole-box
 python src/ml/validate_irl.py --piece-m 250 --cell 5 --whole-box
 python src/ml/fit_irl.py --features sand                # E8 sand (data/e8/ from release e8-v0)
 python src/ml/validate_irl.py --features sand           # also --features dem_sand
-python src/ml/irl_paper_figures.py                      # after every run in its SCALES, VALIDATIONS and SAND_MODELS lists
+python src/ml/fit_irl.py --features rocks               # E9 boulders (data/e9/ from release e9-rocks-v1)
+python src/ml/validate_irl.py --features rocks          # also --features sand_rocks
+python src/ml/fit_irl.py --features rocks --rocks-layer teacher        # sensitivity: BoulderNet itself
+python src/ml/validate_irl.py --features rocks --rocks-layer teacher
+python src/ml/irl_paper_figures.py                      # after every run in its SCALES, VALIDATIONS, SAND_MODELS and ROCK_MODELS lists
 python src/ml/export_e1_weights.py                      # hand-off to E3 (data/e1/e1_weights.json)
 ```
 
 | Script | What it does |
 |---|---|
 | `maxent_irl.py` | The method: move costs on the 8-neighbour grid (same `NEIGHBOURS` order as `src/fisica/edge_cost.py`), soft value iteration (backward pass), expected visits (forward pass), NLL and its gradient, L-BFGS-B fit with every weight ≥ 0. Runs on the GPU with PyTorch if there is one. |
-| `irl_data.py` | Demonstrations from `data/e2/cell_sequence.csv`: one per sol (≥ 10 m) or route pieces of a given length, each in a window around it (or the whole box), with the E2 validation block. Features ≥ 0: `metre` (constant), `slope_deg`, `roughness`, `tpi_ridge`, `tpi_hollow` (TPI split by sign), `slope_mean_5m`, `slope_mean_15m`, each divided by its 99th percentile over the box. `--cell 5` averages them over 5 × 5 m cells. `--features sand` uses `metre`, `sand` and `sand_mean_5m` (E8's `data/e8/sand.tif` and its 5 × 5 m mean); `--features dem_sand` uses all nine. |
+| `irl_data.py` | Demonstrations from `data/e2/cell_sequence.csv`: one per sol (≥ 10 m) or route pieces of a given length, each in a window around it (or the whole box), with the E2 validation block. Features ≥ 0: `metre` (constant), `slope_deg`, `roughness`, `tpi_ridge`, `tpi_hollow` (TPI split by sign), `slope_mean_5m`, `slope_mean_15m`, each divided by its 99th percentile over the box. `--cell 5` averages them over 5 × 5 m cells. `--features sand` uses `metre`, `sand` and `sand_mean_5m` (E8's `data/e8/sand.tif` and its 5 × 5 m mean); `--features dem_sand` uses all nine. `--features rocks` uses `metre`, `rocks` and `rocks_mean_10m` (E9's boulder cover `data/e9/rocas.tif`, NaN as 0, and its 10 × 10 m mean); `--features sand_rocks` uses metre, both sand and both boulder features. `--rocks-layer teacher` reads `data/e9/teacher_cover_1m.tif` instead (tag suffix `_teacher`). |
 | `irl_toy_check.py` | Invented terrain with hidden prices: the fit must recover them, and the gradient must match PyTorch autograd and finite differences. |
 | `fit_irl.py` | Fits the terrain model and the distance-only control (only the price of a metre) on every demonstration. |
 | `validate_irl.py` | Fits on four E2 blocks and tests on the fifth: NLL per metre, Hausdorff and within-5/10 m of the cheapest predicted route, and the AUC of the learned cost on E2's comparison sets. |
-| `irl_paper_figures.py` | `data/e1/e1_summary.json` and the figures `paper/figures/e1_fig2`–`e1_fig5`. |
-| `export_e1_weights.py` | Hand-off to E3: `data/e1/e1_weights.json` in the format agreed in #2 (read by `fisica.human_cost`). Among the per-sol models (`dem`, `sand`, `dem_sand`), only those that beat the distance-only control on held-out blocks qualify, and the lowest held-out NLL wins; with none, every weight is 0. Weights are converted so that `human_cost`'s clip never acts, `data/e1/sand_mean_5m.tif` is written when needed, and the result is checked with E3's own reader. |
+| `irl_paper_figures.py` | `data/e1/e1_summary.json` and the figures `paper/figures/e1_fig2`–`e1_fig6`. |
+| `export_e1_weights.py` | Hand-off to E3: `data/e1/e1_weights.json` in the format agreed in #2 (read by `fisica.human_cost`). Among the per-sol models (`dem`, `sand`, `dem_sand`, `rocks`, `sand_rocks`; boulders from the E9 student), only those that beat the distance-only control on held-out blocks qualify, and the lowest held-out NLL wins; with none, every weight is 0. Weights are converted so that `human_cost`'s clip never acts, `data/e1/sand_mean_5m.tif` and `data/e1/rocks_mean_10m.tif` are written when the chosen model needs them, and the result is checked with E3's own reader. |
 
 Outputs in `data/e1/` (not tracked by git), `<tag>` = demonstrations, cell size and window (for example `per_sol_cell1m_margin50m`, `piece250m_cell5m_box`):
 
@@ -83,6 +87,8 @@ Outputs in `data/e1/` (not tracked by git), `<tag>` = demonstrations, cell size 
 | `e1_summary.json` | The numbers quoted in the E1 note, gathered from the files above. |
 | `e1_weights.json` | Weights for `fisica.human_cost` (E3 × terrain factor): per feature `weight`, `fitted_weight`, `raster` (relative to `data/base/`), `min`/`max`, `transform`, `slope`; plus `distance_weight`, `validated`, `model`, every candidate's held-out NLL and `terrain_factor_check`. |
 | `sand_mean_5m.tif` | The 5 × 5 m mean of E8's sand fraction on the base grid (float32), read by E3 through `e1_weights.json`. |
+| `rocks_mean_10m.tif` | The 10 × 10 m mean of E9's boulder cover (`rocas.tif`, NaN as 0) on the base grid (float32), written only when the chosen model uses it. |
+| `e1_weights_sand_v1.json` | Copy of the sand-only hand-off (PR #57) kept before the boulder models were added to the export. |
 
 Prices are per cell length (1 m or 5 m of route); compare scales with `w_relative_to_metre`.
 
