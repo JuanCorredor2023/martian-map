@@ -100,6 +100,8 @@ PREAMBLE = r"""\documentclass[11pt,a4paper]{article}
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
 \usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
 \usepackage{float}
 \usepackage[hidelinks]{hyperref}
 \usepackage{xurl}
@@ -149,15 +151,19 @@ def table(caption, rows):
     cells = [[c.strip() for c in re.split(r"(?<!\\)\|", r.strip().strip("|"))] for r in rows]
     head, body = cells[0], [c for c in cells[2:]]
     n = len(head)
-    spec = "l" * n
+    # Tables with long text wrap inside the page width; short, numeric tables keep natural
+    # widths and are scaled down only when they have many columns.
+    wrap = max(len(c) for row in cells for c in row) > 40
+    env, spec = ("tabularx", r"{\linewidth}{" + r">{\raggedright\arraybackslash}X" * n + "}") if wrap \
+        else ("tabular", "{" + "l" * n + "}")
     lines = [r"\begin{table}[H]", r"\centering\small"]
     if caption:
         lines.append(r"\caption{" + caption + "}")
-    tab = [r"\begin{tabular}{" + spec + "}", r"\toprule",
+    tab = [r"\begin{" + env + "}" + spec, r"\toprule",
            " & ".join(inline(h) for h in head) + r" \\", r"\midrule"]
     tab += [" & ".join(inline(c) for c in row) + r" \\" for row in body]
-    tab += [r"\bottomrule", r"\end{tabular}"]
-    if n > 4:
+    tab += [r"\bottomrule", r"\end{" + env + "}"]
+    if n > 4 and not wrap:
         lines.append(r"\resizebox{\linewidth}{!}{%")
         lines += tab
         lines.append("}")
@@ -244,7 +250,10 @@ def convert(md):
             cap_lines, table_lines = [], []
             for ln in lines:
                 (table_lines if ln.startswith("|") else cap_lines).append(ln)
-            caption = inline(" ".join(" ".join(cap_lines).split()))
+            raw = " ".join(" ".join(cap_lines).split())
+            # LaTeX numbers the tables itself: drop the bold "Table N." prefix of the Markdown.
+            raw = re.sub(r"^\*\*Table \d+\.\s*(.*?)\*\*", r"\1", raw)
+            caption = inline(raw)
             if table_lines:
                 out.append(table(caption, table_lines))
             else:

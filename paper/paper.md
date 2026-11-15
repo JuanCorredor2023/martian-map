@@ -1,7 +1,7 @@
 ---
 title: "Planning astronaut EVAs in the Gale crater boxwork: terrain-aware walkback, station tours and a learned terrain price, tested against Curiosity's traverse"
 author: "Mars EVA Planner team (NASA Space Apps 2026)"
-date: "2026-11-15 (draft)"
+date: "2026-11-15"
 ---
 
 ## Abstract
