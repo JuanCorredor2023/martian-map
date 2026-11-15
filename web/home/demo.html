@@ -43,18 +43,15 @@
         </div>
       </div>
       <div class="video__frame">
-        <img src="assets/poster-3d-1600.webp"
-             srcset="assets/poster-3d-960.webp 960w, assets/poster-3d-1600.webp 1600w"
-             sizes="(min-width: 1264px) 1200px, (min-width: 640px) calc(100vw - 64px), calc(100vw - 32px)"
-             width="1600" height="900" loading="lazy" decoding="async" alt="">
-        <div class="video__label">
-          <svg class="video__play" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M26 20.5v23L44.5 32z" fill="currentColor"/></svg>
-          <p class="video__soon">Video coming soon</p>
-          <p>It will play on YouTube. Until then, follow the steps below in the app.</p>
-          <!-- When the video exists: put its URL in href and remove "hidden". -->
-          <a class="btn btn-primary" data-youtube-link href="#" hidden>Watch on YouTube</a>
-        </div>
+        <video controls playsinline preload="metadata" width="1920" height="1080"
+               poster="assets/demo-video-poster.webp"
+               aria-label="Demo video, 30 seconds, English voice and burned-in English subtitles">
+          <source src="assets/demo-video.mp4" type="video/mp4">
+          <p>Your browser cannot play the video: <a href="assets/demo-video.mp4">download it (MP4, 9 MB)</a>.</p>
+        </video>
       </div>
+      <!-- When the video is on YouTube: put its URL in href and remove "hidden". -->
+      <p class="video__alt"><a class="btn btn-primary" data-youtube-link href="#" hidden>Watch on YouTube</a></p>
     </div>
   </section>
 

@@ -11,10 +11,10 @@ const HOME = new URL('home/', WEB);
 const PAGES = ['index.html', 'demo.html'];
 const read = name => readFileSync(new URL(name, HOME), 'utf8');
 
-// Every URL a page loads or links to: href, src and each srcset candidate.
+// Every URL a page loads or links to: href, src, poster and each srcset candidate.
 function urls(html) {
   const out = [];
-  for (const m of html.matchAll(/\s(href|src)="([^"]*)"/g)) out.push({ attr: m[1], url: m[2] });
+  for (const m of html.matchAll(/\s(href|src|poster)="([^"]*)"/g)) out.push({ attr: m[1], url: m[2] });
   for (const m of html.matchAll(/\ssrcset="([^"]*)"/g))
     for (const part of m[1].split(',')) out.push({ attr: 'srcset', url: part.trim().split(/\s+/)[0] });
   return out;
