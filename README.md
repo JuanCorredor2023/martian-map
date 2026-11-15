@@ -14,6 +14,45 @@ Equipo de NASA Space Apps 2026, reto *Martian Map*: planificador de EVA para el 
 4. Lee `docs/guia_trabajo_equipo.md`: qué hace cada persona de la hora 0 a la entrega, entregas cruzadas, contratos y horas de corte. Cada pieza tiene su issue. Qué significa cada código (E1…E12): `docs/enfoques.md`.
 5. Los datos no están en el repositorio. `data/README.md` describe cada conjunto, su formato y en qué enfoque se usa, y `data/_scripts/` trae los scripts para copiarlos por la red local o bajarlos del origen.
 
+## Correr la app (HUD, modo Guiar y vista 3D)
+
+Un solo servidor (FastAPI) sirve la API, el HUD y las teselas en `http://localhost:8000/`. No hace falta internet en la demo. Detalle y guion de 5 minutos: `docs/demo.md`.
+
+**Requisitos:** Python 3.12 (el entorno del equipo, por ejemplo `conda activate martian`) y `gh` con `gh auth login`. Todo en una terminal normal, no de administrador, desde la raíz del repositorio.
+
+1. **Código al día e instalación de paquetes** (una vez):
+   ```powershell
+   git checkout main; git pull
+   python -m pip install -r api/requirements.txt
+   ```
+2. **Datos** (una vez; no están en git, vienen de los releases). En PowerShell:
+   ```powershell
+   gh release download base-grid-v2 --dir data; Expand-Archive data\base_grid_v2.zip data\base -Force; Remove-Item data\base_grid_v2.zip
+   gh release download tiles-v2 --dir data; Expand-Archive data\tiles_v2.zip data\tiles -Force; Remove-Item data\tiles_v2.zip
+   gh release download e2-trajectory-v1 --dir data; Expand-Archive data\e2_trajectory_v1.zip data\e2 -Force; Remove-Item data\e2_trajectory_v1.zip
+   gh release download stations-v1 --dir data\stations
+   gh release download e12-dose-v1 --dir data; Expand-Archive data\e12_dose_v1.zip data\e12 -Force; Remove-Item data\e12_dose_v1.zip
+   gh release download e8-v0 --dir data; Expand-Archive data\e8_v0.zip data\e8 -Force; Remove-Item data\e8_v0.zip
+   gh release download e1-sand-v1 --dir data; Expand-Archive data\e1_sand_v1.zip data\e1 -Force; Remove-Item data\e1_sand_v1.zip
+   python src/viz3d/build_terrain_assets.py
+   ```
+   La última línea genera `data/tiles/3d/` para la vista 3D (unos segundos). Comprueba qué falta con:
+   ```powershell
+   python -m api.check_data
+   ```
+   Si falta algo, ese comando imprime el comando exacto para bajarlo. Solo `base`, `tiles` y `e2` son obligatorios; sin los demás se apaga la capa o el panel correspondiente.
+3. **Arrancar:**
+   ```powershell
+   python -m uvicorn api.main:app --port 8000
+   ```
+   Abre **http://localhost:8000/** (HUD). Desde el HUD, después de planificar: **modo Guiar** (`/guide.html`) y **vista 3D** (`/3d/`). El primer plan tarda unos 10 s mientras se arma el grafo; los siguientes, menos de 3 s. Antes de presentar, planifica una vez para dejarlo en caché.
+4. **Comprobar** (opcional): `http://localhost:8000/health` y `python -m pytest tests -q`.
+
+Problemas comunes:
+- **El puerto 8000 está ocupado:** usa `--port 8001` y abre esa dirección.
+- **Cambiaste de rama y el servidor no ve el cambio:** detenlo (Ctrl+C) y arráncalo de nuevo.
+- **El plan visita una sola estación:** el tour de varias estaciones necesita E5 (`src/orienteering`) en `main`. Sin él, `/plan` hace la ida y vuelta de E4 a una estación.
+
 ## Tablero de agentes
 
 La issue fijada **Message Board** (#1) es donde los agentes de cada integrante se pasan trabajo. Comandos:
