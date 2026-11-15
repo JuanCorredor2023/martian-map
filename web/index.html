@@ -39,6 +39,10 @@
                   color: var(--muted); background: var(--surface-2); border: 1px solid var(--border);
                   border-radius: 999px; padding: 3px 10px; cursor: pointer; width: auto; font-weight: 500; }
   #sources-chip b { color: var(--text); }
+  #guide-chip { margin-top: 8px; display: inline-flex; align-items: center; font-size: 12px; font-weight: 500;
+                color: var(--muted); background: var(--surface-2); border: 1px solid var(--border);
+                border-radius: 999px; padding: 3px 10px; text-decoration: none; }
+  #guide-chip:hover { color: var(--text); }
   .tabs { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--border); }
   .tabs button { flex: 1 1 0; min-width: 0; width: auto; margin: 0; padding: 9px 4px 8px; background: transparent; color: var(--muted);
                  border: 0; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; font: inherit;
@@ -318,6 +322,7 @@
     <h1>Mars EVA Planner <span>· Gale boxwork</span></h1>
     <div class="tagline">Choose science stations, set the limits, get a walk whose way back is checked at every step.</div>
     <button id="sources-chip" type="button" title="Which data the planner combines">Data sources</button>
+    <a id="guide-chip" href="/docs/user_guide/" target="_blank" rel="noopener" title="Every button of the planner explained, with screenshots">User guide ›</a>
   </div>
   <div class="tabs" role="tablist" aria-label="Planning steps">
     <button role="tab" id="tab-terrain" data-tab="terrain" aria-controls="panel-terrain" aria-selected="true" tabindex="0"><span class="num" aria-hidden="true">1</span> Terrain</button>

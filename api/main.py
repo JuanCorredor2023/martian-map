@@ -583,4 +583,9 @@ def comms_info(x: float = Query(None), y: float = Query(None)):
 
 # Static files go last so they do not shadow the API routes.
 app.mount("/tiles", StaticFiles(directory=TILES, check_dir=False), name="tiles")   # without tiles-v2 the API still starts (check_data says what is missing)
+# The illustrated user guides, served from docs/ as they are: same paths as in the repo, so
+# the links between the 2D and the 3D guide keep working. The landing page links to them.
+for _guide in ("user_guide", "user_guide_3d"):
+    app.mount(f"/docs/{_guide}", StaticFiles(directory=REPO / "docs" / _guide, html=True, check_dir=False),
+              name=_guide)
 app.mount("/", StaticFiles(directory=WEB, html=True), name="web")
