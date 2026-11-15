@@ -1,8 +1,9 @@
-## 3.10 Product: API, HUD, guide mode and 3D rehearsal
+<!-- Owner: Sebas (API, HUD, guide); Juan (3D, photos) · Sources: product_api_hud.md, P1_3d_map.md, P3_rover_photos.md · Status: drafted from the notes by JB's Claude; owner to confirm -->
 
-<!-- Owner: Sebas (API, HUD, guide); Juan (3D, photos) · Sources: [product_api_hud.md](../notes/product_api_hud.md), [P1_3d_map.md](../notes/P1_3d_map.md), [P3_rover_photos.md](../notes/P3_rover_photos.md) · Status: to draft -->
+### 3.10 Product: API, HUD, guide mode and 3D rehearsal
 
-To cover:
+**API and HUD.** A FastAPI service plans live. `/plan` returns E5's tour, or E4's round trip to an explicit goal, as GeoJSON in the DEM's CRS; an infeasible request returns an error, never an invented route. `/walkback` returns the 30 min line R_T = 1800 s, the energy-safe boundary F_E + R_E = E_remaining, and the fixed-radius circles for comparison. The planning HUD (deck.gl, raster tile profile) shows the terrain, the cost and blocked-cell layers, sand, boulders, radio, radiation and context data (REMS, THEMIS, CRISM/OMEGA). Station values come from an editable rubric, and a live budget bar splits energy into used, needed to return and free.
 
-- API and HUD, manual stations and rubric, guide mode shared by tablet and 3D, context layers.
-- 3D map, rehearsal, Sun, rover photos.
+**Guide.** One module drives two views of the same walk: the arm-tablet guide and the 3D rehearsal. It gives voice maneuvers, meters for energy, return time and EVA time, radio and adaptive-walkback alerts, the fastest way home, re-routing when off route, a solar-storm return, and a "plan against the walk" summary. Everything runs on the local server with data on board; no page loads a script from the internet.
+
+**3D map (P1, P3).** The DEM is meshed at 2 or 4 m, and only the local relief is exaggerated (shown = height + (k − 1)·detail), so a 475 m hillside does not become a wall. The mesh error against the 1 m DEM has a median of 0.03 m at 2 m spacing. The route is draped on the mesh and can be rehearsed at eye height, under the Sun of the EVA's sol [@Allison2000]. 383 Navcam photographs from 100 stops are placed at their measured camera poses [@PLACES; @VICAR-CAHVOR]. On three photographs of different sols, where the DEM would hide part of the photograph the error has a median of 0.02–0.14° and never exceeds 1°.

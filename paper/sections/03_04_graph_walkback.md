@@ -1,7 +1,14 @@
-## 3.4 Graph, return layer R(v) and walkback routes
+<!-- Owner: Aaron · Sources: E4_walkback.md · Status: drafted from the notes by JB's Claude; owner to confirm -->
 
-<!-- Owner: Aaron · Sources: [E4_walkback.md](../notes/E4_walkback.md) · Status: to draft -->
+### 3.4 Graph, return layer R(v) and walkback routes
 
-To cover:
+Each cell is a node, and each finite E3 edge a directed arc (4,000,000 nodes, 25,296,494 arcs). R(v), the minimum energy from v back to the habitat, is one Dijkstra from the habitat on the reversed graph, where each arc keeps the cost of the original. R_T(v) is the same in time. The habitat is a user input; a blocked or disconnected position is moved to the nearest valid cell of the largest strongly connected component, which holds 96.4 % of the walkable cells. A round trip habitat → goal → habitat must satisfy the walkback rule at every point, used(v) + need(v) ≤ budget, for energy, time and O2, where O2 = E / 20.1 kJ L⁻¹ + q·t with an optional time-based use q. Service at a station is charged at 205 W, the top of the low metabolic band [@NASA-xEMU-met]. The solver first tries the plain shortest route for the objective. If it breaks a limit, it sweeps weighted sums of energy and time and refines them by bisection (Lagrangian). If needed, an exact label-setting search follows, with Pareto labels per node and leg, capped at 50,000 labels (beyond the cap it reports a bound on the gap). The return is asymmetric: R(v)/g(v) has percentiles 5/50/95 of 0.531/0.877/1.674, so a symmetric radius is wrong in both directions. The most expensive returnable cell from the box centre needs a round trip of 562.8 Wh and 91.1 min. A 7 h suit budget (about 2,050 Wh) is far from binding in the box (Figure @fig:e4-rv).
 
-- Graph, R(v), safe region, round trip with walkback (energy, time, O2), baselines.
+**Baselines.** On the same graph, three simple rules are compared with the exact planner, over 21 habitats and the 13 stations plus 2,000 random goals:
+- B1: shortest distance with A\*, costed at flat-ground energy;
+- B2: a fixed radius;
+- B3: a constant O2 rate of 293 W [@NASA-Mars-mass].
+
+A "false safe" is a goal that a method calls safe but whose own route needs more than the budget.
+
+![Left: R(v) over the hillshade, with the round trip to the farthest returnable cell. Right: smallest usable budget that reaches each cell and returns.](../figures/e4_fig1_rv_map.png){#fig:e4-rv}
