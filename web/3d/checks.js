@@ -749,5 +749,151 @@ async function stationsCheck(viz) {
   return out;
 }
 
+// ?check=walk : does "Walk freely" (issue #109) move at the speeds it says, keep the eye
+// 1.7 m over the ground, stay inside the box and out of the habitat dome, turn with the
+// mouse or a finger, and does leaving put everything back?
+//
+// Drives the mode by hand at 60 updates per second of time, through the same handlers
+// as a person: keys as keyboard events on the window, the arrow pad as pointer events on
+// its buttons, looking as a touch drag on the view (a captured mouse cannot be faked:
+// both end in the same look() of walk_model.js). After every update in first person, the
+// eye's height above the drawn ground under it. Nothing is asked from the server.
+export function walkCheck({terrain, scene, camera, controls, walk, overlays, markers, photoMarkers}) {
+  const round = (v, d = 3) => Number(v.toFixed(d)), DEG = Math.PI / 180;
+  const out = {check: 'walk', quality: terrain.quality, mesh_step_m: terrain.step};
+  const ui = id => document.getElementById(id);
+  const snapshot = () => ({
+    position: camera.position.toArray(), quaternion: camera.quaternion.toArray(), fov: camera.fov, near: camera.near,
+    k: terrain.k, yaw: controls.yaw, pitch: controls.pitch, enabled: controls.enabled,
+    children: scene.children.map(o => o.name || o.type).join(' '),
+    label: ui('relief-label').textContent, slider: ui('relief').disabled, bar: ui('walk-bar').hidden,
+    walking: document.body.classList.contains('walking'), route: overlays.group.visible,
+    photos: photoMarkers.group.visible, button: ui('walk').textContent});
+  const before = snapshot();
+  const key = (code, down, init = {}) => window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', {code, bubbles: true, ...init}));
+  const tap = code => { key(code, true); key(code, false); };
+  const eye = {min: Infinity, max: 0, max_off_true_scale_m: 0};
+  // Hold for `seconds` of time; returns the horizontal distance walked.
+  const hold = seconds => {
+    const from = [...walk.position];
+    for (let i = 0; i < Math.round(seconds * 60); i++) {
+      walk.update(1 / 60);
+      if (walk.chase) continue;
+      const p = camera.position, h = p.y - terrain.surfaceAt(p.x, p.z);
+      eye.min = Math.min(eye.min, h); eye.max = Math.max(eye.max, h);
+      eye.max_off_true_scale_m = Math.max(eye.max_off_true_scale_m, Math.abs(p.y - terrain.surfaceAt(p.x, p.z, 1) - 1.7));
+    }
+    return Math.hypot(walk.position[0] - from[0], walk.position[1] - from[1]);
+  };
+
+  walk.enter();
+  const habitat = markers.items.find(it => it.marker.kind === 'habitat');
+  const toHabitat = () => habitat ? round(Math.hypot(walk.position[0] - habitat.position[0], walk.position[1] - habitat.position[2]), 2) : null;
+  out.start = {habitat: Boolean(habitat), from_habitat_centre_m: toHabitat(), heading_deg: round(walk.yaw / DEG, 1),
+               to_route_m: walk.toRoute === null ? null : round(walk.toRoute, 2)};
+  out.while_walking = {relief_k: terrain.k, relief_label: ui('relief-label').textContent, slider_disabled: ui('relief').disabled,
+                       near_m: camera.near, fov_deg: camera.fov, controls_enabled: controls.enabled,
+                       route_lines_shown: overlays.group.visible, photo_pins_shown: photoMarkers.group.visible,
+                       ground_paths: walk.ground.children.filter(o => o.name === 'walk path').length,
+                       station_marks: walk.ground.children.filter(o => o.name === 'walk station').length,
+                       walker_in_scene: scene.children.includes(walk.walker), bar_shown: !ui('walk-bar').hidden};
+
+  // Speeds: 10 s with W, then with Shift, then fast travel (F) for 3 s; W + D together;
+  // S backwards; the pad's forward button for 2 s.
+  const speeds = {};
+  key('KeyW', true); speeds.walk_m_s = round(hold(10) / 10); key('KeyW', false);
+  key('ShiftLeft', true); key('KeyW', true, {shiftKey: true}); speeds.run_m_s = round(hold(10) / 10);
+  key('KeyW', false, {shiftKey: true}); key('ShiftLeft', false);
+  tap('KeyF'); key('ArrowUp', true); speeds.fast_m_s = round(hold(3) / 3); key('ArrowUp', false); tap('KeyF');
+  speeds.fast_off_after_second_f = !walk.fast;
+  key('KeyW', true); key('KeyD', true); speeds.diagonal_m_s = round(hold(5) / 5); key('KeyW', false); key('KeyD', false);
+  key('KeyS', true); speeds.backwards_m_s = round(hold(5) / 5); key('KeyS', false);
+  const pad = document.querySelector('#walk-pad [data-walk="forward"]');
+  pad.dispatchEvent(new PointerEvent('pointerdown', {pointerId: 91, bubbles: true}));
+  speeds.pad_forward_m_s = round(hold(2) / 2);
+  pad.dispatchEvent(new PointerEvent('pointerup', {pointerId: 91, bubbles: true}));
+  speeds.stops_when_released_m = round(hold(1), 6);
+  speeds.no_frame_when_still = !walk.update(1 / 60);
+  out.speeds = speeds;
+  out.to_route_after_walking_m = walk.toRoute === null ? null : round(walk.toRoute, 2);
+  out.readout = walk.positionText();
+
+  // Looking: a touch drag of 100 px to the left turns the view right by the same angle
+  // the free-flight and rehearsal drags use; huge drags stop at the pitch limit.
+  const canvas = walk.canvas, drag = (dx, dy) => {
+    canvas.dispatchEvent(new PointerEvent('pointerdown', {pointerId: 92, pointerType: 'touch', clientX: 400, clientY: 300, bubbles: true}));
+    canvas.dispatchEvent(new PointerEvent('pointermove', {pointerId: 92, pointerType: 'touch', clientX: 400 + dx, clientY: 300 + dy, bubbles: true}));
+    canvas.dispatchEvent(new PointerEvent('pointerup', {pointerId: 92, pointerType: 'touch', clientX: 400 + dx, clientY: 300 + dy, bubbles: true}));
+    walk.update(1 / 60);
+  };
+  const yaw0 = walk.yaw;
+  drag(-100, 0);
+  let turned = (walk.yaw - yaw0) / DEG;
+  turned = ((turned + 540) % 360) - 180;
+  out.look = {drag_100px_left_turns_deg: round(turned, 3),
+              expected_deg: round(100 * camera.fov / canvas.clientHeight, 3)};
+  drag(0, 20000); out.look.pitch_up_limit_deg = round(walk.pitch / DEG, 3);
+  drag(0, -40000); out.look.pitch_down_limit_deg = round(walk.pitch / DEG, 3);
+  drag(0, 40000 - 20000 * 0); walk.pitch = 6 * DEG; walk.update(0);
+
+  // The box: from 30 m inside each edge, 5 s of fast travel straight out (100 m).
+  const half = terrain.half, edges = {east: [[half - 30, 0], 90], west: [[-(half - 30), 0], -90],
+                                       north: [[0, -(half - 30)], 0], south: [[0, half - 30], 180]};
+  out.box = {half_m: half};
+  let farthest = 0;
+  walk.setFast(true);
+  for (const [name, [p, heading]] of Object.entries(edges)) {
+    walk.position = p; walk.yaw = heading * DEG;
+    key('KeyW', true);
+    for (let i = 0; i < 300; i++) {
+      walk.update(1 / 60);
+      farthest = Math.max(farthest, Math.abs(walk.position[0]), Math.abs(walk.position[1]));
+    }
+    key('KeyW', false);
+    out.box[`${name}_edge_left_m`] = round(half - Math.max(Math.abs(walk.position[0]), Math.abs(walk.position[1])), 6);
+  }
+  out.box.farthest_from_centre_m = round(farthest, 6);
+  out.box.eye_after_m = round(camera.position.y - terrain.surfaceAt(camera.position.x, camera.position.z), 6);
+
+  // The habitat dome: from 30 m west of it, 3 s of fast travel straight at its centre.
+  if (habitat) {
+    walk.position = [habitat.position[0] - 30, habitat.position[2]]; walk.yaw = 90 * DEG;
+    let closest = Infinity;
+    key('KeyW', true);
+    for (let i = 0; i < 180; i++) { walk.update(1 / 60); closest = Math.min(closest, toHabitat()); }
+    key('KeyW', false);
+    out.dome = {closest_to_centre_m: round(closest, 6), limit_m: 4.3};
+  }
+  walk.setFast(false);
+
+  // The view from behind (C), then first person again.
+  tap('KeyC');
+  walk.update(1 / 60);
+  const w = walk.walker.position, p = camera.position;
+  out.chase = {on: walk.chase, walker_shown: walk.walker.visible,
+               camera_above_ground_m: round(p.y - terrain.surfaceAt(p.x, p.z)),
+               camera_to_walker_m: round(p.distanceTo(w)),
+               walker_feet_above_ground_m: round(w.y - 0.85 - terrain.surfaceAt(w.x, w.z), 6)};
+  tap('KeyC');
+  walk.update(1 / 60);
+  out.chase.off_again = !walk.chase && !walk.walker.visible;
+  out.eye = {min_m: round(eye.min), max_m: round(eye.max), max_off_1_7_at_true_scale_m: round(eye.max_off_true_scale_m, 6)};
+
+  // Leave with Escape, then once more from the chase view with the Exit button.
+  tap('Escape');
+  const after1 = snapshot();
+  walk.enter(); walk.setChase(true); key('KeyW', true); hold(1); key('KeyW', false); ui('wk-exit').click();
+  const after2 = snapshot();
+  const same = after => ({
+    camera_moved_m: round(Math.hypot(...after.position.map((v, i) => v - before.position[i])), 9),
+    camera_turned: round(Math.max(...after.quaternion.map((v, i) => Math.abs(v - before.quaternion[i]))), 9),
+    rest_equal: ['fov', 'near', 'k', 'yaw', 'pitch', 'enabled', 'children', 'label', 'slider', 'bar', 'walking',
+                 'route', 'photos', 'button'].every(k => after[k] === before[k])});
+  out.after_exit = {escape: same(after1), exit_button: same(after2), relief_k: after2.k, fov_deg: after2.fov,
+                    near_m: after2.near, scene: after2.children, listeners_left: walk._listeners.length};
+  return out;
+}
+
 export const CHECKS = {shading: shadingCheck, route: routeCheck, rehearse: rehearseCheck, sun: sunCheck,
-                       shadows: shadowsCheck, guide: guideCheck, photos: photosCheck, stations: stationsCheck};
+                       shadows: shadowsCheck, guide: guideCheck, photos: photosCheck, stations: stationsCheck,
+                       walk: walkCheck};
