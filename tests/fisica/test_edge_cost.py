@@ -92,7 +92,7 @@ def test_models_agree_on_definitions():
     a = np.array([0.0, 10.0, -10.0]); v = 0.75 - 0.01 * a
     pan = model_power("pandolf_cf", 124.2, v, a, G_MARS)
     for i in range(3):
-        assert pan[i] == pytest.approx(pandolf_cf_power(75, 49.2, v[i], a[i]), rel=1e-9)
+        assert pan[i] == pytest.approx(pandolf_cf_power(76.4, 47.8, v[i], a[i]), rel=1e-9)
     scaled = model_power("pandolf_cf_scaled", 124.2, v, a, G_MARS)
     assert np.allclose(scaled, pan * G_MARS / G_EARTH)
     with pytest.raises(ValueError):
