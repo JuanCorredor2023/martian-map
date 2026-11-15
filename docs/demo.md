@@ -44,7 +44,9 @@ Health check: `http://localhost:8000/health`. Tests: `python -m pytest tests -q`
 
 No internet is needed at demo time: deck.gl is vendored in `web/vendor/` and all data is local.
 
-**Guide mode (arm tablet):** after planning, open the link under the plan (or `http://localhost:8000/guide.html`). Press ▶ Walk; try *Detour (demo)* (off route → recalculating), *Solar storm (demo)* (automatic way home with the dose) and *Return home*.
+**Guide mode (arm tablet):** after planning, open the link under the plan (or `http://localhost:8000/guide.html`). Press ▶ Walk; try *Detour (demo)* (off route → recalculating), *Solar storm (demo)* (automatic way home with the dose) and *Return home*. At the habitat a card compares the plan with what was walked (also at the end of the 3D rehearsal), and the walk is saved in `data/walks/`.
+
+**Wrist card:** *Wrist card (print)* under the plan opens a printable step list with the turn-back rules and a QR to guide mode; *Print / Save as PDF*. For the QR to work on a tablet, open the page through the computer's network address, not `localhost`.
 
 ## 3. Seven-minute walkthrough
 

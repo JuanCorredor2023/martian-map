@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EVA Wrist Card</title>
+<script src="/vendor/qrcode-generator-1.4.4.min.js"></script>
+<style>
+  /* Printable cuff checklist, like the ones Apollo crews wore on the wrist: one narrow
+     column, high contrast, readable in a glove. Print or "Save as PDF" from the browser. */
+  :root { --ink: #111; --muted: #555; --line: #bbb; --warn: #9a3412; --paper: #fff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #e9e9e6; color: var(--ink);
+               font: 13px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .bar { max-width: 760px; margin: 12px auto; padding: 0 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .bar button { font: inherit; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 1px solid #888;
+                background: #fff; cursor: pointer; }
+  .card { max-width: 760px; margin: 0 auto 24px; background: var(--paper); padding: 16px 18px;
+          border: 1px solid var(--line); border-radius: 6px; }
+  h1 { font-size: 17px; margin: 0; letter-spacing: 0.02em; }
+  .sub { color: var(--muted); font-size: 12px; margin: 2px 0 10px; }
+  .head { display: flex; gap: 14px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
+  .totals { display: grid; grid-template-columns: repeat(4, auto); gap: 2px 14px; font-size: 12px; margin: 6px 0; }
+  .totals b { font-size: 15px; display: block; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; margin-top: 8px; }
+  th, td { padding: 4px 5px; border-bottom: 1px solid var(--line); text-align: right; vertical-align: top; }
+  th { font-size: 11px; color: var(--muted); font-weight: 600; border-bottom: 2px solid var(--ink); }
+  th:nth-child(2), td:nth-child(2) { text-align: left; }
+  td.n { font-weight: 700; text-align: center; }
+  tr.leg td { border-bottom: 0; color: var(--muted); font-size: 11px; padding-top: 0; }
+  .rules { margin-top: 10px; border: 2px solid var(--ink); border-radius: 6px; padding: 8px 10px; }
+  .rules h2 { font-size: 13px; margin: 0 0 4px; }
+  .rules li { margin: 2px 0; }
+  .warn { color: var(--warn); font-weight: 600; }
+  #qr svg { width: 118px; height: 118px; display: block; }
+  #qr-note { font-size: 10px; color: var(--muted); max-width: 150px; }
+  .foot { font-size: 10px; color: var(--muted); margin-top: 8px; }
+  @media (max-width: 560px) { .totals { grid-template-columns: repeat(2, auto); } th, td { padding: 3px; } }
+  @media print {
+    html, body { background: #fff; }
+    .bar { display: none; }
+    .card { border: 0; margin: 0; padding: 0; max-width: none; }
+    @page { margin: 10mm; }
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button id="print">Print / Save as PDF</button>
+  <button onclick="location.href='/'">Back to the planner</button>
+</div>
+<div class="card" id="card"><h1>EVA wrist card</h1><div class="sub" id="status">Loading the last plan…</div></div>
+
+<script type="module">
+// ---------------------------------------------------------------------------
+// Wrist card (P6, #45): the plan saved by the HUD (GET /plan/last) as a printable
+// step list, like the cuff checklists of Apollo. Same numbers as the guide (guide_core):
+// arrival time, energy and O2 used, time and energy to get back from each stop, the
+// stretches with no direct radio (E11), the turn-back rules and the storm dose (E12).
+// The QR opens guide mode on the arm tablet (same server).
+// ---------------------------------------------------------------------------
+import * as G from "/guide_core.js";
+
+const ui = id => document.getElementById(id);
+const esc = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const min = s => `${Math.round(s / 60)}`;
+
+async function json(url, opts) {
+  try { const r = await fetch(url, opts); return r.ok ? await r.json() : null; } catch { return null; }
+}
+
+async function main() {
+  const saved = await json("/plan/last");
+  if (!saved) { ui("status").textContent = "No plan yet: plan an EVA in the HUD first."; return; }
+  const [rubric, rad] = await Promise.all([json("/stations/rubric"), json("/radiation")]);
+  const route = G.routeFromPlan(saved);
+  const habitat = saved.plan.properties.habitat;
+  await G.attachComms(route, habitat);
+  const f = saved.plan.features.find(x => x.properties.kind === "route"), p = f.properties;
+  const req = saved.request || {}, n = route.coords.length - 1;
+  const stationOf = id => saved.plan.features.find(x => x.properties.kind === "station" && x.properties.id === id);
+  const label = type => (rubric && rubric[type] && rubric[type].label) || type || "";
+
+  // Steps: start, each stop (tour) or the goal (single round trip), habitat.
+  const stops = route.stops && route.stops.length ? route.stops.map(s => ({i: s.i, id: s.name}))
+    : route.turnIndex != null ? [{i: route.turnIndex, id: (route.goalName || "").replace("Arrive at station ", "")}] : [];
+  const steps = [{i: 0, id: "Habitat", what: "depart"}, ...stops.map(s => ({...s, what: "station"})),
+                 {i: n, id: "Habitat", what: "arrive"}];
+  const o2 = p.o2_used_l || null;
+  const silentOn = (a, b) => {
+    if (!route.radio) return null;
+    let m = 0;
+    for (let k = a + 1; k <= b; k++) if (!route.radio[k]) m += route.d[k] - route.d[k - 1];
+    return m;
+  };
+  let rows = "";
+  steps.forEach((s, k) => {
+    if (k) {
+      const a = steps[k - 1].i, legM = route.d[s.i] - route.d[a], silent = silentOn(a, s.i);
+      rows += `<tr class="leg"><td></td><td colspan="7">↓ ${legM.toFixed(0)} m` +
+        (silent >= 10 ? ` · <span class="warn">no direct radio ${silent.toFixed(0)} m</span>` : "") + `</td></tr>`;   // under 10 m: shadow-edge flicker
+    }
+    const st = s.what === "station" ? stationOf(s.id) : null;
+    const service = st ? st.properties.service_time_min : null;
+    const name = s.what === "station" ? `<b>${esc(s.id)}</b> ${esc(label(st && st.properties.type))}` +
+      (service ? ` · ${service} min` : "") : `<b>Habitat</b> (${s.what})`;
+    const m = G.meters(route, s.i, null);
+    rows += `<tr><td class="n">${s.what === "station" ? k : k === 0 ? "▲" : "■"}</td><td>${name}</td>` +
+      `<td>${min(route.t[s.i] - route.t[0])}</td><td>${route.used[s.i].toFixed(0)}</td>` +
+      `<td>${o2 ? o2[s.i].toFixed(0) : "—"}</td>` +
+      `<td${m.back.s > 1500 ? ' class="warn"' : ""}>${(m.back.s / 60).toFixed(0)}</td>` +
+      `<td>${route.rv ? route.rv[s.i].toFixed(0) : "—"}</td>` +
+      `<td${m.energy.good ? "" : ' class="warn"'}>${m.energy.leftWh.toFixed(0)}</td></tr>`;
+  });
+
+  // Farthest point in time, and the storm dose from there.
+  let far = 0;
+  if (route.rvTime) for (let k = 1; k <= n; k++) if (route.rvTime[k] > route.rvTime[far]) far = k;
+  const farS = route.rvTime ? route.rvTime[far] : null;
+  const real = rad && rad.scenarios.find(s => s.id === "real"), x50 = rad && rad.scenarios.find(s => s.id === "x50");
+  const silentTotal = route.radio ? silentOn(0, n) : null;
+  const longestSilent = route.radioEvents ? Math.max(0, ...route.radioEvents.filter(e => e.kind === "loss").map(e => e.silentS)) : null;
+
+  const limits = [`budget ${req.energy_budget_wh ?? "?"} Wh`, `margin ${Math.round((req.margin ?? 0) * 100)} %`,
+                  req.max_duration_min ? `max ${req.max_duration_min} min` : null,
+                  `cell block ${req.max_cell_slope_deg ?? "off"}°`, saved.plan.properties.cost_model].filter(Boolean);
+  ui("card").innerHTML = `
+    <div class="head">
+      <div>
+        <h1>EVA wrist card · Gale boxwork</h1>
+        <div class="sub">${esc(saved.plan.properties.source || "plan")} · ${esc(limits.join(" · "))}</div>
+        <div class="totals">
+          <span>Stations<b>${stops.length}</b></span><span>Time<b>${min(p.time_s)} min</b></span>
+          <span>Energy<b>${p.energy_wh.toFixed(0)} / ${p.usable_wh.toFixed(0)} Wh</b></span>
+          <span>Distance<b>${(p.length_m / 1000).toFixed(2)} km</b></span>
+        </div>
+      </div>
+      <div><div id="qr"></div><div id="qr-note"></div></div>
+    </div>
+    <table>
+      <tr><th>#</th><th>Stop</th><th>Arrive (min)</th><th>Used (Wh)</th><th>O₂ (L)</th>
+          <th>Back (min)</th><th>Back (Wh)</th><th>Left after return (Wh)</th></tr>
+      ${rows}
+    </table>
+    <div class="rules">
+      <h2>Turn back if…</h2>
+      <ul>
+        <li><b>Time back over 25 min</b> (the 30 min emergency-oxygen line).${farS != null ? ` Farthest point: ${(farS / 60).toFixed(0)} min from the habitat, at ${min(route.t[far] - route.t[0])} min into the EVA.` : ""}</li>
+        <li><b>Energy left after returning under 25 %</b> of ${p.usable_wh.toFixed(0)} Wh (${(0.25 * p.usable_wh).toFixed(0)} Wh).</li>
+        ${req.max_duration_min ? `<li><b>EVA clock past ${req.max_duration_min} min minus the time back.</b></li>` : ""}
+        <li><span class="warn">Solar storm alert</span>: go home now by the fastest way.${farS != null && real ? ` From the farthest point: ${(farS / 3600 * real.rate_ugy_h).toFixed(1)} µGy (real 2025-11-11 event)` + (x50 ? `, ${(farS / 3600 * x50.rate_ugy_h).toFixed(0)} µGy if 50× stronger.` : ".") : ""}</li>
+        ${silentTotal != null ? `<li><b>Radio</b>: ${silentTotal.toFixed(0)} m with no direct line of sight to the habitat` +
+          (longestSilent ? ` (longest about ${Math.max(1, Math.round(longestSilent / 60))} min)` : "") + `. Stay within sight of your partner.</li>` : ""}
+      </ul>
+    </div>
+    <div class="foot">Generated ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC from GET /plan/last.
+      Energy and O₂ are metabolic estimates (Santee 2001 at Mars gravity; 20.1 kJ/L), radio is line of sight on the 1 m DEM.</div>`;
+
+  // QR: guide mode on this server, for the arm tablet.
+  const url = `${location.origin}/guide.html`;
+  const qr = qrcode(0, "M"); qr.addData(url); qr.make();
+  ui("qr").innerHTML = qr.createSvgTag({cellSize: 3, margin: 2, scalable: true, alt: "QR code to open guide mode"});
+  const local = ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
+  ui("qr-note").innerHTML = `Scan to open guide mode:<br>${esc(url)}` +
+    (local ? `<br><span class="warn">This address only works on this computer; open the card through the computer's network address so the tablet can use the QR.</span>` : "");
+  document.title = `EVA Wrist Card · ${stops.length} stations`;
+}
+
+ui("print").addEventListener("click", () => window.print());
+main().catch(err => { ui("status").textContent = `Error: ${err.message}`; console.error(err); });
+</script>
+</body>
+</html>

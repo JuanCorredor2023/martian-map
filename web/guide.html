@@ -31,7 +31,12 @@
   #status { font-size: 14px; color: var(--muted); margin: 0 12px 8px; min-height: 18px; }
   #station-card { position: fixed; inset: auto 0 0 0; max-width: 520px; margin: 0 auto; z-index: 10;
                   background: #0b2a3a; border: 2px solid #36d1ff; border-radius: 16px 16px 0 0; padding: 16px; }
-  #station-card h2 { margin: 0 0 6px; font-size: 22px; }
+  #station-card h2, #walk-card h2 { margin: 0 0 6px; font-size: 22px; }
+  #walk-card { position: fixed; inset: auto 0 0 0; max-width: 520px; margin: 0 auto; z-index: 11;
+               background: #13261a; border: 2px solid var(--good); border-radius: 16px 16px 0 0; padding: 16px; }
+  #walk-table { width: 100%; border-collapse: collapse; font-size: 16px; margin: 6px 0 10px; }
+  #walk-table th, #walk-table td { text-align: right; padding: 3px 4px; border-bottom: 1px solid var(--border); }
+  #walk-table th:first-child, #walk-table td:first-child { text-align: left; }
   #station-card ul { margin: 8px 0 12px; padding-left: 22px; font-size: 17px; }
   .muted { color: var(--muted); }
   #alert { margin: 0 8px 8px; padding: 12px 14px; border-radius: 14px; background: #3a0d0b;
@@ -76,7 +81,15 @@
   <div id="alert" hidden></div>
   <div id="status"></div>
   <div class="note">Simulated walk: there is no GPS on Mars. A real suit would locate itself with
-    habitat/rover beacons and motion sensors. <a href="/3d/" style="color:var(--accent)">Same walk in 3D</a></div>
+    habitat/rover beacons and motion sensors. <a href="/3d/" style="color:var(--accent)">Same walk in 3D</a> ·
+    <a href="/card.html" style="color:var(--accent)">Wrist card</a></div>
+</div>
+
+<div id="walk-card" hidden>
+  <h2>Plan against the walk</h2>
+  <table id="walk-table"></table>
+  <div id="walk-notes" class="muted"></div>
+  <button id="walk-close" style="width:100%">Close</button>
 </div>
 
 <div id="station-card" hidden>
@@ -102,6 +115,8 @@ const ui = id => document.getElementById(id);
 let S, X0, Y0, deckgl, tiles, plan, rubric = {}, radInfo = null, limitS = null;
 let route = null, idx = 0, timer = null, speed = 60, cardOpen = false, offRoute = null;
 let request = 0;           // answers to an older click are dropped
+let walkLog = null;        // what is walked, for "plan against the walk" (P6)
+const pendingCards = [];   // station cards waiting for the one on screen to be closed
 const voice = G.createVoice();
 const spoken = new Set(), visited = new Set();
 const toWorld = (x, y) => [(x - X0) / S, (Y0 - y) / S];
@@ -119,6 +134,7 @@ async function init() {
   limitS = G.evaLimitS(plan);
   ui("eva-meter").hidden = !limitS;
   setRoute(G.routeFromPlan(plan));
+  walkLog = G.createWalkLog(route);
   deckgl = new Deck({parent: ui("map"), views: new OrthographicView({flipY: true}),
                      initialViewState: {target: [...toWorld(...route.coords[0]), 0], zoom: 4.5},
                      controller: true, layers: layers()});
@@ -171,7 +187,9 @@ function update(i) {
   ui("arrow").textContent = next.arrow;
   ui("man-text").textContent = next.text;
   ui("man-dist").textContent = distText;
-  for (const text of [...G.announcements(r, i, spoken), ...G.radioAnnouncements(r, i, spoken)]) voice.say(text);
+  for (const text of G.announcements(r, i, spoken)) voice.say(text);
+  for (const text of G.radioAnnouncements(r, i, spoken)) { voice.say(text); G.logEvent(walkLog, "radio", text, r, i); }
+  G.logStep(walkLog, r, i, offRoute || here, !offRoute);
   const m = G.meters(r, i, limitS);
   meter("e-fill", "e-val", m.energy.frac, m.energy.text, m.energy.good);
   meter("t-fill", "t-val", m.back.frac, m.back.text, m.back.good);
@@ -179,19 +197,23 @@ function update(i) {
   const radio = G.radioState(r, i);
   ui("radio-meter").hidden = !radio;
   if (radio) meter("r-fill", "r-val", radio.state === "direct" ? 1 : radio.state === "relay" ? 0.5 : 0, radio.text, radio.good);
-  const arrived = G.arrivals(r, i, stations(), visited);
-  if (arrived.length) openStationCard(arrived[0]);
+  // Two stations can be reached in one step (the drilled ridge and hollow are 10 m
+  // apart): show their cards one after the other.
+  pendingCards.push(...G.arrivals(r, i, stations(), visited));
+  if (pendingCards.length && !cardOpen) openStationCard(pendingCards.shift());
   if (deckgl) deckgl.setProps({layers: layers(),
     viewState: {target: [...toWorld(...here), 0], zoom: deckgl.viewState?.zoom ?? 4.5}});
   if (i >= r.coords.length - 1) {
     stop();
     ui("status").textContent = "Arrived at the habitat.";
     voice.say("You have arrived at the habitat.");
+    finishWalk();
   }
 }
 
 function openStationCard(p) {
   stop(); cardOpen = true;
+  G.logArrival(walkLog, p.id);
   const c = G.stationCard(p, rubric);
   ui("st-title").textContent = c.title;
   ui("st-why").textContent = c.why;
@@ -218,6 +240,7 @@ async function returnHome() {
     const home = await G.returnHome(route, idx, plan, offRoute || route.coords[idx]);
     if (mine !== request) return false;
     offRoute = null;
+    G.logEvent(walkLog, "home", home.text, route, idx);
     setRoute(home.route);
     ui("status").textContent = home.text;
     voice.say(home.speech);
@@ -238,6 +261,7 @@ async function checkOffRoute(pt) {
     const out = await G.rejoin(route, idx, pt, plan);
     if (mine !== request) return;
     if (!out) { ui("status").textContent = "Still within 15 m of the route: no rejoin needed."; return; }
+    G.logEvent(walkLog, "detour", `off route ${out.offM.toFixed(0)} m; ${out.text}`, route, idx);
     offRoute = null;
     setRoute(out.route);
     ui("status").textContent = out.text;
@@ -260,11 +284,32 @@ async function solarStorm() {
   const banner = ui("alert");
   banner.hidden = false;
   banner.innerHTML = G.STORM_PENDING;
+  G.logEvent(walkLog, "storm", "solar storm alert: return home", route, idx);
   voice.say("Solar storm alert. Return to the habitat now.");
   if (!(await returnHome())) { banner.innerHTML = G.stormFailedHtml(ui("status").textContent); return; }
   banner.innerHTML = G.stormHtml(G.stormMessage(route, radInfo));
   walk();
 }
+
+// --- plan against the walk (P6) ----------------------------------------------
+function finishWalk() {
+  if (!walkLog || walkLog.done) return;
+  walkLog.done = true;
+  const s = G.walkSummary(walkLog);
+  if (!s) return;
+  const esc = t => String(t).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
+  ui("walk-table").innerHTML = "<tr><th></th><th>Plan</th><th>Walked</th></tr>" +
+    G.summaryRows(s).map(([a, b, c]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td>${esc(c)}</td></tr>`).join("");
+  const notes = [];
+  if (s.skipped.length) notes.push(`Skipped: ${s.skipped.join(", ")}`);
+  for (const e of s.events) notes.push(`${e.t != null ? (e.t / 60).toFixed(0) + " min · " : ""}${e.text}`);
+  ui("walk-notes").innerHTML = notes.map(esc).join("<br>") || "Walked as planned.";
+  ui("walk-card").hidden = false;
+  G.postWalk(s, walkLog).then(name => {
+    if (name) ui("walk-notes").innerHTML += `<br>Saved for the debrief: data/walks/${esc(name)}`;
+  });
+}
+ui("walk-close").addEventListener("click", () => { ui("walk-card").hidden = true; });
 
 ui("walk-btn").addEventListener("click", walk);
 ui("detour-btn").addEventListener("click", simulateDetour);
@@ -274,7 +319,11 @@ ui("speed-btn").addEventListener("click", () => {
 ui("voice-btn").addEventListener("click", () => {
   ui("voice-btn").textContent = voice.toggle() ? "🔊 On" : "🔇 Off"; });
 ui("home-btn").addEventListener("click", returnHome);
-ui("st-done").addEventListener("click", () => { ui("station-card").hidden = true; cardOpen = false; walk(); });
+ui("st-done").addEventListener("click", () => {
+  ui("station-card").hidden = true; cardOpen = false;
+  if (pendingCards.length) { openStationCard(pendingCards.shift()); return; }
+  walk();
+});
 
 init().catch(err => { ui("man-text").textContent = "Error"; ui("man-dist").textContent = err.message; console.error(err); });
 </script>

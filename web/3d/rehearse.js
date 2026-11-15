@@ -151,6 +151,7 @@ export class Rehearsal {
     this._evaStart = model.start;
     this.guide = this._guideRoute(mainRoute(this.plan), 'plan');
     this._radio(this.guide);
+    this.walkLog = this.guide ? G.createWalkLog(this.guide) : null;   // plan against the walk (P6)
     this._spoken.clear();
     this._extra = [];
     el('rh-alert').hidden = true;
@@ -293,6 +294,7 @@ export class Rehearsal {
     if (to >= model.end) {
       this._place(step); this.pause();
       this.voice.say('You have arrived at the habitat.');
+      this._finishWalk();
     }
   }
 
@@ -303,6 +305,7 @@ export class Rehearsal {
     if (stop.waitS > 0) rows.push(['Standing here', `${clock(stop.waitS)} min`]);
     // Guide: why the station matters and its tasks, as on the arm tablet.
     const g = s ? G.stationCard({id: s.id, type: s.type, service_time_min: s.serviceMin}, this.rubric()) : null;
+    if (s && this.walkLog && this.guide && this.guide.kind === 'plan') G.logArrival(this.walkLog, s.id);
     if (g && g.why) rows.push(['Why', g.why]);
     if (g) g.tasks.forEach((t, k) => rows.push([k ? '' : 'Tasks', `• ${t}`]));
     showCard({...base, rows, color: s ? TYPE_COLORS[s.type] || null : null,
@@ -461,7 +464,13 @@ export class Rehearsal {
     el('rh-man-text').textContent = event.text;
     el('rh-man-dist').textContent = distText;
     if (this.playing) {
-      for (const text of [...G.announcements(g, i, this._spoken), ...G.radioAnnouncements(g, i, this._spoken)]) this.voice.say(text);
+      for (const text of G.announcements(g, i, this._spoken)) this.voice.say(text);
+      for (const text of G.radioAnnouncements(g, i, this._spoken)) {
+        this.voice.say(text);
+        if (this.walkLog) G.logEvent(this.walkLog, 'radio', text, g, i);
+      }
+      // Only what is played counts as walked (dragging the scrubber is not walking).
+      if (this.walkLog) G.logStep(this.walkLog, g, i, [this.state.x, this.state.y]);
     }
     const m = G.meters(g, i, this._limitS());
     const fill = (id, frac, good) => {
@@ -508,6 +517,23 @@ export class Rehearsal {
       .then(() => { if (this.active && this.guide === g) { this._showGuide(); this._dirty = true; } });
   }
 
+  // At the habitat: the walk against the plan, as a card, kept for the debrief (POST /walks).
+  _finishWalk() {
+    const log = this.walkLog;
+    if (!log || log.done) return null;
+    log.done = true;
+    const s = G.walkSummary(log);
+    if (!s) return null;
+    const rows = G.summaryRows(s).map(([label, plan, walked]) => [label, `${walked} (plan ${plan})`]);
+    if (s.skipped.length) rows.push(['Skipped', s.skipped.join(', ')]);
+    const events = s.events.map(e => `${e.t != null ? clock(e.t - this._evaStart) + ' · ' : ''}${e.text}`);
+    showCard({title: 'Plan against the walk', subtitle: 'rehearsal', rows,
+              note: events.length ? events.join(' | ') : 'Walked as planned.'});
+    this._stopCard = true;
+    G.postWalk(s, log);
+    return s;
+  }
+
   _planRef() { return {plan: {properties: this.plan.properties}}; }   // what guide_core asks of a saved plan
 
   async returnHome() {
@@ -519,6 +545,7 @@ export class Rehearsal {
       const i = this._vertex();
       const home = await G.returnHome(this.guide, i, this._planRef(), [this.state.x, this.state.y], this._now());
       if (token !== this._token || !this.active) return null;
+      if (this.walkLog) G.logEvent(this.walkLog, 'home', home.text, this.guide, this._vertex());
       this._walkRoute(home.route, HOME_LINE, []);
       this._note(home.text);
       this.voice.say(home.speech);
@@ -537,6 +564,7 @@ export class Rehearsal {
       const out = await G.rejoin(this.guide, i, pt, this._planRef(), this._now());
       if (token !== this._token || !this.active) return;
       if (!out) { this._note('Still within 15 m of the route: no rejoin needed.'); return; }
+      if (this.walkLog) G.logEvent(this.walkLog, 'detour', `off route ${out.offM.toFixed(0)} m; ${out.text}`, this.guide, i);
       this._walkRoute(out.route, REJOIN_LINE, this.guide.kind === 'plan' ? this.plan.points : []);
       this._note(out.text);
       this.voice.say('New route found.');
@@ -548,6 +576,7 @@ export class Rehearsal {
     const alert = el('rh-alert');
     alert.hidden = false;
     alert.innerHTML = G.STORM_PENDING;
+    if (this.walkLog) G.logEvent(this.walkLog, 'storm', 'solar storm alert: return home', this.guide, this._vertex());
     this.voice.say('Solar storm alert. Return to the habitat now.');
     if (this._radInfo === undefined) {
       try { const res = await fetch('/radiation'); this._radInfo = res.ok ? await res.json() : null; }

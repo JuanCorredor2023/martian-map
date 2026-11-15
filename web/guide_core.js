@@ -353,3 +353,105 @@ export function radioAnnouncements(r, i, spoken) {
   }
   return out;
 }
+
+// --- plan against the walk (P6, #45) -------------------------------------------------
+// A log of what was actually walked (simulated in the demo): positions, clock, energy,
+// radio, arrivals and events (detour, way home, storm). At the habitat, walkSummary()
+// compares it with the plan; postWalk() keeps it for the debrief (POST /walks).
+const LOG_STEP_M = 1;                    // a point every metre at most
+
+export function createWalkLog(planRoute) {
+  const n = planRoute.coords.length - 1;
+  const planned = planRoute.stops && planRoute.stops.length ? planRoute.stops.map(s => s.name)
+    : (planRoute.goalName || "").startsWith("Arrive at station ") ? [planRoute.goalName.slice(18)] : [];
+  return {
+    plan: {coords: planRoute.coords, timeS: planRoute.t[n] - planRoute.t[0], energyWh: planRoute.used[n],
+           lengthM: planRoute.d[n], stations: planned, t0: planRoute.t[0],
+           noRadioM: planRoute.radio ? silentMetres(planRoute.radio, planRoute.d) : null},
+    points: [], events: [], visited: [], done: false, route: null, lastI: -1,
+    planRoute,                                  // its radio may arrive later (attachComms)
+  };
+}
+
+function silentMetres(radio, d) {
+  let m = 0;
+  for (let k = 1; k < radio.length; k++) if (!radio[k]) m += d[k] - d[k - 1];
+  return m;
+}
+
+// One step of the walk: vertex i of the route being walked, at position pos. When the
+// walker moves along the route (onRoute), the vertices skipped since the last step are
+// logged too, so a fast simulation (x180 jumps ~30 m per tick) does not cut corners.
+export function logStep(log, r, i, pos = r.coords[i], onRoute = true) {
+  if (onRoute && log.route === r && i > log.lastI + 1) {
+    for (let k = log.lastI + 1; k < i; k++) pushPoint(log, r, k, r.coords[k]);
+  }
+  pushPoint(log, r, i, pos);
+  log.route = r; log.lastI = i;
+}
+
+function pushPoint(log, r, i, pos) {
+  const last = log.points[log.points.length - 1];
+  if (last && last.kind === r.kind && Math.hypot(pos[0] - last.x, pos[1] - last.y) < LOG_STEP_M) return;
+  log.points.push({x: pos[0], y: pos[1], t: r.t[i], used: r.used[i], kind: r.kind, radio: r.radio ? r.radio[i] : null});
+}
+
+export function logEvent(log, kind, text, r = null, i = 0) {
+  log.events.push({kind, text, t: r ? r.t[i] : null});
+}
+
+export function logArrival(log, id) { if (!log.visited.includes(id)) log.visited.push(id); }
+
+// The walk against the plan. Off-route distances are to the nearest planned vertex
+// (the planned line has a vertex every metre or so).
+export function walkSummary(log) {
+  const pts = log.points, p = log.plan;
+  if (pts.length < 2) return null;
+  let length = 0, silent = 0, maxOff = 0, sumOff = 0;
+  for (let k = 0; k < pts.length; k++) {
+    if (k) {
+      const step = Math.hypot(pts[k].x - pts[k - 1].x, pts[k].y - pts[k - 1].y);
+      length += step;
+      if (pts[k].radio === false) silent += step;
+    }
+    let best = Infinity;
+    for (const c of p.coords) { const dd = Math.hypot(c[0] - pts[k].x, c[1] - pts[k].y); if (dd < best) best = dd; }
+    maxOff = Math.max(maxOff, best); sumOff += best;
+  }
+  const end = pts[pts.length - 1];
+  const walked = {timeS: end.t - p.t0, energyWh: end.used, lengthM: length,
+                  stations: log.visited.slice(), maxOffRouteM: maxOff, meanOffRouteM: sumOff / pts.length,
+                  noRadioM: pts.some(q => q.radio !== null) ? silent : null,
+                  wentHome: pts.some(q => q.kind === "home")};
+  const planRadio = p.noRadioM ?? (log.planRoute && log.planRoute.radio ? silentMetres(log.planRoute.radio, log.planRoute.d) : null);
+  return {
+    plan: {timeS: p.timeS, energyWh: p.energyWh, lengthM: p.lengthM, stations: p.stations, noRadioM: planRadio},
+    walked,
+    skipped: p.stations.filter(id => !walked.stations.includes(id)),
+    delta: {timeS: walked.timeS - p.timeS, energyWh: walked.energyWh - p.energyWh, lengthM: walked.lengthM - p.lengthM},
+    events: log.events.slice(),
+  };
+}
+
+// Rows for a "plan against the walk" table: [label, plan, walked].
+export function summaryRows(s) {
+  const min = v => `${(v / 60).toFixed(1)} min`, wh = v => `${v.toFixed(0)} Wh`, m = v => `${v.toFixed(0)} m`;
+  const rows = [["Time", min(s.plan.timeS), min(s.walked.timeS)],
+                ["Energy", wh(s.plan.energyWh), wh(s.walked.energyWh)],
+                ["Distance", m(s.plan.lengthM), m(s.walked.lengthM)],
+                ["Stations", `${s.plan.stations.length}`, `${s.walked.stations.length}`]];
+  if (s.plan.noRadioM != null || s.walked.noRadioM != null) {
+    rows.push(["No direct radio", s.plan.noRadioM == null ? "—" : m(s.plan.noRadioM),
+               s.walked.noRadioM == null ? "—" : m(s.walked.noRadioM)]);
+  }
+  rows.push(["Farthest from the plan", "0 m", m(s.walked.maxOffRouteM)]);
+  return rows;
+}
+
+export async function postWalk(summary, log) {
+  try {
+    const res = await fetch("/walks", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({summary, points: log.points.map(q => [q.x, q.y, q.t, q.used, q.kind, q.radio])})});
+    return res.ok ? (await res.json()).saved : null;
+  } catch { return null; }
+}

@@ -885,7 +885,8 @@ async function requestPlan() {
       (p.cost_model ? `<br>cost: ${p.cost_model}` : "") +
       p.warnings.map(w => `<div class="warn">⚠ ${w}</div>`).join("") +
       (route.used_wh ? `<div style="margin-top:6px"><a href="/guide.html" target="_blank">Open guide mode (arm tablet) ↗</a>` +
-       ` · <a href="/3d/" target="_blank">3D view ↗</a></div>` : "");
+       ` · <a href="/3d/" target="_blank">3D view ↗</a>` +
+       ` · <a href="/card.html" target="_blank">Wrist card (print) ↗</a></div>` : "");
     checkRadio();
     if (playTimer) togglePlay();
     setupProfile();

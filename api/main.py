@@ -28,7 +28,7 @@ from . import thermal
 from . import weather
 from . import walkback as wb
 from . import comms as e11
-from .plan import (PlanRequest, RejoinRequest, ReturnHomeRequest, WalkbackRequest, feature,
+from .plan import (PlanRequest, RejoinRequest, ReturnHomeRequest, WalkRecord, WalkbackRequest, feature,
                    feature_collection)
 from .raster_layers import blocked_layer, cost_layer, sand_layer
 from . import stations as st
@@ -42,6 +42,7 @@ STATIONS = DATA / "stations"
 E12 = DATA / "e12"
 E8 = DATA / "e8"
 PLANS = DATA / "plans"
+WALKS = DATA / "walks"
 WEB = REPO / "web"
 
 app = FastAPI(title="Mars EVA planner", version="0.1.0")
@@ -220,6 +221,21 @@ def minerals_summary(radius_km: float = Query(100.0, gt=0, le=minerals.KEEP_RADI
 def data_sources_summary():
     """Data types, instruments and missions the product combines (HUD panel)."""
     return data_sources.summary(DATA)
+
+
+@app.post("/walks")
+def walks_save(rec: WalkRecord):
+    """Keep a walk logged by the guide (tablet or 3D rehearsal) with its summary
+    against the plan, for the debrief (P6, #45)."""
+    return {"saved": guide.save_walk(WALKS, rec.model_dump())}
+
+
+@app.get("/walks/last")
+def walks_last():
+    rec = guide.load_walk(WALKS)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="no walk logged yet: walk a plan in guide mode first")
+    return rec
 
 
 @app.get("/plan/last")

@@ -104,3 +104,20 @@ def rejoin(base_dir, max_cell_slope_deg, position_xy, target_xy, habitat_xy, hum
         "rv_wh": [round(float(v) / J_PER_WH, 4) for v in rv_e[path]],
         "rv_time_s": [round(float(v), 1) for v in rv_t[path]],
     }
+
+
+def save_walk(walks_dir, record):
+    """Keep a walk for the debrief: data/walks/walk_<UTC time>.json and last_walk.json."""
+    from datetime import datetime, timezone
+    walks_dir = Path(walks_dir)
+    walks_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    text = json.dumps({"saved_utc": stamp, **record})
+    (walks_dir / f"walk_{stamp}.json").write_text(text, encoding="utf-8")
+    (walks_dir / "last_walk.json").write_text(text, encoding="utf-8")
+    return f"walk_{stamp}.json"
+
+
+def load_walk(walks_dir):
+    path = Path(walks_dir) / "last_walk.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
