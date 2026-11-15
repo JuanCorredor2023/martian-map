@@ -43,10 +43,13 @@ or press "Reload plan". With no saved plan the terrain still works.
   near, the card says so. At a rehearsal stop the card shows the same photo, without the button
   and without moving the walker or the clock.
 - **Guide** (the arm tablet's logic, shared in `web/guide_core.js`): the next maneuver
-  with its distance, voice on/off, the three meters (energy left after returning, time
-  back against the 30 min line, EVA time left against the plan's maximum duration),
+  with its distance, voice on/off, the meters (energy left after returning, time back
+  against the 30 min line, radio, EVA time left against the plan's maximum duration, and,
+  once the walk has learned it, "Spare energy at your pace" with this astronaut's own
+  energy use, X2), a RETURN NOW alert when the way home no longer fits at that use,
   station tasks with "Done, continue", "Return home", "Detour" (demo: 25 m off the route,
-  then rejoin) and "Solar storm" (demo: automatic way home with the dose). A way home is
+  then rejoin), "Solar storm" (demo: automatic way home with the dose) and "Use ×k" (demo:
+  the simulated energy use against the model, 1.0 / 1.2 / 1.5 / 0.8). A way home is
   drawn red and a rejoin orange; it replaces the walked route until "Exit".
 - **Rehearsal**: play / pause (space bar), ×1 to ×180, scrubber, "Chase view" (the astronaut
   seen from behind), drag to look around, double-click or "Recentre" to look forward, "Exit".
