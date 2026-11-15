@@ -72,12 +72,16 @@ Two numbers from `docs/demo.md` were left out because the notes disagree:
 2. **Links into the landing page** (files owned by Sebas, asked on the board): a link to `/home/` from the HUD, the guide and the 3D view; the demo script (`docs/demo.md`). If the landing page later takes `/`, also "← 2D planner" in `web/3d/index.html`, "Planner" in `web/guide.html`, the deploy guard (`api/public_mode.py`, PR #152) and the README. The wrist card's QR points to `/guide.html` and stays.
 3. **Deploy (#122, PR #152):** its guard treats `/`, `.html`, `.js`, `.css`, `/tiles/`, `/vendor/` and `/3d/` as static; the `.webp` images under `/home/assets/` would count as computational requests. Needs `.webp` (or `/home/`) in that list.
 4. **One name per view (#124).** The 3D view is "3D view" in the HUD, "Open in 3D" on the photo card and here, and "Same walk in 3D" in the guide.
-5. **Retake the app screenshots on the demo machine.** The laptop used for the mock lacked the REMS, minerals and THEMIS releases. So the HUD's source chip reads "4 data types from 2 missions", and step 9 (weather) has no screenshot yet.
+5. **3D screenshots** (`hero-3d`, `poster-3d`, `rehearse-3d`, `photo-3d`, `step-rehearse`) are still from the mock. #124 did not change the 3D view; retake them if it does. The 2D and tablet ones were retaken after #157/#158 (below).
 6. Add "HiRISE: NASA/JPL-Caltech/University of Arizona" to `paper/references.md`. It is the usual HiRISE credit and is used here.
 
 ## How the app screenshots were made
 
-- **Setup:** the real app from `main` (e422e69, the `martian-main` server), driven by headless Edge through the DevTools protocol.
-- **Sizes:** 1440×900 at 2× for the HUD and the 3D view, 1600×900 for the 3D hero, and 820×1180 for the tablet guide.
-- **Plan:** the default 120 min plan (13 stations, 1,000 Wh, 30°, human cost). Planning rewrites `data/plans/last_plan.json`, so the file was backed up and restored; its hash is unchanged.
-- **No stations or walks were saved.**
+**2D planner and tablet guide (retaken 2026-11-15, after #157 and #158).**
+- **Setup:** the real app from `main` at `32ecc4a`, with every release, including REMS, minerals, THEMIS and E9 boulders. The HUD's source chip reads "7 data types from 4 missions". Driven by headless Edge through the DevTools protocol, with `?tips=off`.
+- **Sizes:** 1440×900 at 2× for the HUD and 592×1180 at 2× for the tablet guide. Saved as WebP (quality 80) in the same three widths as before.
+- **Stations:** the `stations-v1` release (13 stations, rubric 5/4/4/3), copied in for the captures. The laptop's own saved stations (28, with an edited rubric) were backed up and restored byte for byte.
+- **Plan:** the default 120 min plan (1,000 Wh, 10 % reserve, 30°, sand cost). It gives the numbers on the pages: 8 of 13 stations, 111 of 120 min, 448 of 900 Wh, 1.39 km, 41 % of the walk without direct radio. Sol 4711: −74 to −4 °C, 11.9 h of daylight.
+- `data/plans/last_plan.json` was backed up and restored; its hash is unchanged. No stations or walks were saved.
+
+**3D view (from the mock, Juan's Claude).** The real app from `main` (e422e69), headless Edge; 1440×900 at 2×, and 1600×900 for the hero.
