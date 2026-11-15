@@ -340,7 +340,21 @@ def test_weather_from_rems():
 def test_data_sources_counts_only_what_is_on_disk():
     d = client.get("/data_sources").json()
     assert d["n_types"] == len(d["sources"]) >= 3          # the challenge asks for 3 or more
-    assert d["n_missions"] == len({s["mission"] for s in d["sources"]})
+    assert d["n_missions"] == len({m for s in d["sources"] for m in s["mission"].split(" / ")})
     assert {"Orbital image", "Elevation"} <= {s["type"] for s in d["sources"]}
     planned = {p["type"] for p in d["planned"]}
     assert not planned & {s["type"] for s in d["sources"]}   # planned is never counted
+
+
+def test_minerals_are_regional_context_only():
+    from api import minerals
+    if minerals.find(REPO / "data") is None:
+        pytest.skip("mineral detections (minerals-v1) not downloaded")
+    m = client.get("/minerals", params={"radius_km": 100}).json()
+    assert all(p["distance_km"] <= 100 for p in m["points"])
+    assert all(p["distance_km"] > 1.5 for p in m["points"])        # none inside the 2 x 2 km box
+    assert set(m["counts"]) == set(m["classes"])
+    assert m["nearest"]["hydrous"]["distance_km"] < m["nearest"]["phyllosilicate"]["distance_km"]
+    lon, lat = m["box_centre_lonlat"]
+    assert 137.3 < lon < 137.5 and -4.9 < lat < -4.7                # Gale, the boxwork
+    assert client.get("/minerals", params={"radius_km": 1000}).status_code == 422

@@ -122,14 +122,15 @@ The HUD can load suggestions **unsaved**; a person reviews them on the orthophot
 - Hollow + contact (8) ties ridge + Curiosity site (8); the E3/E4 cost breaks the tie.
 
 ### Data types combined and surface weather (P4, #44; `api/data_sources.py`, `api/weather.py`)
-The challenge asks for at least three data types. `GET /data_sources` lists the ones the product actually uses, and only counts a source whose file is on disk. The HUD shows the count under the title. Today it is **5 data types from 2 missions**:
+The challenge asks for at least three data types. `GET /data_sources` lists the ones the product actually uses, and only counts a source whose file is on disk. The HUD shows the count under the title. Today it is **6 data types from 3 missions**:
 - orbital image (HiRISE orthophoto, MRO);
 - elevation (HiRISE DEM, MRO);
 - rover traverse (Curiosity localization, MSL);
 - radiation (RAD, MSL);
-- surface weather (REMS, MSL).
+- surface weather (REMS, MSL);
+- spectral minerals (CRISM detections, MRO; OMEGA, Mars Express).
 
-Spectral (CRISM/OMEGA), thermal (THEMIS) and chemistry (ChemCam/APXS) are listed as planned and not counted.
+Thermal (THEMIS) and chemistry (ChemCam/APXS) are listed as planned and not counted.
 
 `GET /weather?sol=&eva_min=` reads the public REMS feed (release `rems-v1`; 4,745 sols, 1–4995). It returns:
 - the chosen sol: air and ground temperature range, pressure, UV index, sunrise, sunset and hours of daylight;
@@ -141,6 +142,12 @@ If a sol has no data, the nearest one is used and reported. The default sol is 4
 - Over the campaign, the air ranged from −100 to +8 °C (`tests/api/test_api.py::test_weather_from_rems`).
 
 Weather is context, not a cost term: REMS gives one value per sol for the whole site, not a map. The feed calls itself an outreach product; REMS science data is in PDS.
+
+`GET /minerals?radius_km=` reads `data/minerals/gale_minerals.geojson` (release `minerals-v1`, built by `python -m api.minerals build`). It combines two NASA Mars Trek point layers:
+- *Aqueous Mineral Distribution*: phyllosilicate, sulfate, silica, chloride or carbonate; it names neither author nor instrument.
+- *Hydrous Mineral Detections OMEGA/CRISM*: hydrous minerals, with the instrument.
+
+Within 300 km there are 27 distinct detections, after removing the repeated points. **None falls inside the 2 × 2 km box.** Within 100 km there are 7 hydrous detections, 5 phyllosilicate, 1 silica and 1 sulfate. The nearest hydrous one is 16 km to the south-west (OMEGA and CRISM at the same point), and the nearest clay is 30 km to the west. The HUD draws them on a 100 km north-up inset with the box and an approximate Gale rim (centre 5.4° S, 137.8° E, radius 77 km). The layers are global compilations rounded to 0.01–0.1° (0.6–6 km), so they are regional context only, never a per-cell layer or a station score. The box's own minerals come from Curiosity's drills (rubric, `docs/research/station_value_rubric.md`) (`tests/api/test_api.py::test_minerals_are_regional_context_only`).
 
 ## Results
 - Blocked share of the box by the cell limit: 12.4 % at 30°, 29.6 % at 20° (`/layers/blocked`, from `slope_deg.tif`).
