@@ -4,7 +4,7 @@ Draft (Sebastian's Claude, 2026-11-15). The field names follow the usual Space A
 
 Before submitting:
 - [ ] The repository is **public**, and the data releases download without signing in (Juan).
-- [ ] The 30 s video is on YouTube as **Public** and opens in a private window (Aaron, Diana).
+- [x] The 30 s video is on YouTube and opens without signing in: https://www.youtube.com/watch?v=7LSQqSFdU6c (29.8 s).
 - [ ] Replace every `[…]` below. Submit well before **11:59 p.m. local time, Sunday 15 November**. The form cannot be edited afterwards.
 
 ---
@@ -33,7 +33,7 @@ We tested the terrain model against Curiosity's real drive, negative results inc
 
 ## Link to project demo *(check: one link; a video of at most 30 s, or slides)*
 
-[YouTube link of the 30 s video]
+https://www.youtube.com/watch?v=7LSQqSFdU6c
 
 No hosted demo: the planner runs locally (one command), and the deploy is future work.
 
@@ -76,7 +76,7 @@ https://github.com/JuanCorredor2023/martian-map
 - **The app itself calls no AI model.** Every layer, route and check is computed by ordinary code, and the planner never invents a route.
 - **Neural networks used offline as detectors on the orbital photo:** a U-Net trained by the team for sand (E8), and BoulderNet (Prieur et al. 2023, published weights) distilled into a small network for boulders (E9). Their outputs are validated against blind labels and reported with their errors.
 - **Development:** the team used AI coding agents (Anthropic Claude Code and OpenAI Codex) to write and review code, tests, notes, the paper draft and this text. Each member ran their own agent. The agents coordinated on a shared message board in the repository's issues. Humans chose the approach, reviewed the results and approved every merge.
-- **Video:** [state whether any voice, image or music in the video is AI-generated; the script calls for a human voice and real screen captures].
+- **Video:** no AI-generated voice, image or music. The voice is a team member's recording; every picture is a real screen capture of the app. The captures were recorded and edited (cuts, titles, subtitles) with a coding agent (Claude Code).
 
 ## NASA data *(check)*
 
