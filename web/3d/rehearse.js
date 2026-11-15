@@ -16,6 +16,11 @@
 //     boundary in cyan), as the 2D planner draws them; cleared on play and on exit.
 //   - EVA clock: onTime(seconds since the start of the EVA) at every move, and
 //     onTime(null) on exit; main.js moves the Sun with it (sun.js).
+//   - guide: the same logic as the arm-tablet guide (web/guide_core.js, shared): next
+//     maneuver, voice (on/off), energy left after returning, time back against the
+//     30 min line, EVA time left against the plan's maximum duration, station tasks,
+//     Return home, a demo detour that rejoins the route, and the solar storm alert. A
+//     way home or a rejoin replaces the walked route (drawn on the ground) until exit.
 // Nothing is rendered here: update(dt) says whether the view changed, and main.js draws.
 import * as THREE from 'three';
 import { requestWalkback, walkbackRequest } from './api.js';
@@ -23,6 +28,7 @@ import * as M from './camera_math.js';
 import { hideCard, showCard, stationCard } from './card.js';
 import { TYPE_COLORS, mainRoute } from './plan_model.js';
 import { EYE_HEIGHT, buildRehearsal, clock, energyReadout, eyeAltitude, progressText } from './rehearse_model.js';
+import * as G from '../guide_core.js';
 
 const DEG = Math.PI / 180;
 export const FOV = 60;             // degrees, vertical: wider than free flight, closer to what a walker sees
@@ -39,6 +45,8 @@ const VIEW_EASE = 6;               // 1/s: how fast the view follows a change of
 const MAX_FRAME = 0.1;             // s: a frame never counts for more (tab in the background)
 const WALKER_COLOR = 0xff40c8;     // the astronaut dot of the 2D planner
 const RED_LINE = [255, 59, 48], SAFE_LINE = [54, 209, 255];       // the 2D planner's walkback colours
+const HOME_LINE = [255, 69, 58], REJOIN_LINE = [255, 140, 58];     // guide: way home, rejoining path
+const METER = {good: '#3ddc84', warn: '#ffcc00', bad: '#ff453a'};  // guide.html's meter colours
 const RELIEF_REASON = 'Relief at true scale while rehearsing (eye height is real)';
 
 const el = id => document.getElementById(id);
@@ -68,6 +76,11 @@ export class Rehearsal {
     this._drag = null;
     this._token = 0;
     this._stopCard = false;
+    this.voice = G.createVoice();          // guide: spoken maneuvers and arrivals
+    this.guide = null;                     // guide_core route of what is walked (null: no profile)
+    this._extra = [];                      // lines of a way home or a rejoin, kept on play
+    this._spoken = new Set();
+    this._radInfo = undefined;
 
     // The player's own controls. They are hidden outside the rehearsal.
     el('rh-play').addEventListener('click', () => this.togglePlay());
@@ -78,6 +91,14 @@ export class Rehearsal {
     el('rh-recentre').addEventListener('click', () => this.recentre());
     el('rh-exit').addEventListener('click', () => this.exit());
     el('rehearse').addEventListener('click', () => (this.active ? this.exit() : this.enter()));
+    el('rh-voice').addEventListener('click', () => {
+      const on = this.voice.toggle();
+      el('rh-voice').textContent = on ? '🔊 Voice on' : '🔇 Voice off';
+      el('rh-voice').setAttribute('aria-pressed', String(on));
+    });
+    el('rh-home').addEventListener('click', () => this.returnHome());
+    el('rh-detour').addEventListener('click', () => this.detour());
+    el('rh-storm').addEventListener('click', () => this.solarStorm());
   }
 
   // ---- public ------------------------------------------------------------------
@@ -127,6 +148,12 @@ export class Rehearsal {
     this._listen(window, 'keydown', e => this._key(e));
 
     Object.assign(this, {active: true, playing: false, time: model.start, chase: false, walkback: null});
+    this._evaStart = model.start;
+    this.guide = this._guideRoute(mainRoute(this.plan), 'plan');
+    this._spoken.clear();
+    this._extra = [];
+    el('rh-alert').hidden = true;
+    for (const id of ['rh-home', 'rh-detour', 'rh-storm']) el(id).disabled = !this.guide;
     this.look = {yaw: 0, pitch: 0};
     this.speed = Number(el('rh-speed').value) || 60;
     hideCard();
@@ -149,7 +176,13 @@ export class Rehearsal {
     if (!this.active) return false;
     const {controls, camera} = this, saved = this._saved;
     this.playing = false;
+    this._extra = [];
     this._clearWalkback();
+    if (this._replaced) {                      // a way home or a rejoin: back to the plan
+      this.model = buildRehearsal(mainRoute(this.plan), this.plan.points);
+      this._replaced = false;
+    }
+    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
     hideCard();
     for (const [target, type, handler] of this._listeners) target.removeEventListener(type, handler);
     this._listeners = [];
@@ -256,19 +289,31 @@ export class Rehearsal {
       return;
     }
     this.time = to;
-    if (to >= model.end) { this._place(step); this.pause(); }
+    if (to >= model.end) {
+      this._place(step); this.pause();
+      this.voice.say('You have arrived at the habitat.');
+    }
   }
 
   _showStop(stop) {
     const {model} = this, s = stop.station;
     const base = s ? stationCard(s, this.rubric()) : {title: 'Stop', subtitle: '', rows: []};
-    const rows = [...base.rows, ['Arrival', `${clock(stop.arrive - model.start)} into the EVA`]];
+    const rows = [...base.rows, ['Arrival', `${clock(stop.arrive - this._evaStart)} into the EVA`]];
     if (stop.waitS > 0) rows.push(['Standing here', `${clock(stop.waitS)} min`]);
+    // Guide: why the station matters and its tasks, as on the arm tablet.
+    const g = s ? G.stationCard({id: s.id, type: s.type, service_time_min: s.serviceMin}, this.rubric()) : null;
+    if (g && g.why) rows.push(['Why', g.why]);
+    if (g) g.tasks.forEach((t, k) => rows.push([k ? '' : 'Tasks', `• ${t}`]));
     showCard({...base, rows, color: s ? TYPE_COLORS[s.type] || null : null,
               note: stop.waitS > 0
                 ? 'Press play: the time here runs at the playback speed, with the walker standing.'
                 : 'Press play to walk on.',
+              actions: [{label: 'Done, continue', onClick: () => { hideCard(); this.play(); }}],
               onClose: () => { this._stopCard = false; }});
+    if (g && this.playing === false && !this._spoken.has(`stop-${stop.index}`)) {
+      this._spoken.add(`stop-${stop.index}`);
+      this.voice.say(g.speech);
+    }
     this._stopCard = true;
   }
 
@@ -323,7 +368,8 @@ export class Rehearsal {
     this.walker.visible = this.chase;
     this.walker.position.set(X, ground + EYE_HEIGHT / 2, Z);
     this._show();
-    this.onTime(s.time - model.start);
+    this._showGuide();
+    this.onTime(s.time - this._evaStart);
   }
 
   _show() {
@@ -380,6 +426,118 @@ export class Rehearsal {
     this.togglePlay();
   }
 
+  // ---- guide (web/guide_core.js, shared with the arm-tablet guide) ---------------
+
+  // guide_core route of a parsed route; null without a time and energy profile.
+  _guideRoute(route, kind) {
+    const pr = route && route.profile;
+    if (!pr || !pr.t_s || !pr.used_wh || !(route.totals.usable_wh > 0)) return null;
+    const goal = this.plan.points.find(p => p.kind === 'goal');
+    return G.prepareRoute({coords: route.coords, t: pr.t_s, used: pr.used_wh, rv: pr.rv_wh || null,
+                           rvTime: pr.rv_time_s || null, usable: route.totals.usable_wh,
+                           turnIndex: route.turnIndex, kind,
+                           goalName: goal && goal.properties.station ? `Arrive at station ${goal.properties.station}` : 'Arrive at the goal',
+                           stops: route.stops.map(st => ({i: st.index, name: st.id}))});
+  }
+
+  _vertex() { return Math.min(this.guide.coords.length - 1, Math.floor(this.state.at + 1e-6)); }
+
+  _limitS() {
+    const m = this.plan && this.plan.properties.max_duration_min;
+    return Number.isFinite(m) && m > 0 ? m * 60 : null;
+  }
+
+  _showGuide() {
+    const g = this.guide;
+    el('rh-man').hidden = !g;
+    el('rh-meters').hidden = !g;
+    if (!g) return;
+    const i = this._vertex(), {event, distText} = G.nextManeuver(g, i);
+    el('rh-man-arrow').textContent = event.arrow;
+    el('rh-man-text').textContent = event.text;
+    el('rh-man-dist').textContent = distText;
+    if (this.playing) for (const text of G.announcements(g, i, this._spoken)) this.voice.say(text);
+    const m = G.meters(g, i, this._limitS());
+    const fill = (id, frac, good) => {
+      const f = el(id);
+      f.style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
+      f.style.background = good ? METER.good : frac > 0 ? METER.warn : METER.bad;
+    };
+    fill('rh-m-energy', m.energy.frac, m.energy.good); el('rh-v-energy').textContent = m.energy.text;
+    fill('rh-m-back', m.back.frac, m.back.good); el('rh-v-back').textContent = m.back.text;
+    for (const id of ['rh-eva-label', 'rh-eva-track', 'rh-v-eva']) el(id).hidden = !m.eva;
+    if (m.eva) { fill('rh-m-eva', m.eva.frac, m.eva.good); el('rh-v-eva').textContent = m.eva.text; }
+  }
+
+  // Walk a new guide route from here on (a way home or a rejoin), drawn on the ground.
+  _walkRoute(groute, color, points) {
+    const used = groute.used, last = used.length - 1;
+    const route = {kind: 'route', coords: groute.coords, turnIndex: groute.turnIndex,
+                   stops: (groute.stops || []).map(st => ({index: st.i, id: st.name})),
+                   totals: {usable_wh: groute.usable},
+                   profile: {t_s: groute.t, used_wh: used, rv_time_s: groute.rvTime,
+                             rv_wh: groute.rv || used.map(v => used[last] - v)}};   // guide_core sets rv
+    this.model = buildRehearsal(route, points);
+    this._replaced = true;
+    this.guide = groute;
+    this._spoken.clear();
+    this._extra = [{lines: [groute.coords], color, width: 4}];
+    el('rh-scrub').min = this.model.start;
+    el('rh-scrub').max = this.model.end;
+    this.seek(this.model.start);
+  }
+
+  _planRef() { return {plan: {properties: this.plan.properties}}; }   // what guide_core asks of a saved plan
+
+  async returnHome() {
+    if (!this.active || !this.guide) return null;
+    this.pause(false);
+    this._note('Computing the fastest way home…');
+    try {
+      const i = this._vertex(), home = await G.returnHome(this.guide, i, this._planRef(), [this.state.x, this.state.y]);
+      if (!this.active) return null;
+      this._walkRoute(home.route, HOME_LINE, []);
+      this._note(home.text);
+      this.voice.say(home.speech);
+      return home;
+    } catch (err) { this._note(`Return home: ${err.message}`); return null; }
+  }
+
+  async detour() {
+    if (!this.active || !this.guide) return;
+    this.pause(false);
+    const i = this._vertex(), pt = G.detourPoint(this.guide, i);
+    this._note('Off route (25 m) — recalculating…');
+    this.voice.say('You are off route. Recalculating.');
+    try {
+      const out = await G.rejoin(this.guide, i, pt, this._planRef());
+      if (!this.active || !out) return;
+      this._walkRoute(out.route, REJOIN_LINE, this.guide.kind === 'plan' ? this.plan.points : []);
+      this._note(out.text);
+      this.voice.say('New route found.');
+    } catch (err) { this._note(`Rejoin: ${err.message}`); }
+  }
+
+  async solarStorm() {
+    if (!this.active || !this.guide) return;
+    const alert = el('rh-alert');
+    alert.hidden = false;
+    alert.innerHTML = '<b>☢ SOLAR STORM ALERT</b> · Return to the habitat now. Computing the fastest way…';
+    this.voice.say('Solar storm alert. Return to the habitat now.');
+    if (this._radInfo === undefined) {
+      try { const res = await fetch('/radiation'); this._radInfo = res.ok ? await res.json() : null; }
+      catch { this._radInfo = null; }
+    }
+    const home = await this.returnHome();
+    if (!home) return;
+    const s = G.stormMessage(home.route, this._radInfo);
+    alert.innerHTML = `<b>☢ SOLAR STORM ALERT</b> · Return now: ${s.minutes.toFixed(1)} min.` +
+      (s.realUgy != null ? ` Dose on the way back: <b>${s.realUgy.toFixed(1)} µGy</b> (real 2025-11-11 event)` : '') +
+      (s.x50Ugy != null ? `, ${s.x50Ugy.toFixed(0)} µGy if 50× stronger (hypothetical).` : '') +
+      ` <span class="muted">Alarm rule (E12): ${s.rule}.</span>`;
+    this.play();
+  }
+
   // ---- walkback lines on pause -------------------------------------------------
 
   _note(...nodes) {
@@ -391,7 +549,8 @@ export class Rehearsal {
 
   _clearWalkback() {
     this._token++;                             // an answer still on its way is dropped
-    if (this.lines.sets.length) { this.lines.clear(); this._dirty = true; }
+    if (this._extra.length) { this.lines.set(this._extra); this._dirty = true; }
+    else if (this.lines.sets.length) { this.lines.clear(); this._dirty = true; }
     this.walkback = null;
     if (this.active) this._note();
   }
@@ -411,7 +570,7 @@ export class Rehearsal {
     const lines = kind => fc.features.filter(f => f.properties && f.properties.kind === kind && f.geometry &&
                                                   f.geometry.type === 'MultiLineString')
                                      .flatMap(f => f.geometry.coordinates);
-    this.lines.set([{lines: lines('energy_safe_boundary'), color: SAFE_LINE, width: 2.5},
+    this.lines.set([...this._extra, {lines: lines('energy_safe_boundary'), color: SAFE_LINE, width: 2.5},
                     {lines: lines('emergency_time_boundary'), color: RED_LINE, width: 3}]);
     const p = this.walkback = fc.properties || {};
     const part = (ok, text) => Object.assign(document.createElement('span'),
