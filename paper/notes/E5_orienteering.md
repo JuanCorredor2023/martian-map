@@ -151,7 +151,7 @@ Kept apart from the DP results above. All numbers come from `src/orienteering/pa
 - **E4 and baselines (Aaron):** the station matrices and `evaluate_route` can score any visiting order, including the baselines.
 - **E12 (Juan):** the route GeoPackage (`data/e5/e5_route.gpkg`, layers `route` and `stops`) and the `/plan` output have arrival and departure times per stop for the dose timeline.
 - **E8 (JB):** `stations_e8.gpkg` is read together with the manual stations (`read_station_files`, `run.py --stations A B`). Two of the 15 are unreachable from the habitat's component, and only two are worth their 20 min of service in the nominal tour.
-- **E6 (Diana):** the brute-force, DP and CP-SAT solvers (exact references), the routing heuristic, `solve_many` and the random-instance generator are the base of the metaheuristic benchmark.
+- **E6 (Diana):** the benchmark of the exact solvers against ILS and simulated annealing is in the [E6 note](E6_benchmark.md): at E5's sizes the exact solvers are as fast and always right.
 
 ## Reproduce
 ```powershell
