@@ -1,6 +1,6 @@
 # E6 · Exact solvers against metaheuristics for station selection
 
-Owner: Diana (`@dianagrz`) · Issue: #14 · PRs: #37 · Status: in progress (benchmark done; table not yet merged into the team's results table) · Last update: 2026-11-15
+Owner: Diana (`@dianagrz`) · Issue: #14 · PRs: #81 · Status: done (benchmark in `main`; numbers delivered for the team's results table on #16) · Last update: 2026-11-15
 
 ## Question
 For the station-selection problem of E5 (which stations to visit, and in what order, within an energy budget, time windows and a maximum duration), how far from the optimum, and how fast, are two standard metaheuristics compared with the exact solvers? Is there a size of the problem in this project where a metaheuristic should replace the exact answer?
