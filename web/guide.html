@@ -485,7 +485,7 @@ async function returnHome() {
     G.logEvent(walkLog, "home", home.text, route, idx);
     setRoute(home.route);
     ui("status").textContent = home.text;
-    voice.say(home.speech, {priority: storm ? "normal" : "alert"});
+    voice.say(home.speech, {priority: storm && home.feasible !== false ? "normal" : "alert"});
     update(0);
     return true;
   } catch (err) { ui("status").textContent = friendly(err); return false; }
@@ -503,6 +503,13 @@ async function checkOffRoute(pt) {
     const out = await G.rejoin(route, idx, pt, plan);
     if (mine !== request) return;
     if (!out) { offRoute = null; ui("status").textContent = "Still within 15 m of the route: no change needed."; update(idx); return; }
+    if (out.goHome) {                      // #119 A2: the rest of the plan no longer fits
+      G.logEvent(walkLog, "detour", `off route ${out.offM.toFixed(0)} m; ${out.text}`, route, idx);
+      voice.say(out.text, {priority: "alert"});
+      offRoute = pt;
+      if (await returnHome()) ui("status").textContent = `${out.text} ${ui("status").textContent}`;
+      return;
+    }
     G.logEvent(walkLog, "detour", `off route ${out.offM.toFixed(0)} m; rejoined`, route, idx);
     offRoute = null;
     setRoute(out.route);

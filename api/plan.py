@@ -115,7 +115,28 @@ class WalkbackRequest(BaseModel):
     k: float = Field(default=1.0, gt=0, le=5)
 
 
-class ReturnHomeRequest(BaseModel):
+class RemainingResources(BaseModel):
+    """#119 A2: what the astronaut has left now. Any of the three switches the checks
+    on; with none of them the response is the same as before (feasible = null)."""
+    energy_remaining_wh: Optional[float] = Field(default=None, ge=0)
+    time_remaining_s: Optional[float] = Field(default=None, ge=0)
+    o2_remaining_l: Optional[float] = Field(default=None, ge=0)
+    energy_reserve_wh: float = Field(default=0.0, ge=0)     # must still be left on arrival
+    o2_leak_lpm: float = Field(default=0.0, ge=0)            # declared assumption, L/min
+
+    def resources(self):
+        return {k: getattr(self, k) for k in ("energy_remaining_wh", "time_remaining_s",
+                                              "o2_remaining_l", "energy_reserve_wh",
+                                              "o2_leak_lpm")}
+
+
+class Continuation(BaseModel):
+    """Rest of the plan from the rejoin target to its end (habitat), at k = 1."""
+    energy_wh: float = Field(ge=0)
+    time_s: float = Field(ge=0)
+
+
+class ReturnHomeRequest(RemainingResources):
     """POST /guide/return_home: fastest way back from the astronaut's position."""
     position: Tuple[float, float]
     habitat: Tuple[float, float]
@@ -125,13 +146,14 @@ class ReturnHomeRequest(BaseModel):
     k: float = Field(default=1.0, gt=0, le=5)
 
 
-class RejoinRequest(BaseModel):
+class RejoinRequest(RemainingResources):
     """POST /guide/rejoin: off-route recovery towards a point on the planned route."""
     position: Tuple[float, float]
     target: Tuple[float, float]
     habitat: Tuple[float, float]
     max_cell_slope_deg: SlopeLimit = 30.0
     human_cost: bool = True
+    continuation: Optional[Continuation] = None
 
 
 class WalkRecord(BaseModel):

@@ -229,3 +229,62 @@ test('meters carry a state word and full always means good', () => {
   assert.equal(G.meters(far, 10, 7200).back.word, 'OVER 30 MIN');
   assert.equal(G.meters({...r, rv: r.rv.map(() => r.usable)}, 10, null).energy.word, 'TURN BACK');
 });
+
+// ---------- #119 A2: what is left goes with the way home and the rejoin ----------
+
+test('remaining: energy, time and O2 left from the plan request', () => {
+  const r = {usable: 900};
+  const saved = {request: {max_duration_min: 120, o2_budget_l: 200}};
+  const left = G.remaining(r, saved, 1800, 300);
+  assert.equal(left.energy_remaining_wh, 600);
+  assert.equal(left.time_remaining_s, 120 * 60 - 1800);
+  assert.ok(Math.abs(left.o2_remaining_l - (200 - 300 * 3.6 / 20.1)) < 1e-9);
+  assert.deepEqual(G.remaining(r, {plan: {}}, 0, 950), {energy_remaining_wh: 0});
+});
+
+test('return home: sends what is left and never calls a too-costly way safe', async () => {
+  const r = G.routeFromPlan(saved('plan_e4')), i = 400;
+  let body = null;
+  const answer = {features: [{geometry: {coordinates: [r.coords[i], [0, 0]]},
+    properties: {t_s: [0, 600], used_wh: [0, 40], time_s: 600, energy_wh: 40, length_m: 450,
+                 feasible: false, choice: 'least_energy',
+                 fastest: {feasible: false, failing: ['energy']},
+                 diagnosis: {code: 'insufficient_resources', limiting: ['energy'], exact: true}}}]};
+  globalThis.fetch = async (_, opts) => { body = JSON.parse(opts.body); return {ok: true, json: async () => answer}; };
+  const home = await G.returnHome(r, i, {plan: {properties: {habitat: [0, 0]}}});
+  delete globalThis.fetch;
+  assert.ok(Math.abs(body.energy_remaining_wh - (r.usable - r.used[i])) < 1e-9);
+  assert.equal(home.feasible, false);
+  assert.match(home.text, /Not enough energy/);
+  assert.match(home.speech, /^Warning/);
+});
+
+test('return home: a slower way that fits says why it is slower', async () => {
+  const r = G.routeFromPlan(saved('plan_e4')), i = 400;
+  const answer = {features: [{geometry: {coordinates: [r.coords[i], [0, 0]]},
+    properties: {t_s: [0, 620], used_wh: [0, 38], time_s: 620, energy_wh: 38, length_m: 460,
+                 feasible: true, choice: 'tradeoff', fastest: {feasible: false, failing: ['energy']}}}]};
+  globalThis.fetch = async () => ({ok: true, json: async () => answer});
+  const home = await G.returnHome(r, i, {plan: {properties: {habitat: [0, 0]}}});
+  delete globalThis.fetch;
+  assert.equal(home.feasible, true);
+  assert.match(home.text, /Slower than the fastest way, which would not fit the energy left/);
+});
+
+test('rejoin: sends the rest of the plan and says go home when it no longer fits', async () => {
+  const r = G.routeFromPlan(saved('plan_e4')), i = 100;
+  const pt = [r.coords[i][0] + 40, r.coords[i][1]];
+  let body = null;
+  const answer = {features: [{geometry: {coordinates: [pt, r.coords[i + 5]]},
+    properties: {t_s: [0, 30], used_wh: [0, 2], rv_wh: [50, 49], rv_time_s: [700, 690],
+                 time_s: 30, energy_wh: 2, feasible: false, continue_ok: false,
+                 diagnosis: {code: 'insufficient_resources', limiting: ['energy'], action: 'return_home'}}}]};
+  globalThis.fetch = async (_, opts) => { body = JSON.parse(opts.body); return {ok: true, json: async () => answer}; };
+  const out = await G.rejoin(r, i, pt, saved('plan_e4'));
+  delete globalThis.fetch;
+  const last = r.coords.length - 1;
+  assert.ok(body.continuation.energy_wh > 0 && body.continuation.time_s > 0);
+  assert.ok(body.continuation.energy_wh <= r.used[last] - r.used[i] + 1e-9);
+  assert.equal(out.goHome, true);
+  assert.match(out.text, /Go home instead/);
+});

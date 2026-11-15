@@ -232,20 +232,48 @@ const planLimits = saved => ({habitat: saved.plan.properties.habitat,
                               max_cell_slope_deg: saved.plan.properties.max_cell_slope_deg,
                               human_cost: saved.plan.properties.human_cost !== false});
 
-// Fastest way home from vertex i (POST /guide/return_home), as a route of kind "home".
+// What the walker has left (#119 A2), sent with the way home and the rejoin so the
+// server checks energy, time and O2 on the same path. Energy: the usable budget (the
+// plan's margin is already out of it) minus what was used; time: the plan's maximum
+// EVA duration minus the clock; O2: the plan's O2 budget minus the O2 of that energy.
+export const KJ_PER_L_O2 = 20.1;
+export function remaining(r, saved, t0, u0) {
+  const out = {energy_remaining_wh: Math.max(0, r.usable - u0)};
+  const limit = evaLimitS(saved);
+  if (limit !== null) out.time_remaining_s = Math.max(0, limit - t0);
+  const o2 = saved && saved.request && saved.request.o2_budget_l;
+  if (Number.isFinite(o2) && o2 > 0) out.o2_remaining_l = Math.max(0, o2 - u0 * 3.6 / KJ_PER_L_O2);
+  return out;
+}
+
+const RESOURCE_WORD = {energy: "energy", time: "time", o2: "oxygen"};
+const limitingWords = d => (d && d.limiting || []).map(n => RESOURCE_WORD[n] || n).join(" and ");
+
+// Way home from vertex i (POST /guide/return_home), as a route of kind "home": the
+// fastest one that fits what is left, a slower one that does, or (feasible false) the
+// least-energy one with a warning, never the fastest as if it were safe.
 // The EVA clock and the energy keep counting from where the walker was. now: {t, used}
 // of the walker when it is between vertices or standing at a stop (else vertex i's).
 export async function returnHome(r, i, saved, here = r.coords[i], now = null) {
-  const out = await post("/guide/return_home", {position: here, ...planLimits(saved)});
-  const f = out.features[0], p = f.properties;
   const t0 = now ? now.t : r.t[i], u0 = now ? now.used : r.used[i];
+  const out = await post("/guide/return_home", {position: here, ...planLimits(saved),
+                                                ...remaining(r, saved, t0, u0)});
+  const f = out.features[0], p = f.properties;
   // On the way home, what returning still needs is what is left of this path.
   const route = prepareRoute({coords: f.geometry.coordinates, t: p.t_s.map(v => v + t0),
                               used: p.used_wh.map(v => v + u0), rv: p.used_wh.map(v => p.energy_wh - v),
                               rvTime: p.t_s.map(v => p.time_s - v),
                               usable: r.usable, turnIndex: null, goalName: "", kind: "home"});
-  return {route, summary: p,
-          text: `Way home: ${(p.time_s / 60).toFixed(1)} min, ${p.length_m.toFixed(0)} m, ${p.energy_wh.toFixed(0)} Wh.`,
+  const base = `Way home: ${(p.time_s / 60).toFixed(1)} min, ${p.length_m.toFixed(0)} m, ${p.energy_wh.toFixed(0)} Wh.`;
+  if (p.feasible === false) {
+    const what = limitingWords(p.diagnosis) || "resources";
+    return {route, summary: p, feasible: false,
+            text: `${base} Not enough ${what} left for any way home: walking the least-energy one. Call the habitat.`,
+            speech: `Warning. Not enough ${what} to reach the habitat. Walk home now on the least energy path and call the habitat.`};
+  }
+  const slower = p.choice === "tradeoff" || p.choice === "least_energy";
+  return {route, summary: p, feasible: p.feasible === true ? true : null,
+          text: slower ? `${base} Slower than the fastest way, which would not fit the ${limitingWords({limiting: p.fastest.failing})} left.` : base,
           speech: `Returning home. ${Math.round(p.time_s / 60)} minutes.`};
 }
 
@@ -277,9 +305,13 @@ export async function rejoin(r, i, pt, saved, now = null) {
   if (near.dist <= OFF_ROUTE_M) return null;
   let j = near.k;
   while (j < r.coords.length - 1 && r.d[j] - r.d[near.k] < REJOIN_AHEAD_M) j++;
-  const out = await post("/guide/rejoin", {position: pt, target: r.coords[j], ...planLimits(saved)});
-  const p = out.features[0].properties, rc = out.features[0].geometry.coordinates;
   const t0 = now ? now.t : r.t[i], u0 = now ? now.used : r.used[i];
+  const last = r.coords.length - 1;
+  const out = await post("/guide/rejoin", {position: pt, target: r.coords[j], ...planLimits(saved),
+                                           ...remaining(r, saved, t0, u0),
+                                           continuation: {energy_wh: Math.max(0, r.used[last] - r.used[j]),
+                                                          time_s: Math.max(0, r.t[last] - r.t[j])}});
+  const p = out.features[0].properties, rc = out.features[0].geometry.coordinates;
   const dt = t0 + p.time_s - r.t[j], du = u0 + p.energy_wh - r.used[j];
   const tail = k => k > j;
   const route = prepareRoute({...r,
@@ -290,7 +322,12 @@ export async function rejoin(r, i, pt, saved, now = null) {
     rvTime: r.rvTime ? p.rv_time_s.concat(r.rvTime.filter((_, k) => tail(k))) : null,
     turnIndex: r.turnIndex != null && r.turnIndex > j ? r.turnIndex - (j + 1) + rc.length : null,
     stops: (r.stops || []).filter(s => s.i > j).map(s => ({...s, i: s.i - (j + 1) + rc.length}))});
-  return {route, offM: near.dist, text: `Back on track: ${p.time_s.toFixed(0)} s to rejoin the route.`};
+  // goHome (#119 A2): rejoining is possible, but the way home along it or the rest of
+  // the plan no longer fits what is left; the caller should go home instead.
+  const goHome = p.feasible === false;
+  return {route, offM: near.dist, goHome, diagnosis: p.diagnosis || null,
+          text: goHome ? `Rejoining no longer fits the ${limitingWords(p.diagnosis) || "resources"} left. Go home instead.`
+                       : `Back on track: ${p.time_s.toFixed(0)} s to rejoin the route.`};
 }
 
 // Solar storm (E12): the dose on the way home for the real event and a 50x storm.
