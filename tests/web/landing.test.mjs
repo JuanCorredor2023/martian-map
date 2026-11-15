@@ -92,3 +92,14 @@ test('styles.css has no mock-only rules', () => {
   const css = readFileSync(new URL('styles.css', HOME), 'utf8');
   assert.doesNotMatch(css, /mock|data-hero|toast/i);
 });
+
+test('"Try it" opens the planner on 1 Terrain, in the header and the hero (#173)', () => {
+  for (const page of PAGES) {
+    const html = read(page);
+    const tryIt = html.match(/<a[^>]*class="btn btn-primary[^"]*"[^>]*>Try it<\/a>/g) ?? [];
+    assert.ok(tryIt.length >= 1, `${page}: a Try it button`);
+    for (const a of tryIt) assert.match(a, /href="\/\?tab=terrain"/, a);
+    assert.doesNotMatch(html, /class="btn[^"]*"[^>]*>Plan \(2D\)</, `${page}: no Plan (2D) button left`);
+  }
+  assert.match(read('index.html'), /<section class="hero"[\s\S]*?>Try it<\/a>[\s\S]*?<\/section>/);
+});
