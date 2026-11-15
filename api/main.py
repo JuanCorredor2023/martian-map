@@ -28,6 +28,7 @@ from . import thermal
 from . import weather
 from . import walkback as wb
 from . import comms as e11
+from . import departure
 from .plan import (PlanRequest, RejoinRequest, ReturnHomeRequest, WalkRecord, WalkbackRequest, feature,
                    feature_collection)
 from .raster_layers import blocked_layer, cost_layer, sand_layer
@@ -245,6 +246,19 @@ def plan_last():
     if saved is None:
         raise HTTPException(status_code=404, detail="no plan yet: plan an EVA in the HUD first")
     return saved
+
+
+@app.get("/plan/departure")
+def plan_departure(sol: int = Query(weather.DEFAULT_SOL, ge=1)):
+    """P6: best time to leave for the last plan on a Curiosity sol. For each departure
+    (every 15 min, 05:00-19:00 local true solar time) the share of the walk in sunlight,
+    in the terrain's shadow or in the dark; the best one and the fully lit window."""
+    try:
+        return departure.best_time(BASE, guide.load_plan(PLANS), sol)
+    except LookupError as err:
+        raise HTTPException(status_code=404, detail=str(err))
+    except ValueError as err:
+        raise HTTPException(status_code=422, detail=str(err))
 
 
 @app.post("/guide/return_home")

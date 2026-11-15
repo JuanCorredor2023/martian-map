@@ -1,6 +1,6 @@
 # P6 · Best time to leave, and working without Earth
 
-Owner: Diana (`@dianagrz`), handed over from Juan with the lead's approval (JB, #45, 2026-11-15) · Issue: #45 · PRs: #97 · Status: in review · Last update: 2026-11-15
+Owner: Diana (`@dianagrz`), handed over from Juan with the lead's approval (JB, #45, 2026-11-15) · Issue: #45 · PRs: #97 (module, note), HUD hookup (this PR) · Status: in review · Last update: 2026-11-15
 
 Two of the quick extras of P6. "EVA as a pair", "plan against the walk" and "wrist card" are done by JB and Sebas ([E11 note](E11_comms.md), [product note](product_api_hud.md)).
 
@@ -44,7 +44,8 @@ All numbers from `src/orienteering/paper_departure.py` → `data/p6/departure_su
 - **Against REMS:** over all 4,745 sols, the computed sunrise and sunset (the Sun crossing a smooth horizon) differ from the times REMS reports by a median of 0.40 min, 1.09 min at the 95th percentile and 1.56 min at most. REMS's times are local mean solar time; in true solar time the differences reach the equation of time (about 50 min). The computed season at sol 4711 (Ls 167°) is the one REMS gives.
 - **Terrain only removes light:** on the saved 120 min `/plan` tour, the sunlit share with terrain is never above the one without, at 29 departures, and some departures are shadowed.
 - **Synthetic terrain:** a 20 m wall 19.5 m to the east has a horizon of atan(20 / 19.5) = 45.7°; behind a 200 m wall the morning Sun is shadowed, and the afternoon Sun from the west is not; at midnight the walk is dark.
-- **Unit tests:** `pytest tests/orienteering/test_departure.py` passes 8 tests.
+- **Unit tests:** `pytest tests/orienteering/test_departure.py` passes 8 tests; `tests/api/test_departure_api.py` 3 more (the saved 120 min tour gives 06:45–15:15 and 11:00; an E4 round trip works; 404 and 422 cases).
+- **In the browser:** headless Edge on the live HUD: after *Plan the walk* the line appears with those times, it dims when a limit changes, and the page logs no errors.
 
 ## Limitations
 - **Light only.** No temperature (see Method 6), no dust: a dusty sky dims the light and scatters it, so shadows are softer than this geometry says.
@@ -54,7 +55,7 @@ All numbers from `src/orienteering/paper_departure.py` → `data/p6/departure_su
 - **Sunlight is a criterion, not a rule.** It is the one the issue asked for; there is no agreed operational rule (for example a minimum Sun elevation) for an EVA at Gale.
 
 ## What other pieces can use
-- **API, HUD and guide (Sebas):** `departure.score_departures(xy, t_s, sol, starts, horizon)` takes the route of any `/plan` answer (`tour_from_plan`) and returns one row per departure, the best and the lit window, in about 1 s with the horizon. An endpoint after `/plan` and a line under the plan ("Leave between 06:45 and 15:15; best 11:00") would put it in the demo; not done here because `api/` and `web/` are yours.
+- **API and HUD (Sebas's files, with his handoff on #45):** `GET /plan/departure?sol=` (`api/departure.py`) scores the last saved plan, an E5 tour or an E4 round trip, and answers 404 without a plan and 422 for a route without a clock. The HUD shows it as the *Best time to leave* line under the plan in step 3, for the sol of *Weather on the day*; it dims with the rest of the plan when the inputs change. In the browser, the HUD's own 120 min plan gives "leave between 06:45 and 15:15; best 11:00 (10:22 on the mission clock)".
 - **3D view (Juan):** the same Sun as `mars_sun.js`; the best departure can set the 3D view's local time (`?lt=`).
 - **E12 (Juan):** the departure sets the hours of the EVA; the dose does not depend on them unless there is a solar storm.
 

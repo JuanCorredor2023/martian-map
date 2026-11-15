@@ -74,7 +74,7 @@
   label.toggle.inline { margin: 0; padding: 6px 12px; }
   .stale { margin-top: 12px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--warn);
            background: rgba(242, 201, 76, 0.1); font-size: 13px; }
-  #plan-info.stale-dim, #plan-radio.stale-dim { opacity: 0.45; }
+  #plan-info.stale-dim, #plan-radio.stale-dim, #plan-departure.stale-dim { opacity: 0.45; }
   .walk-status { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; padding: 12px 14px; margin: 0 0 14px;
                  border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); }
   .walk-status .k { color: var(--muted); font-size: 12px; }
@@ -157,8 +157,8 @@
   details.section:first-of-type { border-top: 0; padding-top: 0; }
   details.section > summary { font-size: 14px; font-weight: 650; color: var(--text); margin-bottom: 6px; }
   details.section > summary small { color: var(--muted); font-weight: 400; font-size: 12px; }
-  #plan-radio { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); font-size: 12.5px; }
-  #plan-radio:empty { display: none; }
+  #plan-radio, #plan-departure { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); font-size: 12.5px; }
+  #plan-radio:empty, #plan-departure:empty { display: none; }
 
   /* ---- route profile ---- */
   .budget { display: flex; height: 14px; border-radius: 4px; overflow: hidden; gap: 2px; background: var(--surface-2);
@@ -352,6 +352,7 @@
         <button id="replan" class="link">Plan again</button> to update it.</div>
       <div id="plan-info"><div class="empty">No plan yet. Press <b>Plan the walk</b>: the first one takes 10–30 s while the terrain graph is built.</div></div>
       <div id="plan-radio"></div>
+      <div id="plan-departure"></div>
     </section>
 
     <!-- 4 · Walk -->
@@ -810,6 +811,30 @@ async function checkRadio() {
   } catch (err) { ui("plan-radio").textContent = `Radio check unavailable (${err.message})`; }
 }
 
+// ---------------------------------------------------------------------------
+// Best time to leave (P6, Diana): GET /plan/departure replays the last plan's clock at
+// each departure time (every 15 min) and says how much of the walk is in sunlight, in
+// the terrain's shadow (1 m DEM) or in the dark. Sol: the one of "Weather on the day".
+// ---------------------------------------------------------------------------
+async function checkDeparture() {
+  const box = ui("plan-departure");
+  box.textContent = "";
+  const sol = Number(ui("wx-sol").value) || 4711;
+  try {
+    const res = await fetch(`/plan/departure?sol=${encodeURIComponent(sol)}`);
+    if (!res.ok) { box.textContent = `Best time to leave unavailable (${esc((await res.json()).detail)})`; return; }
+    const d = await res.json(), b = d.best;
+    const lit = d.lit_window_clock;
+    box.innerHTML = `<b style="color:var(--text)">Best time to leave:</b> ` +
+      (lit ? `leave between <b style="color:var(--text)">${esc(lit[0])}</b> and <b style="color:var(--text)">${esc(lit[1])}</b> ` +
+             `and the whole walk is in sunlight; best ${esc(d.best_clock)} (${esc(d.best_mission_clock)} on the mission clock).`
+           : `no departure keeps the whole walk in sunlight; best ${esc(d.best_clock)}, with ` +
+             `${(b.sunlit_share * 100).toFixed(0)} % of it in sunlight.`) +
+      `<div class="muted" style="margin-top:2px">Sol ${esc(d.sol)}, local solar time at the habitat. ` +
+      `Shadows from the 1 m terrain; temperature not used.</div>`;
+  } catch (err) { box.textContent = `Best time to leave unavailable (${esc(err.message)})`; }
+}
+
 const redraw = () => { if (deckgl) deckgl.setProps({layers: layers()}); renderLegend(); };
 
 // ---------------------------------------------------------------------------
@@ -834,6 +859,7 @@ function markPlanStale() {
   ui("plan-stale").hidden = false;
   ui("plan-info").classList.add("stale-dim");
   ui("plan-radio").classList.add("stale-dim");
+  ui("plan-departure").classList.add("stale-dim");
   ui("plan-badge").innerHTML = `<span title="Out of date: plan again" style="color:var(--warn)">•</span>`;
   ui("plan-btn").classList.remove("secondary");                    // re-planning is the main action again
   announce("The plan is out of date. Plan again to update it.");
@@ -843,6 +869,7 @@ function clearPlanStale() {
   ui("plan-stale").hidden = true;
   ui("plan-info").classList.remove("stale-dim");
   ui("plan-radio").classList.remove("stale-dim");
+  ui("plan-departure").classList.remove("stale-dim");
 }
 
 function wbLayers() {
@@ -1277,6 +1304,7 @@ async function requestPlan() {
         (r.feasible === true ? ". The astronaut can get back from every point." : r.feasible === false ? ". Not enough energy to get back at some point." : "."));
     }
     checkRadio();
+    checkDeparture();
     if (playTimer) togglePlay();
     setupProfile();
     redraw();
