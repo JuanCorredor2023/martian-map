@@ -19,6 +19,8 @@ service. For energy and O2 this is exact on the graph (least-energy legs are the
 For duration it is exact for the E5 model only: a faster but costlier path is not searched,
 so a duration shortfall is flagged exact = False.
 """
+import math
+
 import numpy as np
 
 from grafos.labels import KJ_PER_LITER_O2, NoFeasibleRoute
@@ -96,17 +98,24 @@ def station_alone(problem, lim, k, sid):
 What would let a station that does not fit alone fit (each line is needed; together they
 are enough for that station alone, not for any other station or for the full tour).
 """
+def _up(value, decimals):
+    """value rounded up to `decimals` places, so the printed minimum is never below the need
+    (62.72 -> 62.8, not 62.7). Matches the HUD's up() in web/index.html."""
+    scale = 10 ** decimals
+    return math.ceil(value * scale - 1e-9) / scale
+
+
 def actions(alone, lim):
     out = []
     keep = 1.0 - lim["margin"]
     if "energy" in alone["short"]:
         need = alone["needs"]["energy_wh"]
-        out.append(f"energy budget at least {need / max(keep, 1e-12):.1f} Wh at margin "
+        out.append(f"energy budget at least {_up(need / max(keep, 1e-12), 1):.1f} Wh at margin "
                    f"{lim['margin']:g} (or a lower margin)")
     if "o2" in alone["short"]:
-        out.append(f"O2 budget at least {alone['needs']['o2_l']:.2f} L")
+        out.append(f"O2 budget at least {_up(alone['needs']['o2_l'], 2):.2f} L")
     if "duration" in alone["short"]:
-        out.append(f"max duration at least {alone['needs']['duration_min']:.1f} min "
+        out.append(f"max duration at least {_up(alone['needs']['duration_min'], 1):.1f} min "
                    "(estimate: legs follow the least-energy path)")
     if "path" in alone["short"]:
         out.append("move the station or the habitat, or unblock cells: no walkable path")

@@ -182,6 +182,18 @@ def test_raising_the_budget_as_advised_makes_the_station_fit():
     assert features(fc, "route")[0]["properties"]["order"] == ["habitat", "A", "habitat"]
 
 
+def test_printed_minimums_round_up_never_below_the_need():
+    # 56.448 Wh at margin 0.1 needs 62.72 Wh: rounding to nearest printed 62.7, which fails
+    alone = {"short": ["energy", "o2", "duration"],
+             "needs": {"energy_wh": 56.448, "o2_l": 1.231, "duration_min": 14.01}}
+    lines = diagnose.actions(alone, {"margin": 0.1})
+    assert lines[0].startswith("energy budget at least 62.8 Wh")
+    assert lines[1] == "O2 budget at least 1.24 L"
+    assert lines[2].startswith("max duration at least 14.1 min")
+    exact = {"short": ["energy"], "needs": {"energy_wh": 45.0}}   # 45 / 0.9 = 50.0, no bump
+    assert diagnose.actions(exact, {"margin": 0.1})[0].startswith("energy budget at least 50.0 Wh")
+
+
 def test_input_errors_carry_the_field():
     graph = grid_graph(3, 8)
     with pytest.raises(ValueError) as err:
