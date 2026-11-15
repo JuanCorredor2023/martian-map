@@ -894,6 +894,193 @@ export function walkCheck({terrain, scene, camera, controls, walk, overlays, mar
   return out;
 }
 
+// ?check=layers : are the map layers of the 2D planner drawn on the right 1 m cells?
+//
+// For every layer of map_layers_model.js: pick it, read the image the 2D shows (the PNG as
+// served, or the slope tiles put together) through a 2D canvas, and render the layer's
+// group alone from straight above (orthographic, the box exactly on 2000 x 2000 pixels:
+// one pixel a 1 m cell, north up), at full opacity with no blending so each texel is
+// written as it is. The two are compared over black (a 2D canvas keeps colours
+// premultiplied and rounds faint ones coarsely) on the cells inside the terrain mesh less
+// one all round: share of cells within 3 levels, the errors, the shift that fits best
+// (it must be 0, 0) and the error against the image flipped north-south (it must be
+// clearly worse). The same at relief x5, which must not move the layer. Five named cells
+// with both colours. Then the slope steeper than the plan's limit against the steep-cell
+// layer, as masks: two different sources on the same cells. Then "Relief only", the photo
+// view, and the terrain's own materials, untouched. It only GETs the images and the info
+// JSON the 2D asks for. Everything is put back as it was.
+async function layersCheck(viz) {
+  const {terrain, scene, renderer, shadows, sunView, mapLayers: layers} = viz;
+  const M = await import('./map_layers_model.js');
+  const round = (v, d = 4) => (typeof v === 'number' && Number.isFinite(v) ? Number(v.toFixed(d)) : v ?? null);
+  const wait = ms => new Promise(done => setTimeout(done, ms));       // not frames: a hidden page draws none
+  const out = {check: 'layers', quality: terrain.quality, mesh_step_m: terrain.step};
+  if (!layers) return {...out, error: 'map layers not loaded', note: document.getElementById('layer-note').textContent};
+  const started = performance.now();
+  const W = 2000, cell = terrain.size / W, bbox = terrain.meta.bbox;
+  // The mesh's vertices run from `first` to first + (n - 1) step metres from the west and
+  // north edges: the cells wholly inside it, less one all round.
+  const lo = Math.ceil(terrain.first / cell) + 1;
+  const hi = Math.floor((terrain.first + (terrain.n - 1) * terrain.step) / cell) - 1;
+  const region = {i0: lo, j0: lo, i1: hi, j1: hi};
+  Object.assign(out, {render_px: W, relief_k: terrain.k,
+                      region: {...region, cells: (hi - lo) ** 2, rows_and_columns: `${lo} to ${hi - 1}, row 0 north`}});
+  const before = {state: layers.state(), k: terrain.k, reliefOnly: sunView.reliefOnly,
+                  children: scene.children.map(o => o.name || o.type).join(' ')};
+  const terrainLook = () => terrain.materials.map(m => ({map: m.map, color: m.color.getHex()}));
+  const look = terrainLook();
+
+  const camera = new THREE.OrthographicCamera(-terrain.half, terrain.half, terrain.half, -terrain.half, 1, 20000);
+  camera.position.set(0, 8000, 0);
+  camera.up.set(0, 0, -1);                                 // north at the top of the image
+  camera.lookAt(0, 0, 0);
+  // The layer alone, its texels as they are; rows north first. The target is sRGB like the
+  // texture: the shader works in linear and the GPU encodes the bytes back on writing.
+  const topDown = () => {
+    const m = layers.material, target = new THREE.WebGLRenderTarget(W, W, {colorSpace: THREE.SRGBColorSpace});
+    const saved = {opacity: m.opacity, blending: m.blending, fog: scene.fog, background: scene.background,
+                   clear: renderer.getClearColor(new THREE.Color()), alpha: renderer.getClearAlpha(), cast: shadows.enabled};
+    const hidden = scene.children.filter(o => o !== layers.group && o.visible);
+    try {
+      hidden.forEach(o => { o.visible = false; });
+      shadows.set(false);                                  // no shadow map drawn of a scene with no terrain
+      scene.fog = null;
+      scene.background = null;
+      renderer.setClearColor(0x000000, 0);
+      m.opacity = 1;
+      m.blending = THREE.NoBlending;
+      renderer.setRenderTarget(target);
+      renderer.render(scene, camera);
+      const rgba = new Uint8Array(W * W * 4);
+      renderer.readRenderTargetPixels(target, 0, 0, W, W, rgba);     // rows from the south
+      return M.flipRows(rgba, W, W);
+    } finally {
+      renderer.setRenderTarget(null);
+      m.opacity = saved.opacity;
+      m.blending = saved.blending;
+      Object.assign(scene, {fog: saved.fog, background: saved.background});
+      renderer.setClearColor(saved.clear, saved.alpha);
+      hidden.forEach(o => { o.visible = true; });
+      shadows.set(saved.cast);
+      target.dispose();
+    }
+  };
+  const shift = s => ({dx: s.dx, dy: s.dy, err: round(s.err), err_at_zero: round(s.err_at_zero)});
+  const at = (rgba, row, col) => [...rgba.subarray((row * W + col) * 4, (row * W + col) * 4 + 4)];
+  const sample = (name, row, col, png, drawn) => ({name, x: round(bbox.xmin + (col + 0.5) * cell, 2),
+                                                  y: round(bbox.ymax - (row + 0.5) * cell, 2), cell: [row, col],
+                                                  png: at(png, row, col), drawn: at(drawn, row, col)});
+  const maskImage = mask => {                              // 0/1 mask -> grey RGBA, for bestShift
+    const rgba = new Uint8Array(mask.length * 4);
+    for (let c = 0; c < mask.length; c++) { rgba.fill(mask[c] * 255, c * 4, c * 4 + 3); rgba[c * 4 + 3] = 255; }
+    return rgba;
+  };
+  const crop = mask => {                                   // the region of a W x W mask
+    const part = new Uint8Array((hi - lo) ** 2);
+    for (let i = lo; i < hi; i++) part.set(mask.subarray(i * W + lo, i * W + hi), (i - lo) * (hi - lo));
+    return part;
+  };
+
+  out.layers = [];
+  const masks = {};
+  try {
+    for (const layer of M.LAYERS) {
+      try {
+        const got = await layers.select(layer.id);
+        if (got.error || !got.image) { out.layers.push({id: layer.id, error: got.error || 'nothing drawn'}); continue; }
+        const src = await layers.imageData();
+        if (src.w !== W || src.h !== W) { out.layers.push({id: layer.id, error: `image of ${src.w} x ${src.h} px`}); continue; }
+        const drawnRaw = topDown();
+        const expected = M.premultiply(src.rgba), drawn = M.premultiply(drawnRaw);
+        const c = M.compareRGBA(expected, drawn, W, W, {tol: 3, region});
+        const s = M.bestShift(expected, drawn, W, W, {max: 3, tol: 3, region});
+        const flipped = M.compareRGBA(M.flipRows(expected, W, W), drawn, W, W, {tol: 3, region});
+        viz.setRelief(5);
+        const k5 = terrain.k, drawn5 = M.premultiply(topDown());
+        viz.setRelief(before.k);
+        const c5 = M.compareRGBA(expected, drawn5, W, W, {tol: 3, region});
+        const s5 = M.bestShift(expected, drawn5, W, W, {max: 3, tol: 3, region});
+        const [hx, hy] = layers.habitat;
+        let first = null;
+        for (let i = lo; i < hi && !first; i++) {
+          for (let j = lo; j < hi; j++) if (src.rgba[(i * W + j) * 4 + 3] > 0) { first = [i, j]; break; }
+        }
+        const samples = [['box centre', W / 2, W / 2],
+                         ['habitat', Math.floor((bbox.ymax - hy) / cell), Math.floor((hx - bbox.xmin) / cell)],
+                         ['NW quarter', W / 4, W / 4], ['SE quarter', (3 * W) / 4, (3 * W) / 4]]
+          .map(([name, row, col]) => sample(name, row, col, src.rgba, drawnRaw));
+        samples.push(first ? sample('first painted cell of the region', ...first, src.rgba, drawnRaw)
+                           : {name: 'first painted cell of the region', cell: null});
+        out.layers.push({
+          id: layer.id, label: layer.label, slider: layers.slider,
+          match_pct: round(c.match_pct), mean_abs_err: round(c.mean_abs_err), max_abs_err: c.max_abs_err,
+          best_shift: shift(s), mean_abs_err_flipped_ns: round(flipped.mean_abs_err),
+          coverage_png: round(M.coverage(src.rgba, W, W, {region})), coverage_drawn: round(M.coverage(drawnRaw, W, W, {region})),
+          relief_k5: k5, match_pct_k5: round(c5.match_pct), mean_abs_err_k5: round(c5.mean_abs_err), best_shift_k5: shift(s5),
+          samples,
+        });
+        if (layer.id === 'slope' && Number.isFinite(layers.limit)) {
+          masks.limit = layers.limit;
+          masks.slope = M.slopeMask(src.rgba, W, W, layers.limit);
+        }
+        if (layer.id === 'steep') masks.steep = M.alphaMask(src.rgba, W, W);
+      } catch (err) {
+        console.error(err);
+        out.layers.push({id: layer.id, error: err.message});
+      }
+    }
+
+    // Two sources, one set of cells: the slope tiles steeper than the limit, against the
+    // cells blocked.png draws (it counts the steepest slope in each cell, the tiles a mean one).
+    if (masks.slope && masks.steep) {
+      const a = M.maskAgreement(crop(masks.slope), crop(masks.steep));
+      const s = M.bestShift(maskImage(masks.slope), maskImage(masks.steep), W, W, {max: 3, region});
+      out.slope_vs_steep = {limit_deg: masks.limit, cells: a.cells, agree_pct: round(a.agree_pct),
+                            only_slope_tiles: a.only_a, only_steep_png: a.only_b, both: a.both, best_shift: shift(s)};
+    } else {
+      out.slope_vs_steep = {error: 'the slope or the steep layer did not load (or the plan blocks no cell)'};
+    }
+    delete masks.slope; delete masks.steep;
+
+    // Once, with a layer on: "Relief only" keeps it; the photo view hides it and gives it back.
+    const shown = out.layers.filter(l => !l.error).map(l => l.id).at(-1);
+    if (shown) {
+      if (layers.current.id !== shown) await layers.select(shown);
+      sunView.setReliefOnly(true);
+      out.relief_only = {layer: shown, group_visible: layers.group.visible,
+                         layer_map_kept: Boolean(layers.texture) && layers.material.map === layers.texture,
+                         terrain_photo_hidden: terrain.materials.every(m => m.map === null)};
+      sunView.setReliefOnly(before.reliefOnly);
+      const inPhotoView = document.body.classList.contains('photo-view');
+      document.body.classList.add('photo-view');
+      await wait(50);
+      const hiddenThere = !layers.group.visible;
+      document.body.classList.remove('photo-view');
+      await wait(50);
+      out.photo_view = {layer: shown, hidden_in_photo_view: hiddenThere, shown_again_after: layers.group.visible};
+      if (inPhotoView) document.body.classList.add('photo-view');
+    }
+    if (layers.layersMeta && layers.layersMeta.grid) {
+      const g = layers.layersMeta.grid.bbox;
+      out.layers_box_vs_terrain_box_m = round(Math.max(...['xmin', 'ymin', 'xmax', 'ymax'].map(key => Math.abs(g[key] - bbox[key]))), 6);
+    }
+  } finally {
+    await layers.restore(before.state);
+    if (terrain.k !== before.k) viz.setRelief(before.k);
+    sunView.setReliefOnly(before.reliefOnly);
+    viz.redraw();
+  }
+  const now = terrainLook(), after = layers.state();
+  out.terrain_untouched = now.every((l, i) => l.map === look[i].map && l.color === look[i].color);
+  const children = scene.children.map(o => o.name || o.type).join(' ');
+  out.after_exit = {same: after.id === before.state.id && after.slider === before.state.slider && terrain.k === before.k &&
+                          children === before.children,
+                    state_before: before.state, state_after: after, relief_before: before.k, relief_after: terrain.k,
+                    scene_children_same: children === before.children};
+  out.seconds = round((performance.now() - started) / 1000, 1);
+  return out;
+}
+
 export const CHECKS = {shading: shadingCheck, route: routeCheck, rehearse: rehearseCheck, sun: sunCheck,
                        shadows: shadowsCheck, guide: guideCheck, photos: photosCheck, stations: stationsCheck,
-                       walk: walkCheck};
+                       walk: walkCheck, layers: layersCheck};
