@@ -1,6 +1,6 @@
 # P3 · Curiosity ground photographs in the 3D map and the 2D HUD
 
-Owner: Juan (`@JuanCorredor2023`) · Issues: #46 (P3), #103 (P3b) · PRs: #80 (block 1), #95 (block 2), #98 (block 3); #130 (P3b, 2D HUD, #103) · Status: P3 done (catalogue and poses, photos in the 3D page with a visual check of three sols, station previews); P3b done on its branch (photo layer, photo card and station photo lines in the 2D HUD), in review · Last update: 2026-11-15
+Owner: Juan (`@JuanCorredor2023`) · Issues: #46 (P3), #103 (P3b) · PRs: #80 (block 1), #95 (block 2), #98 (block 3); #130 (P3b, 2D HUD, #103) · Status: P3 done (catalogue and poses, photos in the 3D page with a visual check of three sols, station previews); P3b done (photo layer, photo card and station photo lines in the 2D HUD), merged in #130 · Last update: 2026-11-15
 
 ## Question
 
