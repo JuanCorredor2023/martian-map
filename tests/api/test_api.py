@@ -293,3 +293,27 @@ def test_walkback_compares_fixed_radius_rules():
         assert 0 <= r["falsely_safe_pct"] <= 100
         assert abs(r["falsely_safe_pct"] - r["falsely_safe_no_way_back_pct"]
                    - r["falsely_safe_too_slow_pct"]) < 1e-6
+
+
+def test_plan_refuses_a_tour_that_fails_the_walkback(monkeypatch):
+    """If E5's re-plans all fail, plan_tour returns the last tour with feasible=False:
+    /plan must refuse it (422), never hand an unsafe tour to the HUD or the guide."""
+    from api import tour
+
+    def unsafe(req, g):
+        line = {"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[0, 0], [1, 1]]},
+                "properties": {"kind": "route", "feasible": False, "first_violation": 1,
+                               "order": ["habitat", "R0", "habitat"], "stop_index": [0, 1, 1]}}
+        return {"type": "FeatureCollection", "features": [line]}, {"walkback_retries": 5}
+
+    class NoRoute(Exception):
+        pass
+
+    monkeypatch.setattr(tour, "AVAILABLE", True)
+    monkeypatch.setattr(tour, "DELEGATE", True)
+    monkeypatch.setattr(tour, "_e5_plan_tour", unsafe, raising=False)
+    monkeypatch.setattr(tour, "_E4NoRoute", NoRoute, raising=False)
+    st = [{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5, "type": "ridge", "service_time_min": 10}]
+    r = client.post("/plan", json=plan_body(stations=st))
+    assert r.status_code == 422
+    assert "fails the walkback" in r.json()["detail"] and "vertex 1" in r.json()["detail"]
