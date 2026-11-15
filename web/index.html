@@ -75,7 +75,10 @@
   label.toggle.inline { margin: 0; padding: 6px 12px; }
   .stale { margin-top: 12px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--warn);
            background: rgba(242, 201, 76, 0.1); font-size: 13px; }
-  #plan-info.stale-dim, #plan-radio.stale-dim, #plan-departure.stale-dim { opacity: 0.45; }
+  #plan-info.stale-dim, #plan-radio.stale-dim, #plan-departure.stale-dim { opacity: 0.75; }
+  #plan-info.stale-dim::before { content: "OUT OF DATE"; display: inline-block; margin-bottom: 6px; padding: 2px 8px;
+                                 border-radius: 999px; border: 1px solid var(--warn); color: var(--warn);
+                                 font-size: 12px; font-weight: 750; letter-spacing: 0.04em; }
   .walk-status { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; padding: 12px 14px; margin: 0 0 14px;
                  border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); }
   .walk-status .k { color: var(--muted); font-size: 12px; }
@@ -86,7 +89,9 @@
   .walk-status .meter i.low { background: var(--warn); }
   .walk-status .meter.out { background: repeating-linear-gradient(135deg, rgba(255, 90, 79, 0.55) 0 4px, transparent 4px 8px); }
   .walk-status .state { grid-column: 1 / -1; display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
-  .walk-status .state b { font-weight: 750; letter-spacing: 0.04em; color: var(--good); }
+  .walk-status .state { align-items: center; }
+  .walk-status .state b { font-weight: 750; letter-spacing: 0.04em; color: var(--good); font-size: 16px;
+                          padding: 2px 10px; border-radius: 999px; border: 1px solid currentColor; }
   .walk-status .state b.low { color: var(--warn); } .walk-status .state b.out { color: var(--bad); }
   .walk-status .where { grid-column: 1 / -1; color: var(--muted); font-size: 12.5px; }
   .walk-status.bad { border-color: rgba(255, 90, 79, 0.6); }
@@ -291,6 +296,13 @@
     #storm-banner:not([hidden]) ~ #photo-card { top: auto; bottom: 8px; max-height: calc(100% - 150px); }
   }
 
+  @media (pointer: coarse) {                  /* touch: 44 px targets (Apple HIG, WCAG 2.5.5) */
+    button, select, .btn, .tabs [role="tab"], input[type="number"] { min-height: 44px; }
+    label:has(> input[type="checkbox"]) { min-height: 44px; display: flex; align-items: center; gap: 8px; }
+    input[type="checkbox"] { width: 22px; height: 22px; flex: none; }
+    input[type="range"] { min-height: 32px; }
+    .st-row button { min-width: 44px; }
+  }
   @media (max-width: 860px) {
     body { grid-template-columns: 1fr; grid-template-rows: 46vh minmax(0, 1fr); }
     #stage { height: 46vh; order: -1; }
@@ -378,10 +390,13 @@
       <label class="toggle"><input type="checkbox" id="add-mode" class="click-mode"> ＋ Add stations by clicking the map</label>
       <div class="btn-row">
         <button id="load-candidates" class="secondary" title="Curiosity's real drill sites plus candidates picked from relief and tone">Load Curiosity sites</button>
-        <button id="load-e8" class="secondary" title="E8: rock outcrops next to sand patches, found automatically on the photo">Load AI-found sites</button>
       </div>
-      <h2>Science value by type <small>edit to change the plan</small></h2>
-      <div id="rubric" class="grid"></div>
+      <details class="more" id="stations-advanced">
+        <summary>Advanced: science values and AI-found sites</summary>
+        <div class="btn-row"><button id="load-e8" class="secondary" title="E8: rock outcrops next to sand patches, found automatically on the photo">Load AI-found sites</button></div>
+        <h2>Science value by type <small>edit to change the plan</small></h2>
+        <div id="rubric" class="grid"></div>
+      </details>
       <h2>Stations <small id="station-count"></small></h2>
       <div class="st-head"><span>Id</span><span>Type</span><span title="Minutes of work at the station">Work (min)</span><span title="Science value, from the type">Value</span><span></span></div>
       <div id="station-list"></div>
@@ -408,14 +423,13 @@
       </div>
       <button id="habitat-reset" class="link" hidden>Back to the centre</button>
       <h2>Limits</h2>
-      <div class="field"><span>Longest walk</span><input type="number" id="max-min" min="15" max="480" step="5" value="120" required><span class="unit">min</span></div>
-      <div class="field"><span>Energy budget</span><input type="number" id="budget-wh" min="50" max="2800" step="50" value="1000" required><span class="unit">Wh</span></div>
-      <div class="field"><span>Reserve kept unused</span><input type="number" id="margin-pct" min="0" max="90" step="5" value="10"><span class="unit">%</span></div>
-      <div class="hint">Wh: watt-hours of suit energy (a full suit carries about 2,800). The reserve is held back for surprises.
-        Press Enter in any field to plan.</div>
+      <div class="field"><span>Longest walk</span><input type="number" id="max-min" aria-label="Longest walk, minutes" min="15" max="480" step="5" value="120" required><span class="unit">min</span></div>
+      <div class="field"><span>Energy budget</span><input type="number" id="budget-wh" aria-label="Energy budget, Wh" min="50" max="2800" step="50" value="1000" required><span class="unit">Wh</span></div>
+      <div class="field"><span>Reserve kept unused</span><input type="number" id="margin-pct" aria-label="Reserve kept unused, percent" min="0" max="90" step="5" value="10"><span class="unit">%</span></div>
+      <div class="hint">Wh: suit energy (a full suit ≈ 2,800). Enter plans.</div>
       <details class="more">
         <summary>More options</summary>
-        <div class="field"><span>Oxygen budget <small class="muted">(0 = no limit)</small></span><input type="number" id="o2-l" min="0" max="5000" step="10" value="0"><span class="unit">L</span></div>
+        <div class="field"><span>Oxygen budget <small class="muted">(0 = no limit)</small></span><input type="number" id="o2-l" aria-label="Oxygen budget, litres (0 = no limit)" min="0" max="5000" step="10" value="0"><span class="unit">L</span></div>
         <label title="E3 energy multiplied by the sand price learned from Curiosity's route (E1)"><input type="checkbox" id="human-cost" checked> Charge extra energy on sand</label>
         <div class="muted">In this 2 × 2 km area time runs out long before energy does.</div>
       </details>
@@ -470,7 +484,7 @@
       <details class="more" id="probe">
         <summary>Try another point</summary>
         <label class="toggle"><input type="checkbox" id="wb-mode" class="click-mode"> Place the astronaut on the map</label>
-        <div class="field"><span>Energy still in the suit</span><input type="number" id="wb-energy" min="0" step="10" value="150"><span class="unit">Wh</span></div>
+        <div class="field"><span>Energy still in the suit</span><input type="number" id="wb-energy" aria-label="Energy still in the suit, Wh" min="0" step="10" value="150"><span class="unit">Wh</span></div>
       </details>
     </section>
 
@@ -489,7 +503,7 @@
       </details>
       <details class="section" open>
         <summary>Weather on the day <small>one value per sol</small></summary>
-        <div class="field"><span>Sol of the walk</span><input type="number" id="wx-sol" min="1" step="1" value="4711"><span class="unit"></span></div>
+        <div class="field"><span>Sol of the walk</span><input type="number" id="wx-sol" aria-label="Sol of the walk" min="1" step="1" value="4711"><span class="unit"></span></div>
         <div id="wx-summary" class="muted"></div>
         <div class="muted" style="margin-top:6px">Air temperature while Curiosity explored the boxwork (°C)</div>
         <svg id="wx-chart" width="226" height="96" role="img" aria-label="Daily maximum and minimum air temperature over the boxwork campaign sols"></svg>
@@ -564,6 +578,7 @@ const ICONS = {
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
   ext: '<path d="M14 5h5v5M19 5l-8 8M17 14v5H5V7h5"/>',
+  photo: '<path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13.5" r="3.5"/>',
 };
 const icon = (name, label = "") => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ` +
   `stroke-linecap="round" stroke-linejoin="round" ${label ? `role="img" aria-label="${label}"` : 'aria-hidden="true"'}>${ICONS[name]}</svg>`;
@@ -1115,8 +1130,8 @@ function photoLineFor(s) {
   if (!p || !p.short) return null;
   const el = document.createElement(p.groupId ? "button" : "div");
   el.className = "st-photo";
-  el.textContent = p.short;
-  if (p.text) el.title = p.text;
+  el.innerHTML = `${icon("photo")} Photo`;
+  el.title = p.text ? `${p.short} · ${p.text}` : p.short;
   if (p.groupId) {
     el.type = "button";
     el.dataset.station = s.id;
@@ -1145,13 +1160,14 @@ async function checkRadio() {
     if (!res.ok) { ui("plan-radio").textContent = `Radio check unavailable (${(await res.json()).detail})`; return; }
     radioFC = await res.json();
     const one = radioFC.properties.single, pair = radioFC.properties.pair.unlinked;
-    ui("plan-radio").innerHTML = `<b style="color:var(--text)">Radio:</b> ` +
-      (one.length_m < 1 ? "the habitat antenna is in sight along the whole walk." :
-       `<b style="color:var(--text)">${(one.fraction * 100).toFixed(0)} %</b> of the walk has no direct radio to the habitat ` +
-       `(${one.length_m.toFixed(0)} m, about ${one.duration_min.toFixed(0)} min; longest stretch ${one.longest_m.toFixed(0)} m). ` +
-       `Walking as a pair ${radioFC.properties.pair.gap_m} m apart leaves ${pair.length_m.toFixed(0)} m with no link.`) +
-      ` <a href="#" id="radio-show">${ui("show-radio").checked ? "Hide" : "Show"} on the map</a>` +
-      `<div class="muted" style="margin-top:2px">Line of sight only: a cautious estimate.</div>`;
+    ui("plan-radio").innerHTML = oneLine(`<b style="color:var(--text)">Radio:</b> ` +
+      (one.length_m < 1 ? "in sight along the whole walk." :
+       `<b style="color:var(--text)">${(one.fraction * 100).toFixed(0)} %</b> of the walk without direct radio.`) +
+      ` <a href="#" id="radio-show">${ui("show-radio").checked ? "Hide" : "Show"} on the map</a>`,
+      (one.length_m < 1 ? "" :
+       `${one.length_m.toFixed(0)} m, about ${one.duration_min.toFixed(0)} min; longest stretch ${one.longest_m.toFixed(0)} m. ` +
+       `Walking as a pair ${radioFC.properties.pair.gap_m} m apart leaves ${pair.length_m.toFixed(0)} m with no link. `) +
+      `Line of sight only: a cautious estimate.`);
     ui("radio-show").addEventListener("click", ev => {
       ev.preventDefault();
       ui("show-radio").checked = !ui("show-radio").checked;
@@ -1175,17 +1191,25 @@ async function checkDeparture() {
     if (!res.ok) { box.textContent = `Best time to leave unavailable (${esc((await res.json()).detail)})`; return; }
     const d = await res.json(), b = d.best;
     const lit = d.lit_window_clock;
-    box.innerHTML = `<b style="color:var(--text)">Best time to leave:</b> ` +
-      (lit ? `leave between <b style="color:var(--text)">${esc(lit[0])}</b> and <b style="color:var(--text)">${esc(lit[1])}</b> ` +
-             `and the whole walk is in sunlight; best ${esc(d.best_clock)} (${esc(d.best_mission_clock)} on the mission clock).`
-           : `no departure keeps the whole walk in sunlight; best ${esc(d.best_clock)}, with ` +
-             `${(b.sunlit_share * 100).toFixed(0)} % of it in sunlight.`) +
-      `<div class="muted" style="margin-top:2px">Sol ${esc(d.sol)}, local solar time at the habitat. ` +
-      `Shadows from the 1 m terrain; temperature not used.</div>`;
+    box.innerHTML = oneLine(`<b style="color:var(--text)">Best time to leave:</b> ` +
+      (lit ? `<b style="color:var(--text)">${esc(lit[0])}–${esc(lit[1])}</b>, all in sunlight.`
+           : `<b style="color:var(--text)">${esc(d.best_clock)}</b>, ${(b.sunlit_share * 100).toFixed(0)} % in sunlight.`),
+      (lit ? `Best ${esc(d.best_clock)} (${esc(d.best_mission_clock)} on the mission clock). `
+           : `No departure keeps the whole walk in sunlight. `) +
+      `Sol ${esc(d.sol)}, local solar time at the habitat. Shadows from the 1 m terrain; temperature not used.`);
   } catch (err) { box.textContent = `Best time to leave unavailable (${esc(err.message)})`; }
 }
 
 const redraw = () => { if (deckgl) deckgl.setProps({layers: layers()}); renderLegend(); };
+
+// One clear line on screen; the explanation folded under "More" (#124).
+function oneLine(line, more) {
+  return more ? `<div>${line}</div><details class="more line-more"><summary>More</summary><div>${more}</div></details>`
+              : `<div>${line}</div>`;
+}
+
+// The map legend starts closed on tablets and phones, where it covered up to 45 % of the map.
+if (matchMedia("(max-width: 860px)").matches) ui("legend").open = false;
 
 // ---------------------------------------------------------------------------
 // Walkback (guide sections 20.3-20.5): red line = R_T(v) = 30 min (contingency
@@ -1319,10 +1343,13 @@ async function requestWalkback() {
   announce(`Back at the habitat in ${(p.return_time_s / 60).toFixed(1)} minutes, ${Math.max(0, p.energy_left_after_return_wh).toFixed(0)} watt-hours spare.`);
   ui("wb-info").innerHTML =
     (ui("show-radius").checked && circles.length
-      ? `<div class="callout">A fixed-distance rule draws a circle and calls everything inside safe:` +
-        circles.map(r => `<div>${(r.radius_m / 1000).toFixed(2)} km circle: <b>${r.falsely_safe_pct.toFixed(0)} %</b> of it ` +
-          `cannot get back in 30 min (${r.falsely_safe_no_way_back_pct.toFixed(0)} % no way back, ` +
-          `${r.falsely_safe_too_slow_pct.toFixed(0)} % too slow).</div>`).join("") + `</div>` : "") +
+      ? `<div class="callout">` + oneLine(
+          (() => { const w = circles.reduce((a, r) => r.falsely_safe_pct > a.falsely_safe_pct ? r : a);
+                   return `Fixed-distance rule: <b>${w.falsely_safe_pct.toFixed(0)} %</b> of its ${(w.radius_m / 1000).toFixed(2)} km circle cannot get back in 30 min.`; })(),
+          `A fixed-distance rule draws a circle and calls everything inside safe.` +
+          circles.map(r => `<div>${(r.radius_m / 1000).toFixed(2)} km circle: <b>${r.falsely_safe_pct.toFixed(0)} %</b> of it ` +
+            `cannot get back in 30 min (${r.falsely_safe_no_way_back_pct.toFixed(0)} % no way back, ` +
+            `${r.falsely_safe_too_slow_pct.toFixed(0)} % too slow).</div>`).join("")) + `</div>` : "") +
     notes.map(w => `<div class="muted" style="margin-top:6px">${esc(w)}</div>`).join("");
   redraw();
 }
@@ -1568,13 +1595,14 @@ async function simulateSEP() {
   ui("storm-banner").hidden = false;
   if (sepPath) fitStorm();
   renderLegend();
-  ui("sep-info").innerHTML = `<div class="alert">${icon("warn")} <b>Solar storm alert · return to the habitat now</b><br>
-    The amber dashed line on the map is the way home.<br>
-    Way back: ${(backS / 60).toFixed(1)} min${beyond ? " (beyond the 30 min line)" : ""}.${short ? " Not enough energy for it." : ""}<br>
-    Dose on the way back: <b>${doseBack.toFixed(1)} µGy</b> (${doseCalm.toFixed(1)} µGy without the storm).<br>
-    <span class="muted">${sc.measured ? "Measured event" : "Hypothetical scaling of the real event"} ·
-    alarm rule: rate &gt; ${rule.k_on}× the ${rule.baseline}, ${rule.n_on} observations in a row
-    (real alarm ${ev.alarm_delay_min.toFixed(0)} min after onset).</span></div>`;
+  ui("sep-info").innerHTML = `<div class="alert">` + oneLine(
+    `${icon("warn")} <b>Solar storm:</b> way home ${(backS / 60).toFixed(1)} min${beyond ? " (beyond the 30 min line)" : ""}` +
+    `${short ? ", not enough energy for it" : ""}. See the map.`,
+    `The amber dashed line on the map is the way home. ` +
+    `Dose on the way back: <b>${doseBack.toFixed(1)} µGy</b> (${doseCalm.toFixed(1)} µGy without the storm). ` +
+    `<span class="muted">${sc.measured ? "Measured event" : "Hypothetical scaling of the real event"} · ` +
+    `alarm rule: rate &gt; ${rule.k_on}× the ${rule.baseline}, ${rule.n_on} observations in a row ` +
+    `(real alarm ${ev.alarm_delay_min.toFixed(0)} min after onset).</span>`) + `</div>`;
 }
 
 function dismissStorm() {
@@ -1925,7 +1953,7 @@ function renderLegend() {
   const dot = (c, t) => it.push(`<div class="lg"><i class="dotk" style="background:${c}"></i>${t}</div>`);
   if (planFC) line("#00c8ff", "Planned route");
   if (ui("show-radio").checked && radioFC) line("#ff40c8", "Route with no direct radio");
-  if (sepPath) line("#ffb020", "Fastest way home (storm)");
+  if (sepPath) line("#ffb020", "Way home (storm)");
   if (wbFC && currentTab === "walk") {
     line("#ff3b30", "30 min from the habitat");
     fill("rgba(6,8,12,.75)", "Out of reach with the energy left");
