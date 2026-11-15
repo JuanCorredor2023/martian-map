@@ -80,7 +80,7 @@ with $M$, $W_\text{level}$ and $W_\text{slope}$ in watts and $\alpha$ in degrees
 
 Reduced gravity enters only through $W_\text{slope}$, the work done raising or lowering the body's mass; the cost of moving the legs on level ground does not scale with $g$. The alternative of scaling the whole power by $g/g_\oplus$, used for example in a recent NASA traverse model [@Kim2025] on top of the Pandolf equation [@Pandolf1977], fails a simple lunar check: on flat ground it predicts 52 W on the Moon, whereas about 290 W has been inferred for the Apollo 14 EVAs [@Carr2003]. We therefore keep the Pandolf variant only for a sensitivity test.
 
-Walking speed follows the Apollo regression $V(\alpha) = 0.75 - 0.01\,\alpha$ m s⁻¹, with $\alpha$ signed so that walking downhill is faster. The published regression does not state whether the slope is signed, so we adopt the signed reading and test the unsigned one as a sensitivity case. The astronaut's total mass is $m = 124.2$ kg, the Apollo 14 commander's 76.4 kg plus a 47.8 kg suit [@Carr2003], and $g = 3.71$ m s⁻².
+Walking speed follows the Apollo regression $V(\alpha) = 0.75 - 0.01\,\alpha$ m s⁻¹, with $\alpha$ signed so that walking downhill is faster. The published regression does not state whether the slope is signed, so we adopt the signed reading and test the unsigned one as a sensitivity case. The astronaut's total mass is $m = 124.2$ kg, the Apollo 14 commander's 76.4 kg plus a 47.8 kg suit (cooling garment, suit and life support) [@Carr2003], and $g = 3.71$ m s⁻².
 
 The grid becomes a graph by connecting each cell to its eight neighbours. For the move from cell $u$ to cell $v$, of horizontal length $d_h \in \{1, \sqrt2\}$ m,
 $$\alpha_{uv} = \arctan\frac{z_v - z_u}{d_h},\qquad \Delta t_{uv} = \frac{d_h}{V(\alpha_{uv})\cos\alpha_{uv}},\qquad E_{uv} = M(\alpha_{uv}, V(\alpha_{uv}), g)\,\Delta t_{uv}.$$
@@ -530,7 +530,7 @@ Curiosity's traverse tests something narrower than the planner. DEM features sep
 
 ### Why the walkback has to be terrain-aware
 
-A fixed radius assumes that costs are symmetric and the same in every direction. Neither holds here: the return can cost half or 1.7 times the way out (5th to 95th percentile of $R_E/g_E$), and scarps cut some cells off entirely. The two errors of the radius rule have different causes. Cells with no way back, 15.6 % of the circle, are a topological error that no safety factor can fix. Cells that are too slow, 20.7 %, are a metric error that a large enough factor would absorb, but that factor is 4.05 for the radius rule at 50 % of the budget, which in practice means planning almost nothing. This is the main operational argument for computing the return cost on the directed graph.
+A fixed radius assumes that costs are symmetric and the same in every direction. Neither holds here: the return can cost half or 1.7 times the way out (5th to 95th percentile of $R_E/g_E$), and scarps cut some cells off entirely. The two errors of the radius rule have different causes. Cells with no way back, 15.6 % of the circle, are a topological error that no safety factor can fix. Cells that are too slow, 20.7 %, are a metric error that a large enough factor would absorb; in the energy comparison of Section 4.2, the radius rule would need a factor of 4.05 to avoid false safes in 99 % of cases, which in practice means planning almost nothing. This is the main operational argument for computing the return cost on the directed graph.
 
 ### Negative results
 
