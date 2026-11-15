@@ -55,6 +55,10 @@ def _delegate(req, g):
         raise NoTour(str(err))
     route = next(f for f in fc["features"] if f["properties"]["kind"] == "route")
     p = route["properties"]
+    if not p.get("feasible", True):
+        # E5 re-plans on a walkback failure but, if every retry fails, returns the last
+        # (unsafe) tour. Never hand an unsafe tour to the HUD or the guide.
+        raise NoTour(_unsafe_message(p.get("first_violation"), info.get("walkback_retries", 0)))
     # E5 lists the habitat at both ends of order/stop_index; the HUD and the guide
     # expect only the stations, in visiting order, with their positions on the line.
     order, idx = list(p.get("order", [])), list(p.get("stop_index", []))
@@ -70,6 +74,15 @@ def _delegate(req, g):
     info["cost_model"] = g.cost_model
     info["engine"] = "E5 plan_tour (src/orienteering)"
     return fc, info
+
+
+def _unsafe_message(first_violation, retries):
+    where = "" if first_violation is None else f" at route vertex {first_violation}"
+    return (f"every tour that fits the limits fails the walkback{where} (not enough energy "
+            f"left to return; {retries} re-plan(s) tried); raise the budget or lower the margin")
+
+
+MAX_REPLANS = 5
 
 
 def _local_tour(req, g, service_power_w):
@@ -101,27 +114,40 @@ def _local_tour(req, g, service_power_w):
     dis, tim = station_matrices(g, st)
     usable_j = req.energy_budget_wh * (1 - req.margin) * J_PER_WH
     service_j = st.service_s * service_power_w
-    problem = Problem(energy=dis, prize=st.prize, budget=usable_j, time=tim,
-                      service_s=st.service_s, service_j=service_j,
-                      max_duration_s=None if req.max_duration_min is None
-                      else req.max_duration_min * 60.0)
-    sol = SOLVERS["dp"](problem)
-    if not sol.route or len(sol.route) < 3:
-        raise NoTour("no station fits in the energy budget and EVA duration")
-
-    path, stop_index = route_path(g, st, sol.route, dis)
+    max_s = None if req.max_duration_min is None else req.max_duration_min * 60.0
     habitat = int(g.node(hr, hc))
     rv_e = g.costs_to(habitat, "energy_j")
     rv_t = g.costs_to(habitat, "time_s")
-    wb = check_walkback(g, path, rv_e, usable_j)
 
-    # Per-vertex profile: walking from E4's graph plus service added at each stop.
-    used, t = wb["used_j"].copy(), wb["time_s"].copy()
-    for k, idx in zip(sol.route[1:-1], stop_index[1:-1]):
-        used[idx:] += service_j[k]
-        t[idx:] += st.service_s[k]
-    rv = rv_e[path]
-    slack = usable_j - used - rv
+    # The DP checks energy only at the stations; the walkback is checked on every vertex
+    # of the walked line. If it fails, re-plan with the DP budget lowered by the deficit
+    # (the slack is always measured against the real usable energy).
+    budget, retries = usable_j, 0
+    while True:
+        problem = Problem(energy=dis, prize=st.prize, budget=budget, time=tim,
+                          service_s=st.service_s, service_j=service_j, max_duration_s=max_s)
+        sol = SOLVERS["dp"](problem)
+        if not sol.route or len(sol.route) < 3:
+            if retries:
+                raise NoTour(_unsafe_message(first_violation, retries))
+            raise NoTour("no station fits in the energy budget and EVA duration")
+        path, stop_index = route_path(g, st, sol.route, dis)
+        wb = check_walkback(g, path, rv_e, usable_j)
+        # Per-vertex profile: walking from E4's graph plus service added at each stop.
+        used, t = wb["used_j"].copy(), wb["time_s"].copy()
+        for k, idx in zip(sol.route[1:-1], stop_index[1:-1]):
+            used[idx:] += service_j[k]
+            t[idx:] += st.service_s[k]
+        rv = rv_e[path]
+        slack = usable_j - used - rv
+        bad = np.nonzero(slack < -1e-6)[0]
+        if not len(bad):
+            break
+        first_violation = int(bad[0])
+        if retries >= MAX_REPLANS:
+            raise NoTour(_unsafe_message(first_violation, retries))
+        budget -= float(-slack.min()) + 1.0
+        retries += 1
     o2 = used / 1000.0 / KJ_PER_LITER_O2
     rows_p, cols_p = g.cell(path)
     x, y = g.cell_to_xy(rows_p, cols_p)
@@ -132,8 +158,7 @@ def _local_tour(req, g, service_power_w):
                          "coordinates": [[float(a), float(b)] for a, b in zip(x, y)]},
             "properties": {
                 "kind": "route", "approach": "E5_orienteering_on_E4",
-                "feasible": bool((slack >= -1e-6).all()),
-                "first_violation": wb["first_violation"],
+                "feasible": True, "first_violation": None, "walkback_retries": retries,
                 "energy_wh": round(float(used[-1]) / J_PER_WH, 3), "time_s": round(float(t[-1]), 1),
                 "length_m": round(float(wb["length_m"][-1]), 1), "o2_l": round(float(o2[-1]), 2),
                 "usable_wh": round(usable_j / J_PER_WH, 3), "prize": float(sol.prize),
@@ -149,5 +174,6 @@ def _local_tour(req, g, service_power_w):
     info = {"engine": "api/tour.py on E5 primitives", "cost_model": g.cost_model,
             "habitat_moved_m": h_moved, "visit_order": visit, "prize": float(sol.prize),
             "stations_considered": len(keep), "service_power_w": service_power_w,
-            "moved": moved}
+            "moved": moved, "walkback_retries": retries,
+            "warnings": [f"walkback: re-planned {retries} time(s) with a lower budget"] if retries else []}
     return {"type": "FeatureCollection", "features": [line, start]}, info

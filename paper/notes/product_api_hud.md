@@ -38,6 +38,7 @@ When E5 (Diana, `src/orienteering`) is importable and no explicit goal is given,
 
   Energy never binds (≤ 732 of 900 Wh usable), but duration does. With 60 min the DP keeps the three highest-scoring ridges, so **the rubric decides the plan once time is short**, as the literature on reward sensitivity predicts [Smith2004].
 - Until E5 is merged, the tour is inactive and `/plan` keeps the single-goal E4 round trip. It was tested with Diana's branch on the path.
+- **Walkback failure.** The DP checks energy only at the stations, but the walkback is checked at every vertex of the walked line, so a tour can pass the DP and still leave the astronaut without enough energy to return partway through a leg. E5's `plan_tour` re-plans (lower budget, or drop the failing station). If every retry still fails, it returns the last tour marked `feasible = False`. `/plan` **refuses that tour with a 422** that names the first failing vertex, so an unsafe tour never reaches the HUD or the guide. The local fallback (`api/tour.py`, for E5 versions without `plan_tour`) re-plans up to 5 times, lowering the DP budget by the deficit each time, and refuses the same way (`tests/api/test_api.py::test_plan_refuses_a_tour_that_fails_the_walkback`). This matches E4's single-goal round trip, which is feasible by construction.
 
 ### Route profile in the HUD
 The HUD walks the planned route vertex by vertex, with a slider and play at ×30/×60/×180, using E4's per-vertex profile (guide section 32).
