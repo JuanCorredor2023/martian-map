@@ -150,6 +150,7 @@ export class Rehearsal {
     Object.assign(this, {active: true, playing: false, time: model.start, chase: false, walkback: null});
     this._evaStart = model.start;
     this.guide = this._guideRoute(mainRoute(this.plan), 'plan');
+    this._radio(this.guide);
     this._spoken.clear();
     this._extra = [];
     el('rh-alert').hidden = true;
@@ -459,7 +460,9 @@ export class Rehearsal {
     el('rh-man-arrow').textContent = event.arrow;
     el('rh-man-text').textContent = event.text;
     el('rh-man-dist').textContent = distText;
-    if (this.playing) for (const text of G.announcements(g, i, this._spoken)) this.voice.say(text);
+    if (this.playing) {
+      for (const text of [...G.announcements(g, i, this._spoken), ...G.radioAnnouncements(g, i, this._spoken)]) this.voice.say(text);
+    }
     const m = G.meters(g, i, this._limitS());
     const fill = (id, frac, good) => {
       const f = el(id);
@@ -468,6 +471,12 @@ export class Rehearsal {
     };
     fill('rh-m-energy', m.energy.frac, m.energy.good); el('rh-v-energy').textContent = m.energy.text;
     fill('rh-m-back', m.back.frac, m.back.good); el('rh-v-back').textContent = m.back.text;
+    const radio = G.radioState(g, i);
+    for (const id of ['rh-radio-label', 'rh-radio-track', 'rh-v-radio']) el(id).hidden = !radio;
+    if (radio) {
+      fill('rh-m-radio', radio.state === 'direct' ? 1 : radio.state === 'relay' ? 0.5 : 0, radio.good);
+      el('rh-v-radio').textContent = radio.text;
+    }
     for (const id of ['rh-eva-label', 'rh-eva-track', 'rh-v-eva']) el(id).hidden = !m.eva;
     if (m.eva) { fill('rh-m-eva', m.eva.frac, m.eva.good); el('rh-v-eva').textContent = m.eva.text; }
   }
@@ -483,11 +492,20 @@ export class Rehearsal {
     this.model = buildRehearsal(route, points);
     this._replaced = true;
     this.guide = groute;
+    this._radio(groute);
     this._spoken.clear();
     this._extra = [{lines: [groute.coords], color, width: 4}];
     el('rh-scrub').min = this.model.start;
     el('rh-scrub').max = this.model.end;
     this.seek(this.model.start);
+  }
+
+  // Radio along a guide route (E11), asked in the background; redraw when it answers.
+  _radio(g) {
+    if (!g) return;
+    const habitat = this.plan && this.plan.properties.habitat;
+    G.attachComms(g, Array.isArray(habitat) ? habitat : null)
+      .then(() => { if (this.active && this.guide === g) { this._showGuide(); this._dirty = true; } });
   }
 
   _planRef() { return {plan: {properties: this.plan.properties}}; }   // what guide_core asks of a saved plan
