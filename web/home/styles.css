@@ -423,6 +423,21 @@ figcaption > span:first-child { max-width: 72ch; }
   .limits { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: start; }
 }
 
+/* The paper (#196): heading on the left, title, summary and results on the right. */
+.paper { display: grid; gap: 2rem 4rem; }
+.paper h2 { font-size: var(--step-3); max-width: 12ch; }
+.paper__body { display: grid; gap: 1rem; max-width: var(--measure); justify-items: start; }
+.paper__body p { color: var(--ink-2); font-size: var(--step-1); line-height: 1.42; }
+.paper__body .paper__name { color: var(--ink); font-size: var(--step-2); font-weight: 600; line-height: 1.25; text-wrap: balance; }
+.paper__body .paper__by { font-size: 0.9375rem; margin-top: -0.5rem; }
+.paper__results { list-style: none; padding: 0; display: grid; width: 100%; }
+.paper__results li { padding-block: 1rem; border-top: 1px solid var(--line); }
+.paper__results li:last-child { border-bottom: 1px solid var(--line); }
+.paper__body .paper__soon { font-size: 0.9375rem; font-weight: 600; color: var(--ink); }
+@media (min-width: 900px) {
+  .paper { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: start; }
+}
+
 /* Team and credits */
 .credits { display: grid; gap: 2.5rem 4rem; }
 .credits h2 { font-size: var(--step-2); margin-bottom: 0.75rem; }
