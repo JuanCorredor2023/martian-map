@@ -174,9 +174,11 @@
     #rh-main button { line-height: 1.2; }
   }
   /* Touch screens: every button of the player, and those of the card while rehearsing
-     ("Done, continue", "Replay", "Exit"), at least 44 px tall. */
+     ("Done, continue", "Replay", "Exit"), at least 44 px tall; the position bar too, so a
+     finger can grab it. */
   @media (hover: none) and (pointer: coarse) {
     #player button, #player select, body.rehearsing #card .card-action { min-height: 44px; }
+    #rh-scrub { height: 44px; }
   }
   /* While rehearsing the side panel is hidden so the scene shows (#124); "Panel" in the
      player brings it back. A class of its own: the photo view's (photo-view) would also

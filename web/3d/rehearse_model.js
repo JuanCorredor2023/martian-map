@@ -437,7 +437,9 @@ export function energyReadout(values, usable) {
   if (!values || values.used_wh == null || values.rv_wh == null || !(usable > 0)) return null;
   const used = values.used_wh, rv = values.rv_wh, free = Math.max(0, usable - used - rv);
   const pct = v => Math.max(0, 100 * v / usable);
-  const lines = [`Energy used ${used.toFixed(1)} Wh · return needs ${rv.toFixed(1)} Wh · ` +
+  // At the habitat the energy to return can come out a hair below zero (-2e-5 Wh): never
+  // write "-0.0".
+  const lines = [`Energy used ${Math.max(0, used).toFixed(1)} Wh · return needs ${Math.max(0, rv).toFixed(1)} Wh · ` +
                  `free ${free.toFixed(0)} of ${usable.toFixed(0)} Wh`];
   const more = [];
   if (values.o2_used_l != null) more.push(`O₂ used ${values.o2_used_l.toFixed(1)} L (metabolic equivalent)`);
