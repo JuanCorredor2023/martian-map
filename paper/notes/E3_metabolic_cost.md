@@ -88,9 +88,11 @@ cost_human(u → v) = energy_E3(u → v) × factor(v), with factor(v) = 1 + scal
 
   | | E3 | Human (E3 × E1 sand) |
   |---|---|---|
-  | Round trip to Nevado Sajama | 162.4 Wh, 30.0 min, 1,331 m | 165.3 Wh (+1.8 %), 30.0 min, 1,330 m |
+  | Round trip to Nevado Sajama | 162.5 Wh, 30.0 min, 1,332 m | 165.3 Wh (+1.8 %<!-- r:e3-human-cost-sajama -->), 30.0 min, 1,331 m |
   | Route shape | — | 65 % within 5 m of the E3 route, up to 23 m away |
   | E5 tour, 120 min, 13 stations | 8 stations, prize 37, 483 Wh | the same 8 stations and order, 487 Wh |
+
+  Source for the Nevado Sajama row: `src/fisica/human_cost_effect.py` → `data/e3/human_cost_effect.json` (it runs `/plan`'s code with and without the human cost). An earlier version of this table printed 162.4 Wh and lengths rounded down; the file gives 162.462 Wh, 1,331.8 m and 1,330.6 m.
 
   The learned sand price moves routes locally by tens of metres but changes neither the time nor which stations are visited, so the plan is robust to it. Time is unchanged by design: E1 prices energy, not speed. Assumption to declare: what Curiosity's drivers avoided is applied to an astronaut, as the original plan asks ("keep what was learned about sand").
 
