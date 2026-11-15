@@ -49,6 +49,20 @@ Sources: `data/e9/summary.json` (written by `src/dl_rocas/paper_figures.py`), `d
 
 On the training blocks the values are similar (r = 0.68 per cell, 0.74 at 10 m), so the student is limited by capacity rather than overfitting.
 
+**Student as a classifier** (`src/dl_rocas/evaluate_student.py` → `data/e9/student_classification.json`). Positive = teacher score ≥ 0.5; student threshold 0.25 (best pixel F1); student boulders are connected regions ≥ 4 px; objects are matched one-to-one at mask IoU ≥ 0.5.
+
+| Level | Reference | ROC-AUC | AP (random) | Precision | Recall | F1 |
+|---|---|---:|---:|---:|---:|---:|
+| Pixel, validation blocks | teacher | 0.986 | 0.47 (0.003) | 0.49 | 0.47 | 0.48 |
+| 1 m cell (cover ≥ 0.25), validation blocks | teacher | 0.987 | 0.52 (0.005) | | | |
+| Boulder, validation blocks | teacher | | | 0.26 | 0.46 | 0.33 |
+| Boulder, 49 Mars patches | human labels | | | 0.24 | 0.31 | 0.27 |
+| Boulder, 49 Mars patches (teacher, score ≥ 0.5) | human labels | | | 0.74 | 0.59 | 0.66 |
+
+- **Ranking versus finding:** the student ranks rock against ground very well (AUC 0.99), but boulders are rare (0.3 % of pixels), so AUC flatters it. Average precision (0.47–0.52, against 0.003–0.005 for chance) and F1 are the honest measures.
+- **Mars patches:** on the authors' patches, never seen by the student, it finds 31 % of the hand-labelled boulders, against 59 % for the teacher. The validation + test patches alone give F1 0.28 for the student and 0.65 for the teacher.
+- **What it is good for:** the student is a usable **density** map, not a boulder detector. Use `boulders_teacher.gpkg` when individual boulders matter.
+
 **Cost:** 0.93 M parameters against 43.9 M (47 times fewer). The whole box takes 8.6 s against 362 s for the teacher (42 times faster).
 
 ![Figure 1](../figures/e9_fig1_teacher.png)
@@ -71,7 +85,7 @@ On the training blocks the values are similar (r = 0.68 per cell, 0.74 at 10 m),
 ## Limitations
 - **Detection floor:** boulders below about 1 m (4 px at 0.25 m) are not detected; 95 % of the detections are ≥ 1.26 m. `rocas.tif` is a density of the boulders that can be seen from orbit, not a guarantee that a cell is free of rock.
 - **Domain:** the teacher saw 49 Mars patches and none from Gale. Its precision and recall here are unknown (no labels in the box). The numbers in the check table are for the authors' Mars patches only.
-- **Distillation is relative:** the student is scored against the teacher, not against ground truth; its errors add to the teacher's.
+- **Distillation is relative:** the student is scored mainly against the teacher; its errors add to the teacher's. Against human labels on Mars it reaches boulder F1 0.27, against 0.66 for the teacher (Results).
   - It agrees moderately (r = 0.66). It spreads cover into a halo around clusters and marks some linear ridge edges where the teacher found nothing (Figure 2b).
   - A larger student or longer training would probably help, since training and validation scores are close.
 - **Age of the image:** detail from 2006–2011 imagery; boulders that moved since then are not represented.
@@ -103,6 +117,7 @@ Inputs: `gh release download base-grid-v2` into `data/base/`, and `data/06_bould
 <env>/python src/dl_rocas/distill.py targets
 <env>/python src/dl_rocas/distill.py train     # 45 min on a T1000
 <env>/python src/dl_rocas/distill.py predict   # 9 s
+<env>/python src/dl_rocas/evaluate_student.py  # classification metrics, 2 min
 python src/dl_rocas/paper_figures.py           # any env with rasterio, geopandas, matplotlib, torch
 ```
 If GDAL plugin errors show up, the API env's `GDAL_DRIVER_PATH` is leaking into the `bouldernet` env; unset it.
@@ -114,7 +129,7 @@ In `data/e9/` (not in git):
 - `teacher_soft_025.tif`
 - `teacher_cover_1m.tif`
 - `student.pt`
-- `student_metrics.json`
+- `student_metrics.json`, `student_classification.json`
 - **`rocas.tif`** and `rocas.json`
 - `summary.json`
 - `w16/`: the dropped student
