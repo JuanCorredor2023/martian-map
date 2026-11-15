@@ -507,5 +507,5 @@ def comms_info(x: float = Query(None), y: float = Query(None)):
 
 
 # Static files go last so they do not shadow the API routes.
-app.mount("/tiles", StaticFiles(directory=TILES), name="tiles")
+app.mount("/tiles", StaticFiles(directory=TILES, check_dir=False), name="tiles")   # without tiles-v2 the API still starts (check_data says what is missing)
 app.mount("/", StaticFiles(directory=WEB, html=True), name="web")

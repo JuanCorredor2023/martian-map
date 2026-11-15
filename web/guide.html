@@ -6,144 +6,280 @@
 <title>EVA Guide</title>
 <script src="/vendor/deck.gl-9.1.14.min.js"></script>
 <style>
-  /* Arm-tablet screen: portrait, big touch targets (gloves), high contrast. */
-  :root { --bg: #000; --panel: #11151b; --text: #fff; --muted: #b8c2cc; --accent: #ff8c3a;
-          --good: #3ddc84; --warn: #ffcc00; --bad: #ff453a; --border: #2c343e; }
+  /* Arm-tablet screen worn on the forearm: one glance at a time, pressurised gloves,
+     glare. The next move and "can I make it back?" are read in one second; alerts take
+     the top of the screen; demo controls live in a drawer for the presenter. */
+  :root { --bg: #000; --panel: #11151b; --panel-2: #1a2028; --text: #fff; --muted: #c3ccd5; --accent: #ff8c3a;
+          --good: #3ddc84; --warn: #ffb020; --bad: #ff5147; --border: #3a4552; --track: #2a333e;
+          color-scheme: dark; }
   * { box-sizing: border-box; }
+  ::selection { background: rgba(255, 140, 58, 0.45); }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
-               font: 16px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  #app { max-width: 520px; height: 100%; margin: 0 auto; display: flex; flex-direction: column; }
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin: 8px; }
-  #maneuver { display: flex; gap: 14px; align-items: center; min-height: 96px; }
-  #arrow { font-size: 64px; line-height: 1; width: 72px; text-align: center; }
-  #man-text { font-size: 24px; font-weight: 700; }
-  #man-dist { font-size: 18px; color: var(--muted); }
-  #map { position: relative; flex: 1; margin: 0 8px; border-radius: 14px; overflow: hidden;
-         border: 1px solid var(--border); min-height: 200px; }
-  .meter { margin: 6px 0; }
-  .meter-label { display: flex; justify-content: space-between; font-size: 15px; }
-  .track { height: 16px; background: #222a33; border-radius: 8px; overflow: hidden; margin-top: 4px; }
-  .fill { height: 100%; border-radius: 8px; }
-  #controls { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 8px; }
-  button { font: inherit; font-size: 18px; font-weight: 700; min-height: 60px; border-radius: 14px;
-           border: 2px solid var(--border); background: #1d242d; color: var(--text); cursor: pointer; }
-  #home-btn { background: var(--bad); border-color: var(--bad); grid-column: span 3; min-height: 68px; font-size: 22px; }
-  #status { font-size: 14px; color: var(--muted); margin: 0 12px 8px; min-height: 18px; }
-  #station-card { position: fixed; inset: auto 0 0 0; max-width: 520px; margin: 0 auto; z-index: 10;
-                  background: #0b2a3a; border: 2px solid #36d1ff; border-radius: 16px 16px 0 0; padding: 16px; }
-  #station-card h2, #walk-card h2 { margin: 0 0 6px; font-size: 22px; }
-  #walk-card { position: fixed; inset: auto 0 0 0; max-width: 520px; margin: 0 auto; z-index: 11;
-               background: #13261a; border: 2px solid var(--good); border-radius: 16px 16px 0 0; padding: 16px; }
-  #walk-table { width: 100%; border-collapse: collapse; font-size: 16px; margin: 6px 0 10px; }
-  #walk-table th, #walk-table td { text-align: right; padding: 3px 4px; border-bottom: 1px solid var(--border); }
+               font: 17px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .ic { width: 1.1em; height: 1.1em; vertical-align: -0.18em; flex: none; }
+  #app { max-width: 560px; min-height: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; }
+
+  /* the next move: the distance is the hero */
+  #maneuver { display: grid; grid-template-columns: 76px 1fr; gap: 4px 14px; align-items: center; min-height: 112px; }
+  #arrow { grid-row: span 2; display: grid; place-items: center; }
+  #arrow svg { width: 68px; height: 68px; }
+  #man-dist { font-size: 46px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  #man-text { font-size: 20px; font-weight: 600; color: var(--muted); }
+  #maneuver.alarm { background: #3b0c09; border: 2px solid var(--bad); }
+  #maneuver.alarm #man-dist { color: #ffd2cd; }
+  #maneuver.alarm #man-text { color: var(--text); }
+  #maneuver.safe { border-color: var(--good); }
+  #alert { padding: 10px 14px; border-radius: 14px; background: #2a0b09; border: 2px solid var(--bad); font-size: 16px; }
+  #alert b { color: #ffb4ad; }
+  #alert .muted { font-size: 14px; }
+  #status { min-height: 0; padding: 8px 12px; border-radius: 12px; background: var(--panel-2); font-size: 16px; }
+  #status:empty { display: none; }
+
+  /* map */
+  #map-wrap { position: relative; flex: 1 1 auto; min-height: 220px; border-radius: 14px; overflow: hidden; border: 1px solid var(--border); }
+  #map { position: absolute; inset: 0; }
+  .map-tools { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .map-tools button { width: 56px; min-height: 56px; padding: 0; font-size: 24px; background: rgba(17,21,27,.92); }
+  #recentre[hidden] { display: none; }
+  .map-key { position: absolute; left: 8px; bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px 10px; max-width: calc(100% - 80px);
+             padding: 6px 10px; border-radius: 10px; background: rgba(17,21,27,.9); font-size: 13px; color: var(--muted); }
+  .map-key i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; border: 1px solid #000; }
+  .map-key i.line { width: 18px; height: 4px; border: 0; border-radius: 2px; vertical-align: 3px; }
+
+  /* meters: every bar is "how much is left", with a state word */
+  .meter { margin: 4px 0 10px; }
+  .meter:last-child { margin-bottom: 2px; }
+  .meter-label { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; font-size: 15px; color: var(--muted); }
+  .meter-label .val { color: var(--text); font-variant-numeric: tabular-nums; }
+  .state { font-weight: 800; letter-spacing: 0.02em; margin-right: 6px; }
+  .state.ok { color: var(--good); } .state.low { color: var(--warn); } .state.out { color: var(--bad); }
+  .track { height: 16px; background: var(--track); border-radius: 8px; overflow: hidden; margin-top: 4px; border: 1px solid #47525f; }
+  .track.out { border-color: var(--bad);
+               background: repeating-linear-gradient(45deg, rgba(255,81,71,.55) 0 6px, rgba(255,81,71,.18) 6px 12px); }
+  .fill { height: 100%; border-radius: 7px; }
+  .radio-line { display: flex; justify-content: space-between; font-size: 15px; color: var(--muted); margin-top: 6px; }
+
+  /* field controls: four, big, separated */
+  #controls { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  button { font: inherit; font-size: 19px; font-weight: 700; min-height: 64px; border-radius: 14px; padding: 6px 10px;
+           border: 2px solid var(--border); background: #1f2730; color: var(--text); cursor: pointer;
+           display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button[aria-pressed="false"] { color: var(--muted); }
+  #home-btn { grid-column: 1 / -1; min-height: 72px; font-size: 22px; background: #c8261c; border-color: #ff6a5f; color: #fff; }
+  details.demo { border: 1px dashed var(--border); border-radius: 14px; padding: 8px 12px; }
+  details.demo summary { cursor: pointer; color: var(--muted); font-size: 15px; min-height: 32px; }
+  .demo-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 8px; }
+  .demo-row button { font-size: 16px; min-height: 56px; }
+  .note { font-size: 14px; color: var(--muted); margin: 0 4px; }
+  .note a { color: var(--accent); display: inline-block; padding: 8px 0; }
+
+  /* cards over the screen */
+  .sheet { position: fixed; inset: auto 0 0 0; max-width: 560px; max-height: 78vh; overflow-y: auto; margin: 0 auto; z-index: 10;
+           border-radius: 16px 16px 0 0; padding: 16px; box-shadow: 0 -8px 30px rgba(0,0,0,.6); }
+  #station-card { background: #0b2a3a; border: 2px solid #36d1ff; }
+  #walk-card { background: #11261a; border: 2px solid var(--good); z-index: 11; }
+  .sheet h2 { margin: 0 0 6px; font-size: 24px; }
+  #st-tasks { margin: 8px 0 12px; padding-left: 24px; font-size: 18px; }
+  #st-tasks li { margin: 4px 0; }
+  .sheet details { color: var(--muted); font-size: 15px; margin-bottom: 12px; }
+  .sheet .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  #walk-verdict { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+  #walk-table { width: 100%; border-collapse: collapse; font-size: 16px; margin: 6px 0 10px; font-variant-numeric: tabular-nums; }
+  #walk-table th, #walk-table td { text-align: right; padding: 4px; border-bottom: 1px solid var(--border); }
   #walk-table th:first-child, #walk-table td:first-child { text-align: left; }
-  #station-card ul { margin: 8px 0 12px; padding-left: 22px; font-size: 17px; }
+  #walk-notes { font-size: 15px; color: var(--muted); margin-bottom: 12px; }
   .muted { color: var(--muted); }
-  #alert { margin: 0 8px 8px; padding: 12px 14px; border-radius: 14px; background: #3a0d0b;
-           border: 2px solid var(--bad); font-size: 17px; }
-  #alert b { color: #ff7a70; font-size: 19px; }
-  .note { font-size: 13px; color: var(--muted); margin: 0 12px 10px; }
+
+  /* the presenter's laptop: map left, the guide on the right */
+  @media (min-width: 1000px) and (orientation: landscape) {
+    #app { max-width: none; display: grid; grid-template-columns: minmax(0, 1fr) 460px; align-content: start;
+           grid-auto-rows: auto; column-gap: 12px; }
+    #app > * { grid-column: 2; }
+    #map-wrap { grid-column: 1; grid-row: 1 / span 20; position: sticky; top: 8px; height: calc(100vh - 16px); min-height: 0; }
+  }
 </style>
 </head>
 <body>
 <div id="app">
-  <div id="maneuver" class="card" aria-live="polite">
-    <div id="arrow">↑</div>
-    <div><div id="man-text">Loading plan…</div><div id="man-dist"></div></div>
+  <div id="maneuver" class="card" role="status" aria-live="polite">
+    <div id="arrow" aria-hidden="true"></div>
+    <div id="man-dist">…</div>
+    <div id="man-text">Loading the plan</div>
   </div>
-  <div id="map"></div>
-  <div class="card">
+  <div id="alert" role="alert" hidden></div>
+  <div id="status" role="status" aria-live="polite"></div>
+
+  <div class="card" id="meters">
     <div class="meter">
-      <div class="meter-label"><span>Energy left after returning</span><span id="e-val"></span></div>
-      <div class="track"><div id="e-fill" class="fill"></div></div>
+      <div class="meter-label"><span>Spare energy after returning</span>
+        <span><span class="state" id="e-state"></span><span class="val" id="e-val"></span></span></div>
+      <div class="track" id="e-track" role="meter" aria-label="Spare energy after returning" aria-valuemin="0" aria-valuemax="100">
+        <div id="e-fill" class="fill"></div></div>
     </div>
     <div class="meter">
-      <div class="meter-label"><span>Time back to the habitat (limit 30 min)</span><span id="t-val"></span></div>
-      <div class="track"><div id="t-fill" class="fill"></div></div>
-    </div>
-    <div class="meter" id="radio-meter" hidden>
-      <div class="meter-label"><span>Radio (E11, line of sight)</span><span id="r-val"></span></div>
-      <div class="track"><div id="r-fill" class="fill"></div></div>
+      <div class="meter-label"><span>Margin to the 30 min oxygen line</span>
+        <span><span class="state" id="t-state"></span><span class="val" id="t-val"></span></span></div>
+      <div class="track" id="t-track" role="meter" aria-label="Margin to the 30 minute emergency-oxygen line" aria-valuemin="0" aria-valuemax="100">
+        <div id="t-fill" class="fill"></div></div>
     </div>
     <div class="meter" id="eva-meter" hidden>
-      <div class="meter-label"><span>EVA time left (max duration)</span><span id="v-val"></span></div>
-      <div class="track"><div id="v-fill" class="fill"></div></div>
+      <div class="meter-label"><span>Walk time left</span>
+        <span><span class="state" id="v-state"></span><span class="val" id="v-val"></span></span></div>
+      <div class="track" id="v-track" role="meter" aria-label="Walk time left" aria-valuemin="0" aria-valuemax="100">
+        <div id="v-fill" class="fill"></div></div>
+    </div>
+    <div class="radio-line" id="radio-meter" hidden><span>Radio to the habitat</span><b id="r-val"></b></div>
+  </div>
+
+  <div id="map-wrap">
+    <div id="map" role="img" aria-label="Map: your position, the route and the stations"></div>
+    <div class="map-tools">
+      <button id="zoom-in" aria-label="Zoom in">+</button>
+      <button id="zoom-out" aria-label="Zoom out">−</button>
+      <button id="recentre" aria-label="Follow me again" hidden></button>
+    </div>
+    <div class="map-key" aria-hidden="true">
+      <span><i class="line" style="background:#36d1ff"></i>to walk</span>
+      <span><i class="line" style="background:#8c8c8c"></i>walked</span>
+      <span><i style="background:#fff"></i>you</span>
+      <span><i style="background:#ffd60a"></i>next stations</span>
+      <span><i style="background:#5b6573"></i>done</span>
     </div>
   </div>
+
   <div id="controls">
-    <button id="walk-btn">▶ Walk</button>
-    <button id="speed-btn">×60</button>
-    <button id="voice-btn">🔊 On</button>
-    <button id="detour-btn">↪ Detour (demo)</button>
-    <button id="sep-btn" style="grid-column: span 2">☢ Solar storm (demo)</button>
-    <button id="home-btn">🏠 Return home</button>
+    <button id="walk-btn"></button>
+    <button id="voice-btn" aria-pressed="true"></button>
+    <button id="repeat-btn" title="Say the last instruction again"></button>
+    <button id="home-btn"></button>
   </div>
-  <div id="alert" hidden></div>
-  <div id="status"></div>
-  <div class="note">Simulated walk: there is no GPS on Mars. A real suit would locate itself with
-    habitat/rover beacons and motion sensors. <a href="/3d/" style="color:var(--accent)">Same walk in 3D</a> ·
-    <a href="/card.html" style="color:var(--accent)">Wrist card</a></div>
+  <details class="demo" id="demo">
+    <summary>Demo controls (for the presenter)</summary>
+    <div class="demo-row">
+      <button id="speed-btn" aria-label="Walking speed of the simulation"></button>
+      <button id="detour-btn"></button>
+      <button id="sep-btn"></button>
+    </div>
+  </details>
+  <div class="note">Simulated walk: there is no GPS on Mars. A real suit would locate itself with habitat and rover
+    beacons and motion sensors. <a href="/3d/">Same walk in 3D</a> · <a href="/card.html">Wrist card</a> · <a href="/">Planner</a></div>
 </div>
 
-<div id="walk-card" hidden>
-  <h2>Plan against the walk</h2>
+<div id="walk-card" class="sheet" role="dialog" aria-modal="true" aria-labelledby="walk-title" hidden>
+  <h2 id="walk-title" tabindex="-1">Back at the habitat</h2>
+  <div id="walk-verdict"></div>
   <table id="walk-table"></table>
-  <div id="walk-notes" class="muted"></div>
+  <div id="walk-notes"></div>
   <button id="walk-close" style="width:100%">Close</button>
 </div>
 
-<div id="station-card" hidden>
-  <h2 id="st-title"></h2>
-  <div id="st-why" class="muted"></div>
+<div id="station-card" class="sheet" role="dialog" aria-modal="true" aria-labelledby="st-title" hidden>
+  <h2 id="st-title" tabindex="-1"></h2>
   <ul id="st-tasks"></ul>
-  <button id="st-done" style="width:100%">Done, continue</button>
+  <details><summary>Why this station matters</summary><div id="st-why"></div></details>
+  <button id="st-done" style="width:100%"></button>
+  <div class="row2" style="margin-top:10px">
+    <button id="st-skip">Skip the next stop</button>
+    <button id="st-home" style="background:#c8261c;border-color:#ff6a5f"></button>
+  </div>
 </div>
 
 <script type="module">
 // ---------------------------------------------------------------------------
 // Guide mode (#43). Loads the last plan saved by the HUD, walks it (simulated),
-// announces the next maneuver by voice, shows whether there is enough energy
-// and time to get back and how much EVA time is left, and gives the fastest way
-// home on demand. The logic is in guide_core.js, shared with the 3D rehearsal, so
-// both views of the walk behave the same; this page only draws the 2D map.
+// announces the next maneuver by voice, shows whether there is enough energy and time
+// to get back and how much walk time is left, and gives the fastest way home on demand.
+// The logic is in guide_core.js, shared with the 3D rehearsal; this page draws the
+// 2D map and owns the alert hierarchy: safety first, at the top, in words and voice.
 // Same coordinate convention as the HUD: 1 world unit = tile_z0_m / 256 m.
 // ---------------------------------------------------------------------------
 import * as G from "/guide_core.js";
 
-const {Deck, OrthographicView, TileLayer, BitmapLayer, PathLayer, ScatterplotLayer} = deck;
+const {Deck, OrthographicView, TileLayer, BitmapLayer, PathLayer, ScatterplotLayer, TextLayer} = deck;
 const ui = id => document.getElementById(id);
+const esc = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 let S, X0, Y0, deckgl, tiles, plan, rubric = {}, radInfo = null, limitS = null;
 let route = null, idx = 0, timer = null, speed = 60, cardOpen = false, offRoute = null;
 let request = 0;           // answers to an older click are dropped
 let walkLog = null;        // what is walked, for "plan against the walk" (P6)
+let storm = false;         // a solar storm alert is driving the walk home
+let follow = true, viewZoom = 4.5, lastStates = {};
 const pendingCards = [];   // station cards waiting for the one on screen to be closed
+const skipped = new Set();
 const voice = G.createVoice();
 const spoken = new Set(), visited = new Set();
 const toWorld = (x, y) => [(x - X0) / S, (Y0 - y) / S];
 const stations = () => plan.plan.features.filter(f => f.properties.kind === "station");
 
+const ICONS = {
+  play: '<path d="M7 4.5v15l12-7.5z" fill="currentColor" stroke="none"/>',
+  pause: '<path d="M8 5v14M16 5v14"/>',
+  home: '<path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/>',
+  speaker: '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 010 6M18.5 6.5a8 8 0 010 11"/>',
+  mute: '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l5 6M22 9l-5 6"/>',
+  repeat: '<path d="M4 12a8 8 0 0114-5.3L20 9"/><path d="M20 4v5h-5"/><path d="M20 12a8 8 0 01-14 5.3L4 15"/><path d="M4 20v-5h5"/>',
+  detour: '<path d="M6 20V9a5 5 0 015-5h7"/><path d="M14 1l4 3-4 3"/>',
+  storm: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3.5"/>',
+  locate: '<circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
+  up: '<path d="M12 20V5M6 11l6-6 6 6"/>', left: '<path d="M19 12H6M11 6l-6 6 6 6"/>', right: '<path d="M5 12h13M13 6l6 6-6 6"/>',
+  upleft: '<path d="M18 18L7 7M7 15V7h8"/>', upright: '<path d="M6 18L17 7M9 7h8v8"/>',
+  uturnleft: '<path d="M16 20V10a5 5 0 00-10 0v4"/><path d="M3 11l3 3 3-3"/>', uturnright: '<path d="M8 20V10a5 5 0 0110 0v4"/><path d="M15 11l3 3 3-3"/>',
+  flag: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>', habitat: '<path d="M3 20h18M5 20v-7a7 7 0 0114 0v7"/><path d="M10 20v-4h4v4"/>',
+};
+const icon = name => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
+// guide_core's maneuver glyphs, drawn as icons
+const ARROW_ICON = {"↑": "up", "←": "left", "→": "right", "↖": "upleft", "↗": "upright", "↶": "uturnleft", "↷": "uturnright", "⚑": "flag", "⌂": "habitat"};
+
 // --- loading ---------------------------------------------------------------
 async function init() {
+  setLabels();
   const meta = await (await fetch("/layers")).json();
   tiles = meta.tiles; S = tiles.tile_z0_m / 256; X0 = meta.grid.bbox.xmin; Y0 = meta.grid.bbox.ymax;
   const rub = await fetch("/stations/rubric"); if (rub.ok) rubric = await rub.json();
   const rad = await fetch("/radiation"); if (rad.ok) radInfo = await rad.json();
   const res = await fetch("/plan/last");
-  if (!res.ok) { ui("man-text").textContent = "No plan yet"; ui("man-dist").textContent = "Plan an EVA in the HUD first."; return; }
+  if (!res.ok) { noPlan(); return; }
   plan = await res.json();
   limitS = G.evaLimitS(plan);
   ui("eva-meter").hidden = !limitS;
   setRoute(G.routeFromPlan(plan));
   walkLog = G.createWalkLog(route);
   deckgl = new Deck({parent: ui("map"), views: new OrthographicView({flipY: true}),
-                     initialViewState: {target: [...toWorld(...route.coords[0]), 0], zoom: 4.5},
-                     controller: true, layers: layers()});
+                     initialViewState: {target: [...toWorld(...route.coords[0]), 0], zoom: viewZoom},
+                     controller: true, layers: layers(),
+                     onViewStateChange: ({viewState, interactionState}) => {
+                       viewZoom = viewState.zoom;
+                       if (interactionState && (interactionState.isDragging || interactionState.isPanning)) setFollow(false);
+                     }});
   update(0);
 }
 
+function noPlan() {
+  ui("arrow").innerHTML = icon("flag");
+  ui("man-dist").textContent = "No plan yet";
+  ui("man-text").innerHTML = `Plan a walk in the <a href="/" style="color:var(--accent)">planner</a>, then open this screen again.`;
+  for (const b of document.querySelectorAll("#controls button, .demo-row button")) b.disabled = true;
+  ui("meters").hidden = true;
+}
+
+function setLabels() {
+  ui("walk-btn").innerHTML = `${icon("play")} Walk`;
+  ui("voice-btn").innerHTML = `${icon("speaker")} Voice on`;
+  ui("repeat-btn").innerHTML = `${icon("repeat")} Repeat`;
+  ui("home-btn").innerHTML = `${icon("home")} Return home`;
+  ui("st-home").innerHTML = `${icon("home")} Go home`;
+  ui("speed-btn").textContent = `Speed ×${speed}`;
+  ui("detour-btn").innerHTML = `${icon("detour")} Step off route`;
+  ui("sep-btn").innerHTML = `${icon("storm")} Solar storm`;
+  ui("recentre").innerHTML = icon("locate");
+}
+
 function setRoute(r) {
-  route = r; idx = 0; spoken.clear();
-  // Radio along this route (E11): asked in the background; the meter appears when it answers.
+  route = r; idx = 0; spoken.clear(); lastStates = {};
+  // Radio along this route (E11): asked in the background; the line appears when it answers.
   G.attachComms(r, plan.plan.properties.habitat).then(() => { if (route === r) update(idx); });
 }
 
@@ -157,58 +293,118 @@ function tileLayer(id, url, maxZoom) {
 
 function layers() {
   const out = [tileLayer("ortho", "/" + tiles.layers.ortho.url, 5)];
+  const plannedStops = new Set((route && route.stops || []).map(s => s.name));
+  const st = stations().filter(f => f.properties.visited !== false);
+  const done = f => visited.has(f.properties.id) || skipped.has(f.properties.id);
   if (route) {
-    const done = route.coords.slice(0, idx + 1), todo = route.coords.slice(idx);
-    const color = route.kind === "home" ? [255, 69, 58] : [54, 209, 255];
+    const walked = route.coords.slice(0, idx + 1), todo = route.coords.slice(idx);
+    const color = route.kind === "home" ? [255, 81, 71] : [54, 209, 255];
+    out.push(new PathLayer({id: "todo-casing", data: [todo], getPath: p => p.map(c => toWorld(...c)),
+      getColor: [0, 0, 0, 200], getWidth: 10, widthUnits: "pixels", capRounded: true, jointRounded: true}));
     out.push(new PathLayer({id: "todo", data: [todo], getPath: p => p.map(c => toWorld(...c)),
       getColor: color, getWidth: 6, widthUnits: "pixels", capRounded: true, jointRounded: true}));
-    out.push(new PathLayer({id: "done", data: [done], getPath: p => p.map(c => toWorld(...c)),
+    out.push(new PathLayer({id: "done", data: [walked], getPath: p => p.map(c => toWorld(...c)),
       getColor: [140, 140, 140], getWidth: 4, widthUnits: "pixels"}));
-    out.push(new ScatterplotLayer({id: "me", data: [offRoute || route.coords[idx]], getPosition: c => toWorld(...c),
-      getFillColor: [255, 255, 255], getLineColor: [0, 0, 0], stroked: true, lineWidthUnits: "pixels", getLineWidth: 3,
-      getRadius: 10, radiusUnits: "pixels"}));
   }
-  out.push(new ScatterplotLayer({id: "stations", data: stations(), getPosition: f => toWorld(...f.geometry.coordinates),
-    getFillColor: [255, 214, 10], getRadius: 7, radiusUnits: "pixels", stroked: true,
-    getLineColor: [0, 0, 0], lineWidthUnits: "pixels", getLineWidth: 2}));
+  out.push(new ScatterplotLayer({id: "stations", data: st, getPosition: f => toWorld(...f.geometry.coordinates),
+    getFillColor: f => done(f) ? [91, 101, 115] : [255, 214, 10], getRadius: 8, radiusUnits: "pixels", stroked: true,
+    getLineColor: [0, 0, 0], lineWidthUnits: "pixels", getLineWidth: 2, updateTriggers: {getFillColor: [...visited, ...skipped].join()}}));
+  out.push(new TextLayer({id: "station-ids", data: st, getPosition: f => toWorld(...f.geometry.coordinates),
+    getText: f => f.properties.id, getSize: 14, getPixelOffset: [0, -20], fontWeight: 700, fontFamily: "system-ui, sans-serif",
+    getColor: [10, 14, 20], background: true, backgroundPadding: [5, 2],
+    getBackgroundColor: f => done(f) ? [190, 196, 204, 220] : [255, 214, 10, 235], updateTriggers: {getBackgroundColor: [...visited, ...skipped].join()}}));
+  const home = plan.plan.properties.habitat;
+  if (home) out.push(new TextLayer({id: "habitat", data: [home], getPosition: h => toWorld(...h), getText: () => "Habitat",
+    getSize: 14, getPixelOffset: [0, -24], fontWeight: 700, fontFamily: "system-ui, sans-serif", getColor: [10, 14, 20], background: true,
+    backgroundPadding: [6, 3], getBackgroundColor: [255, 255, 255, 235]}));
+  if (route) out.push(new ScatterplotLayer({id: "me", data: [offRoute || route.coords[idx]], getPosition: c => toWorld(...c),
+    getFillColor: [255, 255, 255], getLineColor: [0, 0, 0], stroked: true, lineWidthUnits: "pixels", getLineWidth: 3,
+    getRadius: 11, radiusUnits: "pixels"}));
   return out;
 }
 
-function meter(fillId, valId, frac, text, good) {
-  ui(fillId).style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
-  ui(fillId).style.background = good ? "var(--good)" : frac > 0 ? "var(--warn)" : "var(--bad)";
-  ui(valId).textContent = text;
+function setFollow(on) {
+  follow = on;
+  ui("recentre").hidden = on;
+  if (on && route) centreOn(route.coords[idx]);
+}
+function centreOn(here, zoom = viewZoom) {
+  if (deckgl) deckgl.setProps({initialViewState: {target: [...toWorld(...here), 0], zoom, minZoom: 1, maxZoom: 7}});
+}
+
+// A meter: "how much is left", with its state word. At the limit the empty track turns
+// into red stripes, so "nothing left" is visible, not an empty bar.
+function meter(key, m) {
+  const fill = ui(`${key}-fill`), track = ui(`${key}-track`);
+  const frac = Math.max(0, Math.min(1, m.frac));
+  fill.style.width = `${frac * 100}%`;
+  fill.style.background = m.state === "ok" ? "var(--good)" : m.state === "low" ? "var(--warn)" : "var(--bad)";
+  track.classList.toggle("out", m.state === "out");
+  track.setAttribute("aria-valuenow", String(Math.round(frac * 100)));
+  track.setAttribute("aria-valuetext", `${m.word}, ${m.text}`);
+  const word = ui(`${key}-state`);
+  word.textContent = m.word; word.className = `state ${m.state}`;
+  ui(`${key}-val`).textContent = m.text;
+}
+
+// Crossing into a worse state is said once, as an alert.
+function warnOnCrossing(key, m, phrase) {
+  const before = lastStates[key];
+  lastStates[key] = m.state;
+  if (!before || before === m.state) return;
+  if (m.state === "low" || m.state === "out") voice.say(phrase(m), {priority: "alert"});
 }
 
 function update(i) {
   idx = i;
   const r = route, here = r.coords[i];
   const {event: next, distText} = G.nextManeuver(r, i);
-  ui("arrow").textContent = next.arrow;
-  ui("man-text").textContent = next.text;
-  ui("man-dist").textContent = distText;
+  if (!storm) {
+    ui("maneuver").classList.toggle("safe", false);
+    ui("arrow").innerHTML = icon(ARROW_ICON[next.arrow] || "up");
+    ui("man-dist").textContent = distText === "now" ? "Now" : distText.replace(/^in /, "");
+    ui("man-text").textContent = next.text;
+  } else {
+    const leftS = Math.max(0, r.t[r.t.length - 1] - r.t[i]);
+    ui("man-dist").textContent = `${(leftS / 60).toFixed(1)} min`;
+    ui("man-text").textContent = `Return now · ${next.text.toLowerCase()} ${distText}`;
+  }
   for (const text of G.announcements(r, i, spoken)) voice.say(text);
-  for (const text of G.radioAnnouncements(r, i, spoken)) { voice.say(text); G.logEvent(walkLog, "radio", text, r, i); }
+  for (const text of G.radioAnnouncements(r, i, spoken)) {
+    voice.say(text);
+    G.logEvent(walkLog, "radio", text, r, i);
+    if (/lose direct radio/.test(text)) ui("status").textContent = text;           // radio warnings stay on screen
+  }
   G.logStep(walkLog, r, i, offRoute || here, !offRoute);
   const m = G.meters(r, i, limitS);
-  meter("e-fill", "e-val", m.energy.frac, m.energy.text, m.energy.good);
-  meter("t-fill", "t-val", m.back.frac, m.back.text, m.back.good);
-  if (m.eva) meter("v-fill", "v-val", m.eva.frac, m.eva.text, m.eva.good);
+  meter("e", m.energy); meter("t", m.back); if (m.eva) meter("v", m.eva);
+  warnOnCrossing("e", m.energy, x => x.state === "out" ? "Turn back now: not enough energy to return." : "Energy is getting low. Plan to turn back.");
+  warnOnCrossing("t", m.back, x => x.state === "out" ? "Beyond the 30 minute oxygen line. Turn back now." : "Close to the 30 minute oxygen line. Turn back soon.");
+  if (m.eva) warnOnCrossing("v", m.eva, x => x.state === "out" ? "Walk time is up. Head home now." : "Walk time is almost up.");
   const radio = G.radioState(r, i);
   ui("radio-meter").hidden = !radio;
-  if (radio) meter("r-fill", "r-val", radio.state === "direct" ? 1 : radio.state === "relay" ? 0.5 : 0, radio.text, radio.good);
+  if (radio) { ui("r-val").textContent = radio.text; ui("r-val").style.color = radio.good ? "var(--good)" : "var(--warn)"; }
   // Two stations can be reached in one step (the drilled ridge and hollow are 10 m
-  // apart): show their cards one after the other.
-  pendingCards.push(...G.arrivals(r, i, stations(), visited));
-  if (pendingCards.length && !cardOpen) openStationCard(pendingCards.shift());
-  if (deckgl) deckgl.setProps({layers: layers(),
-    viewState: {target: [...toWorld(...here), 0], zoom: deckgl.viewState?.zoom ?? 4.5}});
-  if (i >= r.coords.length - 1) {
-    stop();
-    ui("status").textContent = "Arrived at the habitat.";
-    voice.say("You have arrived at the habitat.");
-    finishWalk();
+  // apart): show their cards one after the other. No science stops during a storm.
+  if (!storm) {
+    pendingCards.push(...G.arrivals(r, i, stations(), visited).filter(p => !skipped.has(p.id)));
+    if (pendingCards.length && !cardOpen) openStationCard(pendingCards.shift());
   }
+  if (deckgl) { deckgl.setProps({layers: layers()}); if (follow) centreOn(offRoute || here); }
+  if (i >= r.coords.length - 1) arrived();
+}
+
+function arrived() {
+  stop();
+  storm = false;
+  ui("alert").hidden = true;
+  ui("maneuver").classList.remove("alarm"); ui("maneuver").classList.add("safe");
+  ui("arrow").innerHTML = icon("habitat");
+  ui("man-dist").textContent = "Home";
+  ui("man-text").textContent = "You are at the habitat.";
+  ui("status").textContent = "";
+  voice.say("You have arrived at the habitat.", {priority: "alert"});
+  finishWalk();
 }
 
 function openStationCard(p) {
@@ -216,25 +412,37 @@ function openStationCard(p) {
   G.logArrival(walkLog, p.id);
   const c = G.stationCard(p, rubric);
   ui("st-title").textContent = c.title;
-  ui("st-why").textContent = c.why;
-  ui("st-tasks").innerHTML = c.tasks.map(t => `<li>${t}</li>`).join("");
+  ui("st-why").textContent = c.why || "No notes for this station type.";
+  ui("st-tasks").innerHTML = c.tasks.map(t => `<li>${esc(t)}</li>`).join("");
+  ui("st-done").innerHTML = `${icon("play")} Done, walk on`;
   ui("station-card").hidden = false;
+  ui("st-title").focus();
   voice.say(c.speech);
 }
+function closeStationCard() { ui("station-card").hidden = true; cardOpen = false; }
 
 // --- simulated walk ----------------------------------------------------------
-function stop() { if (timer) { clearInterval(timer); timer = null; } ui("walk-btn").textContent = "▶ Walk"; }
+function stop() { if (timer) { clearInterval(timer); timer = null; } ui("walk-btn").innerHTML = `${icon("play")} Walk`; }
 
 function walk() {
   if (timer) { stop(); return; }
-  if (cardOpen) return;
-  ui("walk-btn").textContent = "❚❚ Pause";
+  if (cardOpen || !route) return;
+  ui("walk-btn").innerHTML = `${icon("pause")} Pause`;
   timer = setInterval(() => update(G.advance(route, idx, speed * 0.2)), 200);
 }
 
+function friendly(err) {
+  const m = String(err && err.message || err);
+  if (/no walkable path|unreachable|no path/i.test(m)) return "No walkable way from here. Retrace your steps to the route.";
+  if (/Failed to fetch|NetworkError/i.test(m)) return "The planner did not answer. Keep walking the planned route.";
+  return "The way home could not be computed. Follow the planned route back.";
+}
+
 async function returnHome() {
+  if (!route) return false;
   stop();
-  ui("status").textContent = "Computing the fastest way home…";
+  if (route.kind === "home" && idx >= route.coords.length - 1) return true;
+  ui("status").textContent = "Finding the fastest way home…";
   const mine = ++request;
   try {
     const home = await G.returnHome(route, idx, plan, offRoute || route.coords[idx]);
@@ -243,51 +451,62 @@ async function returnHome() {
     G.logEvent(walkLog, "home", home.text, route, idx);
     setRoute(home.route);
     ui("status").textContent = home.text;
-    voice.say(home.speech);
+    voice.say(home.speech, {priority: storm ? "normal" : "alert"});
     update(0);
     return true;
-  } catch (err) { ui("status").textContent = `Error: ${err.message}`; return false; }
+  } catch (err) { ui("status").textContent = friendly(err); return false; }
 }
 
-// --- block 2: off route -> recalculating ------------------------------------
+// --- off route -> recalculating ---------------------------------------------
 async function checkOffRoute(pt) {
   const near = G.nearestOnRoute(route, pt, idx);
-  if (near.dist <= G.OFF_ROUTE_M) return;
+  if (near.dist <= G.OFF_ROUTE_M) { offRoute = null; ui("status").textContent = "Still on the route."; update(idx); return; }
   stop();
-  ui("status").textContent = `Off route (${near.dist.toFixed(0)} m) — recalculating…`;
-  voice.say("You are off route. Recalculating.");
+  ui("status").textContent = `Off the route by ${near.dist.toFixed(0)} m. Recalculating…`;
+  voice.say("You are off route. Recalculating.", {priority: "alert"});
   const mine = ++request;
   try {
     const out = await G.rejoin(route, idx, pt, plan);
     if (mine !== request) return;
-    if (!out) { ui("status").textContent = "Still within 15 m of the route: no rejoin needed."; return; }
-    G.logEvent(walkLog, "detour", `off route ${out.offM.toFixed(0)} m; ${out.text}`, route, idx);
+    if (!out) { offRoute = null; ui("status").textContent = "Still within 15 m of the route: no change needed."; update(idx); return; }
+    G.logEvent(walkLog, "detour", `off route ${out.offM.toFixed(0)} m; rejoined`, route, idx);
     offRoute = null;
     setRoute(out.route);
     ui("status").textContent = out.text;
     voice.say("New route found.");
     update(0);
-  } catch (err) { ui("status").textContent = `Error: ${err.message}`; }
+  } catch (err) { offRoute = null; ui("status").textContent = friendly(err); update(idx); }
 }
 
 function simulateDetour() {
   // Demo only: push the astronaut 25 m to the left of the walking direction.
+  if (!route || storm) return;
   stop();
   offRoute = G.detourPoint(route, idx);
   if (deckgl) deckgl.setProps({layers: layers()});
   checkOffRoute(offRoute);
 }
 
-// --- block 2: solar storm alert drives the return ---------------------------
+// --- solar storm: the alert takes the screen and drives the walk home ----------
 async function solarStorm() {
+  if (!route) return;
   stop();
+  storm = true;
+  closeStationCard(); pendingCards.length = 0;                 // no science stops during a storm
+  ui("maneuver").classList.add("alarm");
+  ui("arrow").innerHTML = icon("storm");
+  ui("man-dist").textContent = "Return now";
+  ui("man-text").textContent = "Solar storm: finding the fastest way home";
   const banner = ui("alert");
   banner.hidden = false;
   banner.innerHTML = G.STORM_PENDING;
   G.logEvent(walkLog, "storm", "solar storm alert: return home", route, idx);
-  voice.say("Solar storm alert. Return to the habitat now.");
-  if (!(await returnHome())) { banner.innerHTML = G.stormFailedHtml(ui("status").textContent); return; }
-  banner.innerHTML = G.stormHtml(G.stormMessage(route, radInfo));
+  voice.say("Solar storm alert. Return to the habitat now.", {priority: "alert"});
+  if (!(await returnHome())) { banner.innerHTML = G.stormFailedHtml(esc(ui("status").textContent)); return; }
+  const s = G.stormMessage(route, radInfo);
+  banner.innerHTML = G.stormHtml(s);
+  voice.say(`${Math.round(s.minutes)} minutes to the habitat.`, {priority: "alert"});
+  update(idx);
   walk();
 }
 
@@ -297,35 +516,66 @@ function finishWalk() {
   walkLog.done = true;
   const s = G.walkSummary(walkLog);
   if (!s) return;
-  const esc = t => String(t).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
+  const wentHome = s.walked.wentHome, missed = s.skipped.length;
+  ui("walk-verdict").textContent = wentHome ? `Came home early${s.events.some(e => e.kind === "storm") ? " because of the storm" : ""}: ${missed} station${missed === 1 ? "" : "s"} not visited.`
+    : missed ? `Walked the plan, ${missed} station${missed === 1 ? "" : "s"} skipped.` : "Walked as planned.";
+  const sign = v => (v > 0 ? "+" : "") + v;
   ui("walk-table").innerHTML = "<tr><th></th><th>Plan</th><th>Walked</th></tr>" +
-    G.summaryRows(s).map(([a, b, c]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td>${esc(c)}</td></tr>`).join("");
+    G.summaryRows(s).filter(([a]) => a !== "Farthest from the plan")
+      .map(([a, b, c]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td>${esc(c)}</td></tr>`).join("") +
+    `<tr><td>Farthest off the route</td><td>—</td><td>${s.walked.maxOffRouteM.toFixed(0)} m</td></tr>`;
   const notes = [];
-  if (s.skipped.length) notes.push(`Skipped: ${s.skipped.join(", ")}`);
-  for (const e of s.events) notes.push(`${e.t != null ? (e.t / 60).toFixed(0) + " min · " : ""}${e.text}`);
-  ui("walk-notes").innerHTML = notes.map(esc).join("<br>") || "Walked as planned.";
+  if (missed) notes.push(`Not visited: ${s.skipped.join(", ")}${wentHome ? " (went home)" : ""}`);
+  const minutes = (s.delta.timeS / 60).toFixed(0);
+  if (Math.abs(s.delta.timeS) > 30) notes.push(`${sign(minutes)} min against the plan`);
+  ui("walk-notes").textContent = notes.join(" · ") || "Times and energy matched the plan.";
   ui("walk-card").hidden = false;
-  G.postWalk(s, walkLog).then(name => {
-    if (name) ui("walk-notes").innerHTML += `<br>Saved for the debrief: data/walks/${esc(name)}`;
-  });
+  ui("walk-title").focus();
+  G.postWalk(s, walkLog).then(name => { if (name) ui("walk-notes").textContent += " · Saved for the debrief."; });
 }
-ui("walk-close").addEventListener("click", () => { ui("walk-card").hidden = true; });
 
+ui("walk-close").addEventListener("click", () => { ui("walk-card").hidden = true; });
 ui("walk-btn").addEventListener("click", walk);
 ui("detour-btn").addEventListener("click", simulateDetour);
 ui("sep-btn").addEventListener("click", solarStorm);
 ui("speed-btn").addEventListener("click", () => {
-  speed = speed === 30 ? 60 : speed === 60 ? 180 : 30; ui("speed-btn").textContent = `×${speed}`; });
+  speed = speed === 60 ? 180 : speed === 180 ? 30 : 60; ui("speed-btn").textContent = `Speed ×${speed}`; });
 ui("voice-btn").addEventListener("click", () => {
-  ui("voice-btn").textContent = voice.toggle() ? "🔊 On" : "🔇 Off"; });
+  const on = voice.toggle();
+  ui("voice-btn").innerHTML = on ? `${icon("speaker")} Voice on` : `${icon("mute")} Voice off`;
+  ui("voice-btn").setAttribute("aria-pressed", String(on));
+});
+ui("repeat-btn").addEventListener("click", () => { if (!voice.repeat()) ui("status").textContent = "Nothing to repeat yet."; });
 ui("home-btn").addEventListener("click", returnHome);
 ui("st-done").addEventListener("click", () => {
-  ui("station-card").hidden = true; cardOpen = false;
+  closeStationCard();
   if (pendingCards.length) { openStationCard(pendingCards.shift()); return; }
   walk();
 });
+ui("st-skip").addEventListener("click", () => {
+  closeStationCard();
+  const nextStop = (route.stops || []).find(s => s.i > idx && !visited.has(s.name) && !skipped.has(s.name));
+  if (nextStop) { skipped.add(nextStop.name); ui("status").textContent = `Next stop ${nextStop.name} will be skipped.`; }
+  walk();
+});
+ui("st-home").addEventListener("click", () => { closeStationCard(); pendingCards.length = 0; returnHome().then(ok => ok && walk()); });
+// Zoom buttons for gloves (pinch is not possible): around the walker when following,
+// around the centre of the view otherwise.
+function zoomBy(step) {
+  if (!deckgl || !route) return;
+  viewZoom = Math.max(1, Math.min(7, viewZoom + step));
+  const vp = deckgl.getViewports()[0];
+  const target = follow || !vp ? toWorld(...(offRoute || route.coords[idx])) : vp.unproject([vp.width / 2, vp.height / 2]).slice(0, 2);
+  deckgl.setProps({initialViewState: {target: [...target, 0], zoom: viewZoom, minZoom: 1, maxZoom: 7}});
+}
+ui("zoom-in").addEventListener("click", () => zoomBy(0.75));
+ui("zoom-out").addEventListener("click", () => zoomBy(-0.75));
+ui("recentre").addEventListener("click", () => setFollow(true));
+window.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !ui("walk-card").hidden) ui("walk-card").hidden = true;
+});
 
-init().catch(err => { ui("man-text").textContent = "Error"; ui("man-dist").textContent = err.message; console.error(err); });
+init().catch(err => { ui("man-dist").textContent = "Error"; ui("man-text").textContent = friendly(err); console.error(err); });
 </script>
 </body>
 </html>

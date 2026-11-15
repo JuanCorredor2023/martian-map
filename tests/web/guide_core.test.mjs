@@ -198,3 +198,34 @@ test('plan against the walk: detour and skipped station show up in the summary',
   assert.deepEqual(rows.map(x => x[0]).slice(0, 4), ['Time', 'Energy', 'Distance', 'Stations']);
   assert.equal(s.events[0].kind, 'detour');
 });
+
+test('voice priorities: an alert interrupts and is never cut by routine lines; repeat says the last line', () => {
+  const log = [];
+  let current = null;
+  const synth = {cancel: () => { log.push('cancel'); current = null; }, speak: u => { log.push(u.text); current = u; }};
+  globalThis.SpeechSynthesisUtterance = class { constructor(t) { this.text = t; } };
+  const end = () => { const u = current; current = null; u && u.onend && u.onend(); };
+  const v = G.createVoice({synth});
+  v.say('In 80 meters, turn left');
+  v.say('Storm: return now', {priority: 'alert'});                 // interrupts
+  assert.deepEqual(log.slice(-2), ['cancel', 'Storm: return now']);
+  v.say('Turn left'); v.say('Radio back'); v.say('Bear right');      // wait behind the alert, newest two kept
+  assert.equal(log.at(-1), 'Storm: return now');                   // the alert is not cut
+  end(); assert.equal(log.at(-1), 'Radio back');
+  end(); assert.equal(log.at(-1), 'Bear right');
+  end();
+  assert.ok(!log.includes('Turn left'));                            // the oldest routine line was dropped
+  v.repeat(); assert.equal(log.at(-1), 'Bear right');
+  v.set(false); assert.equal(v.say('quiet', {priority: 'alert'}), false);
+  delete globalThis.SpeechSynthesisUtterance;
+});
+
+test('meters carry a state word and full always means good', () => {
+  const r = G.routeFromPlan(saved('plan_e4'));
+  const m = G.meters(r, 0, 7200);
+  assert.equal(m.energy.word, 'OK'); assert.equal(m.back.word, 'OK');
+  assert.ok(m.back.frac > 0.99 && m.back.text.startsWith('home in'));   // at the habitat: full margin
+  const far = {...r, rvTime: r.rvTime.map(() => 1900)};
+  assert.equal(G.meters(far, 10, 7200).back.word, 'OVER 30 MIN');
+  assert.equal(G.meters({...r, rv: r.rv.map(() => r.usable)}, 10, null).energy.word, 'TURN BACK');
+});

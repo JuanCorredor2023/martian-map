@@ -27,19 +27,44 @@ export const TASKS = {
 };
 
 // --- voice -----------------------------------------------------------------
+// Voice with priorities. An alert (storm, turn back, off route) interrupts whatever is
+// being said and cannot be interrupted by a routine line; routine lines (turns, arrivals,
+// radio) wait for the current one to finish, and only the two newest are kept, so a
+// late instruction never talks over a safety alert. repeat() says the last line again.
 export function createVoice({lang = "en-US", rate = 1.0, synth = globalThis.speechSynthesis} = {}) {
-  let on = true;
+  let on = true, speaking = null, last = "";
+  const queue = [];
+  const can = () => on && synth && typeof SpeechSynthesisUtterance !== "undefined";
+  const next = () => {
+    speaking = null;
+    if (!queue.length || !can()) return;
+    const item = queue.shift();
+    start(item.text, item.priority);
+  };
+  const start = (text, priority) => {
+    const u = new SpeechSynthesisUtterance(text); u.lang = lang; u.rate = rate;
+    u.onend = u.onerror = () => { if (speaking === u) next(); };
+    speaking = u; u.priority = priority; last = text;
+    synth.speak(u);
+  };
   return {
     get on() { return on; },
-    set(value) { on = Boolean(value); if (!on && synth) synth.cancel(); return on; },
+    get last() { return last; },
+    set(value) { on = Boolean(value); if (!on) { queue.length = 0; speaking = null; if (synth) synth.cancel(); } return on; },
     toggle() { return this.set(!on); },
-    say(text) {
-      if (!on || !synth || typeof SpeechSynthesisUtterance === "undefined") return false;
-      synth.cancel();
-      const u = new SpeechSynthesisUtterance(text); u.lang = lang; u.rate = rate;
-      synth.speak(u);
+    say(text, {priority = "normal"} = {}) {
+      if (!can()) return false;
+      if (priority === "alert") {
+        queue.splice(0, queue.length, ...queue.filter(q => q.priority === "alert"));
+        if (speaking && speaking.priority === "alert") { queue.push({text, priority}); return true; }
+        synth.cancel(); start(text, priority); return true;
+      }
+      if (!speaking) { start(text, priority); return true; }
+      queue.push({text, priority});
+      while (queue.filter(q => q.priority !== "alert").length > 2) queue.splice(queue.findIndex(q => q.priority !== "alert"), 1);
       return true;
     },
+    repeat() { return last ? this.say(last) : false; },
   };
 }
 
@@ -126,7 +151,10 @@ export function announcements(r, i, spoken) {
     const key = `${r.kind}-${next.i}-${th}`;
     if (togo <= th && togo > (th === 80 ? 20 : 0) && !spoken.has(key)) {
       spoken.add(key);
-      out.push(th === 80 ? `In ${Math.round(togo / 10) * 10} meters, ${next.text.toLowerCase()}` : next.text);
+      // At a station the card says the arrival itself, so the 20 m call is skipped there.
+      if (th === 20 && next.goal) continue;
+      const lower = next.text.charAt(0).toLowerCase() + next.text.slice(1);     // keep "R3", lower only "Turn"
+      out.push(th === 80 ? `In ${Math.round(togo / 10) * 10} meters, ${lower}` : next.text);
     }
   }
   return out;
@@ -139,16 +167,25 @@ export function announcements(r, i, spoken) {
 export function meters(r, i, limitS = null) {
   const used = r.used[i], need = r.rv ? r.rv[i] : 0, left = r.usable - used - need;
   const back = r.rvTime ? r.rvTime[i] : r.t[r.t.length - 1] - r.t[i];
+  // Every bar means "how much is left": full is good, empty is the limit. Each also
+  // carries a state word, so meaning never rests on colour alone.
+  const eState = left <= 0 ? "out" : left <= 0.25 * r.usable ? "low" : "ok";
+  const bState = back > EMERGENCY_RETURN_S ? "out" : back > 1500 ? "low" : "ok";
   const out = {
-    energy: {leftWh: left, usableWh: r.usable, frac: left / r.usable, good: left > 0.25 * r.usable,
+    energy: {leftWh: left, usableWh: r.usable, frac: left / r.usable, good: eState === "ok", state: eState,
+             word: {ok: "OK", low: "LOW", out: "TURN BACK"}[eState],
              text: `${left.toFixed(0)} of ${r.usable.toFixed(0)} Wh`},
-    back: {s: back, frac: 1 - back / EMERGENCY_RETURN_S, good: back <= 1500, text: `${(back / 60).toFixed(1)} min`},
+    back: {s: back, marginS: EMERGENCY_RETURN_S - back, frac: 1 - back / EMERGENCY_RETURN_S, good: bState === "ok", state: bState,
+           word: {ok: "OK", low: "TURN SOON", out: "OVER 30 MIN"}[bState],
+           text: `home in ${(back / 60).toFixed(1)} min`},
     eva: null,
   };
   if (limitS) {
     const elapsed = r.t[i], leftS = limitS - elapsed, endS = elapsed + back;   // back home if you turn now
-    out.eva = {elapsedS: elapsed, limitS, leftS, frac: leftS / limitS,
-               good: endS <= limitS && leftS > 0.1 * limitS, overrun: r.t[r.t.length - 1] > limitS,
+    const vState = endS > limitS ? "out" : leftS <= 0.1 * limitS ? "low" : "ok";
+    out.eva = {elapsedS: elapsed, limitS, leftS, frac: leftS / limitS, state: vState,
+               good: vState === "ok", overrun: r.t[r.t.length - 1] > limitS,
+               word: {ok: "OK", low: "LOW", out: "TURN BACK"}[vState],
                text: `${Math.max(0, leftS / 60).toFixed(0)} of ${(limitS / 60).toFixed(0)} min left`};
   }
   return out;
@@ -268,14 +305,14 @@ export function stormMessage(homeRoute, radInfo) {
 
 // The alert both views show once the way home is known (HTML), and while it is computed.
 export function stormHtml(s) {
-  return `<b>☢ SOLAR STORM ALERT</b> · Return to the habitat now: ${s.minutes.toFixed(1)} min.` +
-    (s.realUgy != null ? ` Dose on the way back: <b>${s.realUgy.toFixed(1)} µGy</b> (real 2025-11-11 event)` : "") +
-    (s.x50Ugy != null ? `, ${s.x50Ugy.toFixed(0)} µGy if 50× stronger (hypothetical).` : ".") +
-    ` <span class="muted">Alarm rule (E12): ${s.rule}.</span>`;
+  return `<b>SOLAR STORM · return to the habitat now</b> · ${s.minutes.toFixed(1)} min home.` +
+    (s.realUgy != null ? ` Radiation on the way back: <b>${s.realUgy.toFixed(1)} µGy</b>` +
+      (s.x50Ugy != null ? ` (${s.x50Ugy.toFixed(0)} µGy if the storm were 50× stronger).` : ".") : "") +
+    ` <span class="muted">Alarm when the radiation rate on Curiosity exceeds 1.5× its recent median twice in a row.</span>`;
 }
-export const STORM_PENDING = "<b>☢ SOLAR STORM ALERT</b> · Return to the habitat now. Computing the fastest way…";
+export const STORM_PENDING = "<b>SOLAR STORM · return to the habitat now</b> · finding the fastest way…";
 export const stormFailedHtml = why =>
-  `<b>☢ SOLAR STORM ALERT</b> · Return to the habitat now. The way home could not be computed: ${why}`;
+  `<b>SOLAR STORM · return to the habitat now</b> · the way home could not be computed: ${why}`;
 
 // --- radio (E11, JB): line of sight to the habitat antenna, and the pair relay ----------
 // POST /comms/check answers, per route vertex, radio_ok (one astronaut sees the habitat
