@@ -1,4 +1,4 @@
-"""E11 radio endpoints (#76): /comms/check, /layers/comms(.png). Need data/base."""
+"""E11 radio endpoints (#76): /comms/check, /layers/comms(.png). Need data/base and data/tiles."""
 
 import sys
 from pathlib import Path
@@ -8,8 +8,10 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-if not (REPO / "data" / "base" / "dem_1m.tif").exists():
-    pytest.skip("team data not available", allow_module_level=True)
+# api.main mounts data/tiles at import, so both releases are needed (Aaron, board).
+if not ((REPO / "data" / "base" / "dem_1m.tif").exists()
+        and (REPO / "data" / "tiles").is_dir()):
+    pytest.skip("team data not available (data/base and data/tiles)", allow_module_level=True)
 
 from fastapi.testclient import TestClient  # noqa: E402
 
