@@ -175,3 +175,26 @@ test('radio (E11): meter states, debounced loss/back events and spoken warnings'
   assert.equal(said[1], 'Direct radio back.');
   assert.equal(G.radioState({radio: undefined}, 0), null);     // no radio data: no meter
 });
+
+test('plan against the walk: detour and skipped station show up in the summary', () => {
+  const s0 = saved('plan_tour_e5'), r = G.routeFromPlan(s0);
+  const log = G.createWalkLog(r);
+  const st = s0.plan.features.filter(f => f.properties.kind === 'station');
+  const visited = new Set();
+  const last = r.coords.length - 1;
+  for (let i = 0; i <= last; i++) {
+    const off = i > 100 && i < 120 ? [r.coords[i][0] + 25, r.coords[i][1]] : r.coords[i];   // a 25 m detour
+    G.logStep(log, r, i, off);
+    for (const p of G.arrivals(r, i, st, visited)) if (p.id !== r.stops[0].name) G.logArrival(log, p.id);
+  }
+  G.logEvent(log, 'detour', 'off route 25 m', r, 110);
+  const s = G.walkSummary(log);
+  assert.equal(s.plan.stations.length, r.stops.length);
+  assert.deepEqual(s.skipped, [r.stops[0].name]);                 // the first station was not logged
+  assert.ok(s.walked.maxOffRouteM > 1 && s.walked.maxOffRouteM <= 25 + 1e-9);   // to the nearest planned vertex
+  assert.ok(s.walked.lengthM > s.plan.lengthM);                   // the detour adds distance
+  assert.equal(s.walked.timeS, s.plan.timeS);
+  const rows = G.summaryRows(s);
+  assert.deepEqual(rows.map(x => x[0]).slice(0, 4), ['Time', 'Energy', 'Distance', 'Stations']);
+  assert.equal(s.events[0].kind, 'detour');
+});

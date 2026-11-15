@@ -234,7 +234,7 @@ def test_guide_saved_plan_and_return_home(tmp_path, monkeypatch):
     assert client.post("/guide/return_home", json={"position": [0, 0], "habitat": CENTRE}).status_code == 422
 
 
-@pytest.mark.parametrize("page", ["index.html", "guide.html"])
+@pytest.mark.parametrize("page", ["index.html", "guide.html", "card.html"])
 def test_pages_work_offline(page):
     import re
     html = (REPO / "web" / page).read_text(encoding="utf-8")
@@ -384,3 +384,16 @@ def test_e8_stations_endpoint():
     assert all("E8 score" in s["note"] and 1 <= s["e8_score"] <= 5 for s in out)
     b = client.get("/layers").json()["grid"]["bbox"]
     assert all(b["xmin"] <= s["x"] <= b["xmax"] and b["ymin"] <= s["y"] <= b["ymax"] for s in out)
+
+
+def test_walks_are_kept_for_the_debrief(tmp_path, monkeypatch):
+    from api import main as m
+    monkeypatch.setattr(m, "WALKS", tmp_path)
+    assert client.get("/walks/last").status_code == 404
+    rec = {"summary": {"plan": {"timeS": 600}, "walked": {"timeS": 660}},
+           "points": [[8143537.5, -284463.1, 0.0, 0.0, "plan", True], [8143540.5, -284463.1, 4.0, 0.3, "plan", False]]}
+    name = client.post("/walks", json=rec).json()["saved"]
+    assert (tmp_path / name).exists() and (tmp_path / "last_walk.json").exists()
+    last = client.get("/walks/last").json()
+    assert last["summary"]["walked"]["timeS"] == 660 and len(last["points"]) == 2
+    assert client.post("/walks", json={"points": []}).status_code == 422      # summary is required
