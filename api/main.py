@@ -27,6 +27,7 @@ from . import minerals
 from . import thermal
 from . import weather
 from . import walkback as wb
+from . import comms as e11
 from .plan import (PlanRequest, RejoinRequest, ReturnHomeRequest, WalkbackRequest, feature,
                    feature_collection)
 from .raster_layers import blocked_layer, cost_layer, sand_layer
@@ -425,6 +426,50 @@ def plan(req: PlanRequest):
         energy_usable_wh=req.energy_usable_j / 3600.0,
         max_cell_slope_deg=req.max_cell_slope_deg,
         feasible=None, warnings=warnings)
+
+
+@app.post("/comms/check")
+def comms_check(req: e11.CommsRequest):
+    """E11 radio along a route (the given one, or the last plan's): stretches with no
+    direct radio to the habitat, and the pair (relay) with radio_ok / pair_state per
+    route vertex."""
+    grid = _read_json(BASE / "grid.json")
+    crs_wkt = (BASE / "crs.wkt").read_text(encoding="utf-8").strip()
+    try:
+        return e11.check(str(BASE), req, guide.load_plan(PLANS), grid["bbox"], crs_wkt)
+    except LookupError as err:
+        raise HTTPException(status_code=404, detail=str(err))
+    except ValueError as err:
+        raise HTTPException(status_code=422, detail=str(err))
+
+
+def _comms_habitat(x, y):
+    if (x is None) != (y is None):
+        raise HTTPException(status_code=422, detail="give both x and y, or neither")
+    if x is not None:
+        b = _read_json(BASE / "grid.json")["bbox"]
+        if not (b["xmin"] <= x <= b["xmax"] and b["ymin"] <= y <= b["ymax"]):
+            raise HTTPException(status_code=422, detail="habitat is outside the study box")
+        return (x, y), "request"
+    return e11.default_habitat(guide.load_plan(PLANS), _box_centre())
+
+
+@app.get("/layers/comms.png")
+def comms_png(x: float = Query(None), y: float = Query(None)):
+    """E11 radio coverage of a habitat (default: the last plan's), blue = visible."""
+    (hx, hy), _ = _comms_habitat(x, y)
+    return Response(e11.coverage_png(str(BASE), round(hx, 1), round(hy, 1)),
+                    media_type="image/png")
+
+
+@app.get("/layers/comms")
+def comms_info(x: float = Query(None), y: float = Query(None)):
+    habitat, source = _comms_habitat(x, y)
+    return {"habitat": list(habitat), "habitat_source": source,
+            "coverage": round(e11.comms.coverage(habitat, str(BASE)), 4),
+            "antenna_height_m": e11.comms.ANTENNA_H,
+            "astronaut_height_m": e11.comms.ASTRONAUT_H,
+            "colour_rgba": list(e11.COVERAGE_RGBA)}
 
 
 # Static files go last so they do not shadow the API routes.

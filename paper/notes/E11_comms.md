@@ -1,6 +1,6 @@
 # E11 · Pair EVA and radio line of sight to the habitat
 
-Owner: JB (`@JavierBonilla2004`) · Issue: #45 (P6) · PRs: this PR · Status: in progress (library, numbers and figure done; API endpoint and 3D layer wait on handoffs) · Last update: 2026-11-15
+Owner: JB (`@JavierBonilla2004`) · Issue: #45 (P6), #76 (integration) · PRs: #75 (library, note, figure), API PR (this) · Status: library and API done; HUD and walk by Sebas after #73 · Last update: 2026-11-15
 
 ## Question
 Along a planned EVA route, where does the astronaut lose direct radio contact with the habitat, and how much of it does a partner walking behind on the same route recover as a relay?
@@ -35,7 +35,9 @@ Source: `src/gis/comms_figures.py` → `data/comms/summary.json`, figure [e11_fi
 - One demo route and one habitat for the pair numbers. They show the mechanism, not a general rate.
 
 ## What other pieces can use
-- **HUD / 3D (Sebas, Juan):** `comms.check_route` and `comms.check_pair` take the `/plan` route coordinates, `t_s` and `properties.habitat` as is. They return stretches with start/end in m and min, ready to draw as a "no radio" layer.
+- **HUD / walk / 3D (Sebas, Juan):** the API (#76) serves it.
+  - `POST /comms/check` takes a route, or uses the last plan. It returns `radio_ok` and `pair_state` (`direct` / `relay` / `none`) per route vertex, aligned like `rv_wh`. It also returns the `no_radio` and `pair_unlinked` stretches with m, min and `t_s`.
+  - `GET /layers/comms.png` and `/layers/comms` give the habitat's coverage.
 - **E4 / E5 (Aaron, Diana):** the viewshed is a boolean raster per habitat. It could become a planning cost or constraint (for example a maximum silent time).
 - **Pitch:** with a mast at the habitat, almost half of the demo route is silent. That is an argument for a relay (a partner, a rover or a mast on a crest) and for planning with the tablet offline.
 
