@@ -252,3 +252,24 @@ export function planMarkers(plan, stationTypes = {}) {
   }
   return out;
 }
+
+// Keyboard list of the station pins: visiting order first, then the stations left out.
+// Keep the marker itself so a button selects exactly what its pin would select. A plan
+// without visit information keeps its input order; it must not invent an itinerary.
+export function stationList(plan, stationTypes = {}, rubric = {}) {
+  if (!plan) return [];
+  const route = mainRoute(plan), visit = route?.properties.visit_order;
+  const order = new Map((Array.isArray(visit) ? visit : []).map((id, i) => [String(id), i + 1]));
+  const stations = planMarkers(plan, stationTypes).filter(m => m.data.kind === 'station');
+  const hasGoal = stations.some(m => m.kind === 'goal');
+  return stations.map(marker => {
+    const d = marker.data;
+    const n = order.get(marker.label) ??
+      (Number.isInteger(d.order) && d.order > 0 ? d.order : marker.kind === 'goal' ? 1 : null);
+    const unvisited = d.visited === false || (n === null && (Array.isArray(visit) || hasGoal));
+    const name = d.name || rubric[d.type]?.label;
+    const label = [n ?? (unvisited ? 'Not visited' : null), marker.label || 'Station', name]
+      .filter(v => v != null && v !== '').join(' · ');
+    return {id: marker.id, marker, label, order: n};
+  }).sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
+}

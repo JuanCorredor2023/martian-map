@@ -39,6 +39,25 @@ Stops are grouped by the rover position: each group's representative is the firs
 
 `nearestPhoto` (`web/3d/photos_model.js`) takes the published photographs (images available) whose camera is within 150 m of the station, horizontally. Those within 10 m of the nearest (a stop's radius) count as equally near; among them the one pointing most towards the station wins, then the nearer, then the image id. It reports the distance, the side of the station the photo was taken from, the direction it looks, the station's angle off the photo's centre, and whether the station is inside the 40° field: horizontally always, vertically when the DEM gives the station's ground (relief ×1). The card says this as orientation and adds that the terrain may still hide the station; it never claims visibility. With no photograph within 150 m it says so, with the distance of the nearest. A station card in free flight adds "View the rover photo" (the photo view). At a rehearsal stop the same preview is added to the stop card through a `stationMedia` option of the rehearsal: no button, and the walker, clock, tasks and controls are untouched. Photo pins are hidden while rehearsing.
 
+### Keyboard access to photo stops (issue #124, part of block 3)
+
+The question is whether a photo stop can be opened without picking its pin. The existing
+parsed catalogue supplies `photoStopList`, a pure export of `web/3d/photos.js`. It returns
+the same nonempty stops as the marker layer, in catalogue order, labelled by stop number,
+sol and view count. A stop with missing images remains available because its existing card
+explains the absence. The folded *Rover photos → Photo stops* list uses native buttons;
+activation ticks *Show photo stops*, shows the pins and calls `PhotoLayer.openGroup`.
+The card's *View from here* remains the way into photo view. Both this list and the station
+list disable with a reason while another mode owns the camera, then restore on exit.
+
+`tests/viz3d/photos_model.test.mjs` checks the list against `photos_catalog.json`, including
+missing images, empty stops and multiple sols. `ui_controls.test.mjs` checks the controls,
+card wiring and mode restrictions; the combined test result is recorded in P1's
+"Keyboard stop lists" section. No browser or server was started, so actual keyboard and
+screen reader behavior, `?check=photos` and `?check=stations` remain unverified for this
+change. Photo poses, images and scientific results are unchanged. Juan and Sebas can reuse
+the pure helper and the keyboard path for the demo and HUD.
+
 ### Photograph against terrain (block 2)
 
 `src/viz3d/photo_skyline.py` ray-casts the 1 m DEM from each camera for every column of the 768 px comparison frame (same pinhole, heading and pitch, zero roll, curvature drop included) and finds the DEM skyline, marking whether it is a terrain feature inside the box or only the box edge. It detects the photograph's sky/ground boundary per column (bright smooth sky at the top; transparent pixels ignored) and compares the two only where the DEM skyline is an in-box feature. The test is one-sided: a DEM skyline above the photograph's means the model puts ground where the photograph shows sky, an in-box disagreement; a photograph skyline above the DEM can be farther terrain beyond the box (or rover hardware) and is not counted as an error. Where farther terrain rises behind an in-box crest, it checks that the crest still shows as a brightness step within ±3 px.

@@ -15,6 +15,9 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { runInNewContext } from 'node:vm';
+
+import '../../web/terms.js';
 
 import * as L from '../../web/3d/map_layers_model.js';
 import * as W from '../../web/3d/walk_model.js';
@@ -545,6 +548,75 @@ test('33. while rehearsing: "Panel" brings the side panel back, "More" holds the
     assert.ok(!under.includes(id), `#${id} is folded under "More"`);
   }
   assert.ok(!main.includes('rh-ktrue'), 'the ×k demo button is back beside Return home');
+});
+
+test('34. keyboard station and photo lists: folded native buttons, names, cards and focus', () => {
+  for (const [kind, section] of [['station', 'plan-box'], ['photo', 'photos-box']]) {
+    const title = `${kind}-list-title`, note = `${kind}-list-note`;
+    const group = element(`${kind}-controls`, ['fieldset']);
+    element(`${kind}-list`, ['ul']);
+    element(title, ['summary']);
+    assert.equal(group.attrs['aria-labelledby'], title);
+    assert.equal(group.attrs['aria-describedby'], note);
+    assert.ok('disabled' in group.attrs, 'disabled until data arrives');
+    assert.equal(element(note).attrs.role, 'status', 'mode reason is readable and announced');
+    assert.ok(inner(section).includes(`id="${title}"`));
+    const disclosure = new RegExp(`<details\\b([^>]*)>\\s*<summary\\b[^>]*id="${title}"`);
+    assert.doesNotMatch(disclosure.exec(PAGE)?.[1] ?? 'missing open', /\bopen\b/, 'list starts folded');
+  }
+  const fill = bodyOf('main', 'fillStopList');
+  assert.match(fill, /createElement\('button'\)/);
+  assert.match(fill, /button\.type = 'button'/);
+  assert.match(fill, /button\.textContent = entry\.label/);
+  assert.match(fill, /setAttribute\('aria-describedby'/);
+  assert.match(fill, /addEventListener\('click'/, 'native Enter and Space activation');
+  assert.match(fill, /if \(busy\(\) \|\| photos\?\.active\) return/, 'activation checks the mode too');
+  assert.match(fill, /close\?\.focus\(\)/, 'card actions follow activation');
+  assert.match(fill, /button\.focus\(\)/, 'Close returns to the list');
+  const stations = bodyOf('main', 'refreshStationList');
+  assert.match(stations, /stationList\(/);
+  assert.match(stations, /flyToMarker\(marker\)/);
+  assert.match(stations, /markers\.select\(marker\)/);
+  const photos = bodyOf('main', 'loadPhotos');
+  assert.match(photos, /photoStopList\(layer\.model\)/);
+  assert.match(photos, /ui\('photos-show'\)\.checked = true;\s*showPhotoPins\(\);\s*photos\.openGroup\(id\)/);
+  assert.match(photos, /onChange:[^\n]*updateStopControls\(\)/, 'photo enter/exit refreshes the lists');
+  inCode('main', /const result = original\(\.\.\.args\);\s*showPhotoPins\(\);\s*updateStopControls\(\)/,
+         'rehearsal and walk enter/exit refresh the lists, including programmatic calls');
+  assert.match(bodyOf('main', 'showPlan'), /refreshStationList\(\)/, 'reloading replaces the station list');
+  inCode('main', /loadRubric\(\)\.then\([^\n]*refreshStationList\(\)/, 'late rubric labels reach the list');
+  assert.match(PAGE, /#info \.stop-list\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto/);
+});
+
+test('keyboard lists: each camera mode disables both lists with a reason, then restores them', () => {
+  const nodes = new Map();
+  for (const kind of ['station', 'photo']) {
+    nodes.set(`${kind}-list`, {children: [{}]});
+    nodes.set(`${kind}-controls`, {disabled: true});
+    nodes.set(`${kind}-list-note`, {textContent: ''});
+  }
+  const rehearsal = {active: false}, walk = {active: false}, photos = {active: false};
+  const update = () => runInNewContext(`(() => ${bodyOf('main', 'updateStopControls')})()`, {
+    ui: id => nodes.get(id), rehearsal, photos, T: globalThis.TERMS,
+    busy: () => rehearsal.active || walk.active, photoListNote: 'No photo stops in this catalogue.',
+  });
+  for (const [mode, reason] of [[rehearsal, 'Exit Rehearse'], [walk, 'Exit Walk freely'], [photos, 'Exit the photo view']]) {
+    mode.active = true;
+    update();
+    for (const kind of ['station', 'photo']) {
+      assert.equal(nodes.get(`${kind}-controls`).disabled, true);
+      assert.ok(nodes.get(`${kind}-list-note`).textContent.startsWith(reason));
+    }
+    mode.active = false;
+    update();
+    for (const kind of ['station', 'photo']) assert.equal(nodes.get(`${kind}-controls`).disabled, false);
+  }
+  for (const kind of ['station', 'photo']) nodes.get(`${kind}-list`).children = [];
+  update();
+  for (const kind of ['station', 'photo']) {
+    assert.equal(nodes.get(`${kind}-controls`).disabled, true);
+    assert.match(nodes.get(`${kind}-list-note`).textContent, /^No /);
+  }
 });
 
 test('every id that the 3D code looks up is in the page, or made by the code', () => {

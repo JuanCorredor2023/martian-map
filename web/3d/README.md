@@ -56,6 +56,16 @@ or press "Reload plan". With no saved plan the terrain still works.
   the terrain may still hide it); "View the rover photo" opens its photo view. With none that
   near, the card says so. At a rehearsal stop the card shows the same photo, without the button
   and without moving the walker or the clock.
+- **Keyboard stop lists**: *Plan → Stations (count)* and *Rover photos → Photo stops (count)*
+  start folded and scroll when opened. Tab reaches their titles and buttons; Enter or Space
+  opens a list or chooses a stop. Stations appear in visit order (for example,
+  "1 · R3 · Boxwork ridge"), then the stations marked "Not visited"; without visit information,
+  they keep the plan's order without invented visit numbers. A station button flies there
+  and opens the same card as its pin. Photo buttons show a stop number, sol and view count;
+  they turn on "Show photo stops" and open the existing card, whose "View from here" starts
+  the photo view. Focus moves to the card's Close button and returns to the list on Close.
+  Both lists are disabled, with an explanation, during Rehearse (including pause), photo
+  view and Walk freely. Leaving the mode restores them. Empty or unavailable lists say why.
 - **Guide** (the arm tablet's logic, shared in `web/guide_core.js`): the next maneuver as
   the tablet shows it (the arrow, the distance big, "350 m" or "Now", the instruction under
   it), voice on/off, the tablet's meters with its labels ("Spare energy" after
@@ -244,6 +254,10 @@ python -m pytest tests/viz3d -q     # the terrain assets against the DEM
 `web/index.html`, if a layer's name or hover text is no longer the 2D's words (less its
 codes), or if the slope tile colours of `src/gis/tiles.py` change. `plan_model.test.mjs`
 checks the plain words of the plan's messages on the three real answers.
+The exported pure helpers `stationList` (`plan_model.js`) and `photoStopList` (`photos.js`)
+are covered by `plan_model.test.mjs` and `photos_model.test.mjs`; `ui_controls.test.mjs`
+checks both lists' native controls, existing card/flight wiring and mode restrictions.
+Run `node --test tests/viz3d/ tests/web/` for the combined regression suite.
 
 Fixtures in `tests/viz3d/fixtures/` are real answers of the API: an E4 round trip, the
 fixed route with no profile, and a multi-station E5 tour

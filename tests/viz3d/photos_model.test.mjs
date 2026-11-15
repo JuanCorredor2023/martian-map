@@ -11,6 +11,7 @@ import { test } from 'node:test';
 import { mslClock } from '../../web/3d/mars_sun.js';
 import { siteFromCrs, sunState } from '../../web/3d/sun_model.js';
 import * as P from '../../web/3d/photos_model.js';
+import { photoStopList } from '../../web/3d/photos.js';
 
 const RAW = JSON.parse(readFileSync(new URL('./fixtures/photos_catalog.json', import.meta.url), 'utf8'));
 const MODEL = P.parseCatalog(structuredClone(RAW));
@@ -547,4 +548,27 @@ test('station preview text: one plain sentence, and never a promise that the sta
     assert.doesNotMatch(t, /\b(visible|visibility|seen|see|sees|shows?|can)\b/i, t);
     if (/inside its field/.test(t)) assert.match(t, /\(.*the terrain may still hide it\)\.$/, t);
   }
+});
+test('photo stop list: same stops as the pins, catalogue order, sols and view counts', () => {
+  const before = structuredClone(MODEL);
+  assert.deepEqual(photoStopList(MODEL), [
+    {id: 'stop_0000', label: '1 · Sol 4450 · 1 view'},
+    {id: 'stop_0018', label: '2 · Sol 4489 · 2 views'},
+    {id: 'stop_0079', label: '3 · Sol 4667 · 4 views'},
+  ]);
+  assert.deepEqual(photoStopList(MODEL).map(e => e.id), P.photoMarkers(MODEL).map(m => m.data.groupId));
+  assert.deepEqual(MODEL, before);
+});
+
+test('photo stop list: empty or missing catalogue, empty stops, missing images and several sols', () => {
+  assert.deepEqual(photoStopList(null), []);
+  assert.deepEqual(photoStopList(P.parseCatalog({schema_version: 1, groups: [], photos: []})), []);
+  const model = structuredClone(MODEL);
+  model.groups[0].photoIds = [];
+  const group = model.groups[1];
+  model.byId.get(group.photoIds[0]).sol = 4490;
+  for (const id of group.photoIds) model.byId.get(id).available = false;
+  const entries = photoStopList(model);
+  assert.deepEqual(entries[0], {id: group.id, label: '1 · Sol 4489, 4490 · 2 views'});
+  assert.equal(entries.length, 2, 'empty stops omitted, missing images still have their cards');
 });

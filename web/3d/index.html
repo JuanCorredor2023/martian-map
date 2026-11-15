@@ -70,6 +70,16 @@
   #plan-box button:disabled { opacity: 0.5; cursor: default; }
   #rehearse-note { margin-top: 4px; }
   #plan-default-note { margin-top: 4px; }
+  /* Keyboard alternatives to the pins: folded first, and short even when opened. */
+  #info .stop-controls { border: 0; padding: 0; margin: 6px 0; min-width: 0; }
+  #info .stop-list { list-style: none; padding: 3px; margin: 0; max-height: 180px; overflow-y: auto; }
+  #info .stop-list button { display: block; width: 100%; box-sizing: border-box; margin: 0 0 4px;
+    padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: #1c222b;
+    color: var(--text); font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+  #info .stop-list button:hover:not(:disabled) { background: #262e3a; }
+  #info .stop-list button:disabled { opacity: 0.5; cursor: default; }
+  #info .stop-list button:focus-visible, #info .stop-picker > summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px; }
   /* Touch screens (#124): every control of the panel is at least 44 px tall (Apple's 44 pt,
      WCAG 2.5.5): section titles, buttons, ticks with their words, fields, and the sliders'
      thumbs (a 28 px dot in a clear ring of 44 px). Fields get 16 px text: smaller text makes
@@ -290,6 +300,13 @@
     <div id="plan-facts"></div>
     <div class="muted" id="plan-key"></div>
     <div id="plan-warnings"></div>
+    <details class="stop-picker">
+      <summary id="station-list-title" class="muted">Stations (0)</summary>
+      <div id="station-list-note" class="muted" role="status">Waiting for the plan…</div>
+      <fieldset id="station-controls" class="stop-controls" aria-labelledby="station-list-title" aria-describedby="station-list-note" disabled>
+        <ul id="station-list" class="stop-list"></ul>
+      </fieldset>
+    </details>
     <button id="plan-reload" disabled>Reload plan</button>
     <!-- Walk the route at eye height (rehearse.js). Disabled, with the reason, when there is no route. -->
     <button id="rehearse" disabled>Rehearse</button>
@@ -337,6 +354,13 @@
     <label class="check muted" title="Pins at the stops where Curiosity's Navcam took photos (2025–2026)">
       <input type="checkbox" id="photos-show" disabled>Show photo stops</label>
     <div class="muted" id="photos-note">Loading the photo catalogue…</div>
+    <details class="stop-picker">
+      <summary id="photo-list-title" class="muted">Photo stops (0)</summary>
+      <div id="photo-list-note" class="muted" role="status">Waiting for the photo catalogue…</div>
+      <fieldset id="photo-controls" class="stop-controls" aria-labelledby="photo-list-title" aria-describedby="photo-list-note" disabled>
+        <ul id="photo-list" class="stop-list"></ul>
+      </fieldset>
+    </details>
   </details>
   <details id="about">
     <summary class="muted">About this view</summary>

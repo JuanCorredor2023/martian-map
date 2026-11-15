@@ -52,6 +52,16 @@ function button(text, title, onClick) {
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const headingDeg = photo => ((Math.round(photo.heading / DEG) % 360) + 360) % 360;
 
+// Plain data for the keyboard list, in catalogue order, using the same stops and views
+// as the pins and cards. Missing images still have a card explaining their absence.
+export function photoStopList(model) {
+  if (!model) return [];
+  return model.groups.filter(g => g.photoIds.length).map((g, i) => {
+    const views = viewsOf(model, g.id), sols = [...new Set(views.map(v => v.sol))].sort((a, b) => a - b);
+    return {id: g.id, label: `${i + 1} · Sol ${sols.join(', ')} · ${plural(views.length, 'view')}`};
+  });
+}
+
 export class PhotoLayer {
   // markers: a MarkerLayer of its own for the photo pins; relief: {lock(reason),
   // unlock(k)} from main.js; showCard/hideCard: card.js; isBusy(): true while the
