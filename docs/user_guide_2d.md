@@ -8,7 +8,7 @@
 
 You choose science stations in a 2 × 2 km area of the Gale crater boxwork and set the EVA's limits (time, energy, reserve, oxygen). The planner returns a walk that:
 - visits the stations that give the most science value within those limits, in the best order;
-- **always lets the astronaut get back to the habitat**: at every point of the route, the energy used plus the energy needed to return fits the budget (*walkback*);
+- **checks at every point of the route that the astronaut can get back to the habitat**: the energy used plus the energy needed to return fits the budget (*walkback*). The check is exact on the model's costs (walking energy on the 1 m terrain model, oxygen estimated from it); a body that works harder than the model is covered by the tablet's adaptive meter;
 - avoids cells steeper than the slope limit.
 
 Then you rehearse the walk and check, at any point, how far the astronaut can still go and come back.
@@ -22,7 +22,7 @@ Everything runs on the local server; no internet is needed during use.
 3. The screen has the **map** and a **side panel with tabs**: **1 Terrain → 2 Stations → 3 Plan → 4 Walk**, plus **Context**. Follow them in order; each tab ends with a **Next** button.
 4. **Tips** appear in context the first time each step matters. A tip you have seen, or whose suggestion you followed, does not come back.
 
-**Coordinates and units.** Positions are metres in the Mars map projection of the terrain model, energy is Wh, time minutes, oxygen litres. Move the cursor over the map: the box in the corner reads the cell under it.
+**Coordinates and units.** Positions are metres in the Mars map projection of the terrain model, energy is Wh, time minutes, oxygen litres. Move the cursor over the map: the box in the corner says where it is, in metres east and north of the area's south-west corner.
 
 **On the map:** drag to pan, scroll to zoom. **Fit plan** zooms to the walk; **Whole area** shows the whole box. The **On the map** legend lists only what is drawn right now (closed by default on small screens).
 
@@ -34,7 +34,7 @@ Everything runs on the local server; no internet is needed during use.
 | **Shaded relief** | Hillshade of the 1 m terrain model | Knolls and scarps; it does not resolve the 1–3 m ridges |
 | **Slope** | Steepest slope per cell | Green 0°, yellow 15°, orange 30°, red 45° and more |
 | **Never cross cells steeper than N°** | Cells blocked for the planner (dark hatch) | Default 30°; the line under it says how much is blocked ("12.4 % of the area is off limits" at 30°). **The setting that changes routes the most.** 20° blocks about 30 % of the box. Changing it marks the plan out of date |
-| **Sand detected** | Fraction of each 1 m cell detected as sand | Cautious: when it marks sand it is right about 91 % of the time, but it misses most sand |
+| **Sand detected** | Fraction of each 1 m cell detected as sand | Cautious: when it marks sand it is right about 92 % of the time, but it misses most sand |
 | **Boulders** | Dots per 10 m square; bigger dot, more boulder cover | Boulders larger than about 1 m. Context only: the route cost does not use them |
 | **Walking cost** | Wh to cross each 1 m cell | The cheapest metre is a gentle descent, not flat ground |
 
@@ -86,7 +86,7 @@ Press **Plan the walk** (or **Enter** in a field); after the first plan the butt
 
 Without a plan the tab says *"Plan a walk in step 3 to rehearse it here. To check one point now, open Try another point below."*
 
-**Rehearse:** **Play** runs the walk (**Space** plays or pauses), at ×30, ×60 or ×180. At the top, updated as the walker moves:
+**Rehearse:** **Play** runs the walk (**Space** plays or pauses), at ×30, ×60 or ×180. Here it plays through the stations; the tablet guide and the 3D rehearsal stop at each one. At the top, updated as the walker moves:
 - **Home in N min · limit 30:** the time back to the habitat against the 30 min emergency-oxygen limit;
 - **Spare energy:** energy left after returning, and "On the plan, returning costs N Wh";
 - **Margin to the 30 min line**, with a word: OK, TURN SOON or OVER 30 MIN (for example "OK · 30 min spare");
@@ -105,7 +105,7 @@ Links open the same walk in the **Tablet** guide, the **3D** view and the **Wris
 
 ## 7. Context
 
-- **Radiation:** the dose accumulated over a sample walk; **Simulate a solar storm** shows the alert and the way home with its dose. The background dose does not change the plan; a storm does.
+- **Radiation:** the dose accumulated over a sample walk; **Simulate a solar storm** pauses the rehearsal, shows the alert with the way home from where the walker is (the same time as the walk card) and its dose; if the way home does not fit the energy left, the alert says so. The background dose does not change the plan; a storm does.
 - **Weather on the day:** air temperature for a chosen **Sol** (one value per sol, from Curiosity's REMS).
 - **Minerals seen from orbit** within 100 km: regional context.
 - **Data sources:** where every layer comes from ("N data types from M missions"; also the *Data sources* chip at the top).

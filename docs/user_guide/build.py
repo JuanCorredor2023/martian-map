@@ -16,6 +16,7 @@ badge to the box. The numbers match the list under the figure (data-shot / data-
 
 import html
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -23,6 +24,20 @@ HERE = Path(__file__).resolve().parent
 PANEL_W = 372                     # width of the 2D planner's side panel at 1440 px; a shot can
                                   # give its own "panel_w" (0: no side panel)
 SKIP = {"no-plan": {1}}            # behind the panel header after scrolling: not visible
+# One sentence per screenshot for screen readers (the key list below it is linked too).
+ALT = {
+    "tips": "The planner with a tip card next to the side panel, pointing at the control it means.",
+    "overview": "The planner: side panel with the step tabs on the left, the map of the 2 by 2 km area on the right.",
+    "terrain": "Step 1, Terrain: the list of map layers and the slope limit on the left, the slope map on the right.",
+    "stations": "Step 2, Stations: station type, load buttons, the folded Advanced section and the stations table.",
+    "placing": "Placing a station: the add mode is on and a banner on the map says what a click will do.",
+    "plan-inputs": "Step 3, Plan: the habitat, the limits (EVA length, energy budget, reserve) and the Plan the walk button.",
+    "plan-result": "A plan: the guarantee chip, what it spends, the visiting order, radio and best time to leave, and the route on the map.",
+    "no-plan": "No plan: the message says which station and resource fall short and what budget would fit.",
+    "walk": "Step 4, Walk: the walk card, the energy bar and player, and the route with the safety lines on the map.",
+    "probe": "Try another point: the astronaut placed on the map, with the time home and spare energy for that point.",
+    "context": "Context: radiation with the storm simulator, and the weather of the chosen sol with its temperature chart.",
+}
 
 
 def visible(m, w, h):
@@ -117,13 +132,14 @@ def figure(name, shot):
             f'<text class="badge-n" x="{px:.0f}" y="{py + 6:.0f}">{b["n"]}</text></g>')
     shown = ",".join(str(b["n"]) for b in boxes)
     return (f'<figure class="shot" data-shot="{name}" data-shown="{shown}">'
-            f'<div class="frame"><img src="{html.escape(shot["img"])}" width="{w}" height="{h}" '
-            f'alt="Screenshot: {html.escape(name)}" loading="lazy">'
+            f'<div class="frame"><div class="canvas"><img src="{html.escape(shot["img"])}" width="{w}" height="{h}" '
+            f'alt="{html.escape(ALT.get(name, "Screenshot: " + name))}" aria-describedby="keys-{name}" loading="lazy">'
             f'<svg viewBox="0 0 {w} {h}" preserveAspectRatio="none" aria-hidden="true">'
             f'<defs><marker id="arrow-{name}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" '
             f'markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs>'
             + "".join(parts) +
-            f'</svg></div><a class="zoom" href="{html.escape(shot["img"])}" target="_blank" rel="noopener">'
+            f'</svg></div></div><p class="swipe">Swipe sideways to see the whole screen.</p>'
+            f'<a class="zoom" href="{html.escape(shot["img"])}" target="_blank" rel="noopener">'
             f'Open the full-size screenshot</a></figure>')
 
 
@@ -133,6 +149,7 @@ def main():
     page = (folder / "template.html").read_text(encoding="utf-8")
     for name, shot in shots.items():
         page = page.replace(f"<!--SHOT:{name}-->", figure(name, shot))
+    page = re.sub(r'<ol class="keys" data-shot="([\w-]+)">', r'<ol class="keys" id="keys-\1" data-shot="\1">', page)
     missing = [line for line in page.splitlines() if "<!--SHOT:" in line]
     if missing:
         raise SystemExit(f"no screenshot for: {missing}")
