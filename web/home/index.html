@@ -58,7 +58,7 @@
     </figure>
   </section>
 
-  <!-- Video placeholder: no YouTube embed, so it looks the same offline. -->
+  <!-- The demo video, embedded from YouTube (the only external resource of the page). -->
   <section class="band-dark video" id="video" aria-labelledby="video-title">
     <div class="wrap">
       <div class="section__head">
@@ -70,18 +70,13 @@
         </div>
       </div>
       <div class="video__frame">
-        <img src="assets/poster-3d-1600.webp"
-             srcset="assets/poster-3d-960.webp 960w, assets/poster-3d-1600.webp 1600w"
-             sizes="(min-width: 1264px) 1200px, (min-width: 640px) calc(100vw - 64px), calc(100vw - 32px)"
-             width="1600" height="900" loading="lazy" decoding="async" alt="">
-        <div class="video__label">
-          <svg class="video__play" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M26 20.5v23L44.5 32z" fill="currentColor"/></svg>
-          <p class="video__soon">Video coming soon</p>
-          <p>It will play on YouTube. The app itself needs no internet.</p>
-          <!-- When the video exists: put its URL in href and remove "hidden". -->
-          <a class="btn btn-primary" data-youtube-link href="#" hidden>Watch on YouTube</a>
-        </div>
+        <iframe src="https://www.youtube-nocookie.com/embed/7LSQqSFdU6c?rel=0" title="Mars EVA Planner: the 30-second demo (YouTube)"
+                loading="lazy" referrerpolicy="strict-origin-when-cross-origin"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowfullscreen></iframe>
       </div>
+      <!-- The video is on YouTube; the button also works where the embed cannot load (offline). -->
+      <p class="video__alt"><a class="btn btn-primary" data-youtube-link href="https://www.youtube.com/watch?v=7LSQqSFdU6c">Watch on YouTube</a></p>
       <p class="video__more"><a class="more" href="demo.html">Follow the demo step by step</a></p>
     </div>
   </section>
