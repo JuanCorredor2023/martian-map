@@ -8,13 +8,26 @@
 - linear O2: 21.4 %;
 - exact planner: 0 %.
 
-The baselines are not too conservative; they underestimate E3. A terrain-aware 30 min line also beats the classic fixed radius: 36 % of what the 1.35 km circle calls safe cannot get back in 30 min. Of that, 15.6 % of the cells have no way back at all, blocked or cut off by scarps, and 20.7 % are too slow (Figure @fig:redline).
+The baselines are not too conservative; they underestimate E3. Avoiding every false safe would need a safety factor (99th percentile of real over estimated energy) of 1.42 for A\*-slope, 4.05 for the fixed radius and 1.32 for linear O2.
+
+With the human cost (E3 × sand) as terrain truth and the E8 contacts as extra goals, every baseline gets about 1 point worse (50 % budget: 28.5 %, 45.5 % and 22.4 %), and the planner stays at 0 %. Slope, not sand, drives the failures.
+
+A terrain-aware 30 min line also beats the classic fixed radius: 36 % of what the 1.35 km circle calls safe cannot get back in 30 min. Of that, 15.6 % of the cells have no way back at all, blocked or cut off by scarps, and 20.7 % are too slow (Figure @fig:redline).
 
 **Time, not energy, binds in the box.** The costliest round trip from the centre is 562.8 Wh, against about 2,050 Wh of a 7 h suit budget. The full tour of the 13 manual stations collects 56 of 56 points in 723.6 Wh and 180.9 min. Service, not walking, is 61 % of the energy and 72 % of the time. With a 120 min limit the tour visits 8 stations for 37 points (111.4 min, 445.1 Wh). The station choice stops depending on the rubric once the time budget covers the nominal duration. Adding E8's contacts (26 reachable stations, solved and proven optimal by CP-SAT in 0.3 s) raises the score to 60.47, and then energy binds (872.0 of 900 Wh).
 
 **Exact solvers are fast enough.** The exact solvers reach the optimum on every instance, with a median time within 0.12 s of the fastest metaheuristic. ILS misses the optimum in about a quarter of the instances, with gaps up to 37.5 % with time windows. GA is the best metaheuristic (97 % optimal on the random instances). All methods find the optimum on the real E5 instances.
 
 **What the terrain explains.** DEM features explain the choice of valley (AUC 0.73 over the whole box) but not the path inside the boxwork (0.53 in a 50 m corridor). Learned DEM prices are zero. Only orthophoto sand earns a small price (factor 1.0–1.115). With it, the route to Nevado Sajama moves up to 23 m and costs 1.8 % more, and the 120 min tour visits the same stations.
+
+**Boulders.**
+- **Detection:** BoulderNet finds 8,380 boulders in the box (2,525 with score ≥ 0.5).
+- **Distillation:** a student 47 times smaller reproduces its density (r = 0.66 on held-out blocks, calibrated mean) in 8.6 s instead of 362 s, but finds single boulders poorly (F1 0.27 against 0.66).
+- **Pricing boulders on the 28 stations:**
+  - With the student's cover, k = 10 halves the boulder area the E4 round trips cross (45 → 21 m²) for a median +0.06 % energy and at most +16 m.
+  - With the GP layer and one-sided 95 % caution (λ = 1.645), the boulder area falls by 56 % for < 1 % energy.
+  - k has no source, so none of this enters the nominal cost.
+- **GP (X1):** it adds no accuracy over a 20 m smoothing; its value is the uncertainty, calibrated overall (92–93 %) but too narrow on rocky blocks (~80 %).
 
 **Radio, light and dose.** A 3 m antenna at the box centre sees 22.6 % of the box (13.0 % on average over 20 random habitats). On the 120 min tour, 575 m (41 %) of the route has no direct radio, and a partner 20 m behind reduces the unlinked length only to 526 m. Leaving at any time from about 06:30 to 14:30 keeps the nominal walk sunlit on sol 4711; terrain shadows shorten that window by 15–45 min. A provisional 2.97 h EVA receives 19.4 µGy at the background rate.
 
