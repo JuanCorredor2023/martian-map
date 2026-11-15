@@ -131,6 +131,38 @@ Fixtures in `tests/viz3d/fixtures/` are real answers of the API: an E4 round tri
 fixed route with no profile, and a multi-station E5 tour
 (`src/viz3d/make_tour_fixture.py` says how it was made).
 
+## Rover photos (P3, data only so far)
+
+Curiosity Navcam photos placed where the camera was, for a later version of the page
+(issue #46). This step only prepares the data; the page does not show them yet. Method,
+numbers and limits: `paper/notes/P3_rover_photos.md`.
+
+`<raw>` below is the full data folder outside the repo (`data/README.md`). From the repo
+root:
+
+```
+python -m src.viz3d.build_rover_photos \
+  --index-dir <raw>/03_curiosity/imagenes_crudas/indice_soles_4450_4848 \
+  --places-csv <raw>/03_curiosity/places_pds/data_localizations/localized_interp.csv \
+  --images-dir <raw>/03_curiosity/imagenes_crudas \
+  --dem data/base/dem_1m.tif --output-dir data/tiles/3d/photos
+```
+
+It never downloads. It writes `data/tiles/3d/photos/catalog.json` (stops, chosen photos,
+camera position and direction, time, credit), `report.json` (counts, discards and checks)
+and `download_manifest.json` (chosen photos with no local file, with an estimated size).
+After the size has been agreed, fetch them and build again:
+
+```
+python -m src.viz3d.fetch_rover_photos \
+  --manifest data/tiles/3d/photos/download_manifest.json \
+  --dest <raw>/03_curiosity/imagenes_crudas/navcam_p3
+```
+
+It accepts only full 1024 × 1024 JPEGs from `mars.nasa.gov/msl-raw-images/`, skips files
+already present and logs size and SHA-256 in `navcam_p3/_download_log.json`. Tests:
+`python -m pytest tests/viz3d -q` (no network, no real photos needed).
+
 ## Known limits
 
 - The DEM (1 m) does not resolve the 1–2 m boxwork ridges: the relief and the shadows show
