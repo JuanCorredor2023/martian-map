@@ -121,6 +121,27 @@ The HUD can load suggestions **unsaved**; a person reviews them on the orthophot
 - One ridge (5) is worth less than two Curiosity sites (6).
 - Hollow + contact (8) ties ridge + Curiosity site (8); the E3/E4 cost breaks the tie.
 
+### Data types combined and surface weather (P4, #44; `api/data_sources.py`, `api/weather.py`)
+The challenge asks for at least three data types. `GET /data_sources` lists the ones the product actually uses, and only counts a source whose file is on disk. The HUD shows the count under the title. Today it is **5 data types from 2 missions**:
+- orbital image (HiRISE orthophoto, MRO);
+- elevation (HiRISE DEM, MRO);
+- rover traverse (Curiosity localization, MSL);
+- radiation (RAD, MSL);
+- surface weather (REMS, MSL).
+
+Spectral (CRISM/OMEGA), thermal (THEMIS) and chemistry (ChemCam/APXS) are listed as planned and not counted.
+
+`GET /weather?sol=&eva_min=` reads the public REMS feed (release `rems-v1`; 4,745 sols, 1–4995). It returns:
+- the chosen sol: air and ground temperature range, pressure, UV index, sunrise, sunset and hours of daylight;
+- whether the EVA's maximum duration fits in daylight;
+- the daily air range over the boxwork campaign (sols 4541–4848, 299 sols with data).
+
+If a sol has no data, the nearest one is used and reported. The default sol is 4711 (the Nevado Sajama drill), the same as the 3D view's Sun.
+- On sol 4711 (2025-11-06), the air ranged from −74 to −4 °C, the ground from −86 to +12 °C, the pressure was 692 Pa, UV was moderate, and there were 11.9 h of daylight (05:24–17:20).
+- Over the campaign, the air ranged from −100 to +8 °C (`tests/api/test_api.py::test_weather_from_rems`).
+
+Weather is context, not a cost term: REMS gives one value per sol for the whole site, not a map. The feed calls itself an outreach product; REMS science data is in PDS.
+
 ## Results
 - Blocked share of the box by the cell limit: 12.4 % at 30°, 29.6 % at 20° (`/layers/blocked`, from `slope_deg.tif`).
 - Cost layer colour scale starts at 0.0941 Wh per cell = 338.75 J/m, the analytic c_min,h of E3 (`/layers/cost`; test `test_cost_layer_png_and_legend`).

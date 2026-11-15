@@ -23,6 +23,7 @@ The demo is a FastAPI backend (`api/`) that serves the HUD (`web/index.html`) an
    | `data/e12/` | `e12-dose-v1` | radiation panel (optional) |
    | `data/e8/` | `e8-v0` | sand layer (optional) |
    | `data/e1/` | `e1-sand-v1` | human cost: E3 × E1 sand price (optional; without it E3 alone) |
+   | `data/rems/` | `rems-v1` | surface weather panel (REMS) (optional) |
    | `data/tiles/3d/` | generated | 3D view: run once `python src/viz3d/build_terrain_assets.py` (optional) |
 
    PowerShell example: `gh release download base-grid-v2 --dir data; Expand-Archive data\base_grid_v2.zip data\base -Force; Remove-Item data\base_grid_v2.zip`. The stations release has no zip: `gh release download stations-v1 --dir data\stations`.

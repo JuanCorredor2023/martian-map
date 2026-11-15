@@ -68,6 +68,20 @@
   button:disabled { opacity: 0.5; cursor: wait; }
   #plan-info { margin-top: 8px; }
   .warn { color: #f2c94c; font-size: 12px; margin-top: 4px; }
+  #sources { margin: -4px 0 8px; font-size: 12px; }
+  #sources summary { cursor: pointer; color: var(--text); }
+  #sources summary b { color: var(--accent); }
+  #sources ul { margin: 4px 0 0; padding-left: 16px; color: var(--muted); }
+  #sources li { margin: 2px 0; }
+  #wx-chart { display: block; margin: 6px 0 2px; overflow: visible; }
+  #wx-chart .axis { stroke: rgba(255,255,255,0.25); stroke-width: 1; }
+  #wx-chart .tick { fill: var(--muted); font-size: 10px; }
+  #wx-chart .hi { fill: none; stroke: #c97a1a; stroke-width: 2; stroke-linejoin: round; }
+  #wx-chart .lo { fill: none; stroke: #5b8fde; stroke-width: 2; stroke-linejoin: round; }
+  #wx-chart .lab { font-size: 10px; fill: var(--muted); }
+  #wx-chart .sel { stroke: var(--text); stroke-width: 1; stroke-dasharray: 2 2; }
+  #wx-chart .cross { stroke: rgba(255,255,255,0.5); stroke-width: 1; }
+  #wx-tip { font-size: 11px; color: var(--text); min-height: 14px; }
   hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
   @media (max-width: 520px) { #layers { width: auto; right: 16px; } }
 </style>
@@ -77,6 +91,7 @@
 
 <div id="layers" class="panel">
   <h1>Mars EVA Planner <span>· Gale boxwork</span></h1>
+  <details id="sources"><summary>Data sources…</summary><ul id="sources-list"></ul></details>
   <label><input type="checkbox" id="show-ortho" checked> HiRISE ortho (0.25 m)</label>
   <label><input type="checkbox" id="show-hillshade"> Hillshade</label>
   <label><input type="checkbox" id="show-slope" checked> Slope</label>
@@ -151,6 +166,14 @@
           border:1px solid var(--border);border-radius:4px;padding:3px"></select>
   <button id="sep-btn" class="secondary">Simulate SEP alert at the astronaut</button>
   <div id="sep-info"></div>
+  <hr>
+  <div class="muted"><b style="color: var(--text)">Surface weather (REMS)</b> · one value per sol, not a map</div>
+  <div class="row"><span class="muted">EVA sol</span>
+    <input type="number" id="wx-sol" min="1" step="1" value="4711" style="width:70px"></div>
+  <div id="wx-summary" class="muted"></div>
+  <div class="muted" style="margin-top:6px">Air temperature, boxwork campaign (°C)</div>
+  <svg id="wx-chart" width="226" height="96" role="img" aria-label="Daily maximum and minimum air temperature over the boxwork campaign sols"></svg>
+  <div id="wx-tip" class="muted"></div>
   <hr>
   <div class="muted" id="status">Loading layers…</div>
 </div>
@@ -513,6 +536,90 @@ function drawDoseChart(curve) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Data sources (P4, #44): the "N data types from M missions" line. Only sources
+// that are on disk and used by the product are counted; planned ones are listed.
+// ---------------------------------------------------------------------------
+async function loadSources() {
+  const res = await fetch("/data_sources");
+  if (!res.ok) return;
+  const d = await res.json();
+  ui("sources").querySelector("summary").innerHTML =
+    `<b>${d.n_types} data types</b> from ${d.n_missions} missions`;
+  const esc = t => String(t).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
+  ui("sources-list").innerHTML =
+    d.sources.map(s => `<li><span style="color:var(--text)">${esc(s.type)}</span>: ${esc(s.instrument)} ` +
+                       `(${esc(s.mission)}) → ${esc(s.use)}</li>`).join("") +
+    d.missing.map(s => `<li>${esc(s.type)}: ${esc(s.instrument)} — data missing on this machine</li>`).join("") +
+    d.planned.map(s => `<li><i>Planned</i>: ${esc(s.type)}, ${esc(s.instrument)} (${esc(s.mission)})</li>`).join("");
+}
+
+// ---------------------------------------------------------------------------
+// Surface weather (REMS, P4): conditions of the EVA's sol and the campaign's
+// daily air temperature range. Context for when to go out, not a cost term.
+// ---------------------------------------------------------------------------
+function drawWeatherChart(series, selSol) {
+  const svg = ui("wx-chart"), W = 226, H = 96, L = 30, B = 16, T = 6, R = 34;
+  const s0 = series[0].sol, s1 = series[series.length - 1].sol;
+  const vals = series.flatMap(p => [p.air_min_c, p.air_max_c]);
+  const vMin = Math.floor(Math.min(...vals) / 10) * 10, vMax = Math.ceil(Math.max(...vals) / 10) * 10;
+  const x = sol => L + (sol - s0) / (s1 - s0) * (W - L - R);
+  const y = v => H - B - (v - vMin) / (vMax - vMin) * (H - B - T);
+  // Break the line where sols are missing (gaps longer than 3 sols).
+  const line = key => series.map((p, i) => {
+    const jump = i === 0 || p.sol - series[i - 1].sol > 3;
+    return `${jump ? "M" : "L"}${x(p.sol).toFixed(1)},${y(p[key]).toFixed(1)}`;
+  }).join("");
+  const last = series[series.length - 1];
+  const inRange = selSol >= s0 && selSol <= s1;
+  svg.innerHTML = `
+    <line class="axis" x1="${L}" y1="${H - B}" x2="${W - R}" y2="${H - B}"/>
+    <line class="axis" x1="${L}" y1="${T}" x2="${L}" y2="${H - B}"/>
+    <text class="tick" x="${L - 4}" y="${y(vMax) + 3}" text-anchor="end">${vMax}</text>
+    <text class="tick" x="${L - 4}" y="${y(vMin) + 3}" text-anchor="end">${vMin}</text>
+    ${vMin < 0 && vMax > 0 ? `<line class="axis" x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke-dasharray="1 3"/>
+      <text class="tick" x="${L - 4}" y="${y(0) + 3}" text-anchor="end">0</text>` : ""}
+    <text class="tick" x="${L}" y="${H - 3}">sol ${s0}</text>
+    <text class="tick" x="${W - R}" y="${H - 3}" text-anchor="end">${s1}</text>
+    <path class="hi" d="${line("air_max_c")}"/>
+    <path class="lo" d="${line("air_min_c")}"/>
+    <text class="lab" x="${x(last.sol) + 4}" y="${y(last.air_max_c) + 3}">max</text>
+    <text class="lab" x="${x(last.sol) + 4}" y="${y(last.air_min_c) + 3}">min</text>
+    ${inRange ? `<line class="sel" x1="${x(selSol)}" x2="${x(selSol)}" y1="${T}" y2="${H - B}"/>` : ""}
+    <line class="cross" id="wx-cross" y1="${T}" y2="${H - B}" visibility="hidden"/>
+    <rect x="${L}" y="0" width="${W - L - R}" height="${H}" fill="transparent" id="wx-hit"/>`;
+  const cross = svg.querySelector("#wx-cross"), hit = svg.querySelector("#wx-hit");
+  hit.addEventListener("mousemove", ev => {
+    const box = svg.getBoundingClientRect();
+    const sol = s0 + (ev.clientX - box.left - L) / (W - L - R) * (s1 - s0);
+    const p = series.reduce((a, b) => Math.abs(b.sol - sol) < Math.abs(a.sol - sol) ? b : a);
+    cross.setAttribute("x1", x(p.sol)); cross.setAttribute("x2", x(p.sol));
+    cross.setAttribute("visibility", "visible");
+    ui("wx-tip").textContent = `sol ${p.sol} · air ${p.air_min_c} to ${p.air_max_c} °C · ground ${p.ground_min_c} to ${p.ground_max_c} °C`;
+  });
+  hit.addEventListener("mouseleave", () => { cross.setAttribute("visibility", "hidden"); ui("wx-tip").textContent = ""; });
+  hit.addEventListener("click", () => {          // click a sol on the chart to select it
+    const sol = Number(ui("wx-tip").textContent.match(/sol (\d+)/)?.[1]);
+    if (sol) { ui("wx-sol").value = sol; loadWeather(); }
+  });
+}
+
+async function loadWeather() {
+  const sol = Number(ui("wx-sol").value) || 4711;
+  const eva = Number(ui("max-min").value) > 0 ? Number(ui("max-min").value) : null;
+  const q = new URLSearchParams({sol});
+  if (eva) q.set("eva_min", eva);
+  const res = await fetch("/weather?" + q);
+  if (!res.ok) { ui("wx-summary").innerHTML = `<span class="warn">${(await res.json()).detail}</span>`; return; }
+  const w = await res.json(), d = w.day;
+  const moved = d.sol !== d.requested_sol ? ` (no data for sol ${d.requested_sol}; nearest)` : "";
+  ui("wx-summary").innerHTML =
+    `<b style="color:var(--text)">Sol ${d.sol}</b> · ${d.earth_date}${moved}<br>` +
+    `Air ${d.air_min_c} to ${d.air_max_c} °C · ${d.pressure_pa} Pa<br>` +
+    w.notes.map(n => "• " + n).join("<br>");
+  if (w.campaign.series.length > 1) drawWeatherChart(w.campaign.series, d.sol);
+}
+
 async function loadRadiation() {
   const res = await fetch("/radiation");
   if (!res.ok) { ui("rad-summary").innerHTML = `<span class="warn">${(await res.json()).detail}</span>`; return; }
@@ -736,7 +843,9 @@ ui("wb-energy").addEventListener("change", requestWalkback);
 for (const id of ["block-on", "block-slope"]) ui(id).addEventListener("change", requestWalkback);
 window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 
-main().then(refreshBlockInfo).then(loadStations).then(loadRadiation).catch(err => { ui("status").textContent = "Error: " + err.message; console.error(err); });
+ui("wx-sol").addEventListener("change", loadWeather);
+ui("max-min").addEventListener("change", loadWeather);
+main().then(refreshBlockInfo).then(loadStations).then(loadRadiation).then(loadSources).then(loadWeather).catch(err => { ui("status").textContent = "Error: " + err.message; console.error(err); });
 </script>
 </body>
 </html>
