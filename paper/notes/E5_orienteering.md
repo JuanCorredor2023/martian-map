@@ -1,6 +1,6 @@
 # E5 · Station selection and order (orienteering)
 
-Owner: Diana (`@dianagrz`) · Issues: #9, #111, #119 · PRs: #37, #78, #83, #114 (time windows from the light), #119's PR (diagnosis and guarantee scope) · Status: done (in `main` since #37: `/plan` plans the multi-station tour through `plan_tour`; DP up to 20 nodes, CP-SAT above; E8 stations v0 integrated; a v1 is not committed (JB, #9) and would only need a rerun; time windows now come from the light, #111) · Last update: 2026-11-15
+Owner: Diana (`@dianagrz`) · Issues: #9, #111, #119 · PRs: #37, #78, #83, #114 (time windows from the light), #131 (diagnosis and guarantee scope), #119's API PR (diagnosis in `/plan` and the HUD) · Status: done (in `main` since #37: `/plan` plans the multi-station tour through `plan_tour`; DP up to 20 nodes, CP-SAT above; E8 stations v0 integrated; a v1 is not committed (JB, #9) and would only need a rerun; time windows now come from the light, #111) · Last update: 2026-11-15
 
 ## Question
 Given N science stations with a value, which subset should the astronaut visit, and in what order, to collect the most value without breaking the energy budget, the EVA duration, the stations' time windows or the walkback rule (always able to walk home)?
@@ -48,6 +48,7 @@ Given N science stations with a value, which subset should the astronaut visit, 
     - `walkback`: every re-planned tour still fails the walkback; it gives the vertex, the deficit in Wh and the number of re-plans. It is set on the route (`diagnosis`) and `api/tour.py` already refuses such a tour.
     - Energy and O2 shortfalls are exact on the graph (the legs are the least-energy paths). A duration shortfall is flagged `exact = false`: E5 times each leg along its least-energy path and does not search for a faster, costlier one.
     - For a tour that leaves stations out, `info["skipped_reasons"]` says, per station, whether it does not fit even alone (and why) or fits alone but not together with the chosen ones.
+    - `/plan` returns the diagnosis as `diagnosis` beside the 422's text `detail`, and the HUD words it for the user (#119).
     - The route also reports its smallest return margin (`min_slack_wh`) and the vertex where it occurs (`min_slack_index`), service and waiting included (#119, A5).
 15. **Tried and dropped:**
     - The first DP pruned a state whenever going straight to the end was already over budget. That is only valid when the cost matrix satisfies the triangle inequality. Dijkstra matrices do, but the random test matrices did not, and the DP disagreed with brute force on some of them. It now prunes only on the energy already spent.
@@ -189,7 +190,7 @@ Numbers from `src/orienteering/paper_diagnosis.py` → `data/e5/diagnosis.json`.
 - **Costs come from the DEM-based E3 model**, with the same limits as E4: no rocks (E9), and the DEM does not resolve the boxwork ridges ([base grid note](base_grid.md)). The human cost adds only sand, and it does not change the chosen stations here.
 - **The sensitivity uses one habitat** (the box centre) and the 13 manual stations; the tie pattern depends on both.
 - **E8 scores are not on the rubric's scale.** They grow with hollow size and hollow density (1–5, continuous), while the manual stations use the 5/4/4/3 rubric, so adding them mixes two scales. With 20 min of service each, E8 adds 4.47 points to the nominal tour and none under 120 min. The HUD makes the other choice: its *Load E8 contact stations* button (#79) scores them by the rubric as contacts (4 points), so a `/plan` tour over the 28 stations is not this section's tour ([product note](product_api_hud.md)).
-- **The diagnosis explains the first reason only.** When no station fits alone it is exact. When some fit alone but the solver finds no tour, which only CP-SAT's time limit can cause, it says so and does not guess. It does not yet reach the HUD as structured fields: `/plan` returns the message text until the API passes `.diagnosis` on (Sebas's files, #119).
+- **The diagnosis explains the first reason only.** When no station fits alone it is exact. When some fit alone but the solver finds no tour, which only CP-SAT's time limit can cause, it says so and does not guess. `/plan` passes it on as `diagnosis` next to the text `detail` of its 422, and the HUD shows it in its *No plan* message (#119, [product note](product_api_hud.md)).
 - **No radio constraint.** E11 ([E11 note](E11_comms.md)) finds stretches of a tour without a direct radio link to the habitat. E5 does not limit them; the team left that for after the hackathon (#76).
 - **CP-SAT has no waiting energy** and is only exact up to the rounding (costs up, limits down; 10⁻⁶ of the budget, 1 ms). It was proven optimal on every instance here, but a larger or harder instance could hit its time limit; it then returns its best tour, the bound and `optimal = false`.
 

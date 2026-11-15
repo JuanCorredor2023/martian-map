@@ -407,3 +407,64 @@ def test_walks_are_kept_for_the_debrief(tmp_path, monkeypatch):
     last = client.get("/walks/last").json()
     assert last["summary"]["walked"]["timeS"] == 660 and len(last["points"]) == 2
     assert client.post("/walks", json={"points": []}).status_code == 422      # summary is required
+
+
+# --- #119 A4: /plan says why there is no plan ----------------------------------------------
+
+def test_plan_no_tour_has_a_structured_diagnosis():
+    from api import tour
+    if not tour.DELEGATE:
+        pytest.skip("E5's plan_tour not available")
+    st = [{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5, "type": "ridge", "service_time_min": 10},
+          {"id": "N1", "x": CENTRE[0] + 100, "y": CENTRE[1], "score": 1, "type": "ridge", "service_time_min": 10}]
+    r = client.post("/plan", json=plan_body(energy_budget_wh=5.0, stations=st))
+    assert r.status_code == 422
+    body = r.json()
+    assert body["detail"].startswith("no feasible tour:")          # the text contract is unchanged
+    d = body["diagnosis"]
+    assert d["code"] == "insufficient_resources" and d["exact"] and d["limiting"] == ["energy"]
+    assert d["closest"]["id"] == "N1" and d["closest"]["needs"]["energy_wh"] > d["closest"]["available"]["energy_wh"]
+    assert d["actions"] and "energy budget" in d["actions"][0]
+
+
+def test_plan_outside_the_box_names_the_field():
+    st = [{"id": "A", "x": CENTRE[0] + 100, "y": CENTRE[1], "score": 1},
+          {"id": "far", "x": CENTRE[0] + 5000, "y": CENTRE[1], "score": 1}]
+    r = client.post("/plan", json=plan_body(stations=st))
+    assert r.status_code == 422
+    assert r.json()["detail"] == "station far is outside the study box"
+    assert r.json()["diagnosis"] == {"code": "invalid_input", "exact": True, "field": "stations[1]",
+                                     "message": "station far is outside the study box"}
+    r = client.post("/plan", json=plan_body(start=[CENTRE[0] + 5000, CENTRE[1]]))
+    assert r.json()["diagnosis"]["field"] == "start"
+
+
+def test_plan_unsafe_tour_passes_the_walkback_diagnosis(monkeypatch):
+    from api import tour
+    diag = {"code": "walkback", "exact": True, "message": "every tour tried fails the walkback",
+            "first_violation": 1, "deficit_wh": 2.5, "retries": 5, "actions": ["about 2.8 Wh more"]}
+
+    def unsafe(req, g):
+        line = {"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[0, 0], [1, 1]]},
+                "properties": {"kind": "route", "feasible": False, "first_violation": 1, "diagnosis": diag,
+                               "order": ["habitat", "R0", "habitat"], "stop_index": [0, 1, 1]}}
+        return {"type": "FeatureCollection", "features": [line]}, {"walkback_retries": 5, "diagnosis": diag}
+
+    class NoRoute(Exception):
+        pass
+
+    monkeypatch.setattr(tour, "AVAILABLE", True)
+    monkeypatch.setattr(tour, "DELEGATE", True)
+    monkeypatch.setattr(tour, "_e5_plan_tour", unsafe, raising=False)
+    monkeypatch.setattr(tour, "_E4NoRoute", NoRoute, raising=False)
+    st = [{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5, "type": "ridge", "service_time_min": 10}]
+    r = client.post("/plan", json=plan_body(stations=st))
+    assert r.status_code == 422 and "fails the walkback" in r.json()["detail"]
+    assert r.json()["diagnosis"] == diag
+
+
+def test_plan_e4_round_trip_without_diagnosis_keeps_the_old_body():
+    body = plan_body(energy_budget_wh=150, goal=[8143217.5, -284993.2],
+                     stations=[{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5}])
+    r = client.post("/plan", json=body)
+    assert r.status_code == 422 and set(r.json()) == {"detail"}
