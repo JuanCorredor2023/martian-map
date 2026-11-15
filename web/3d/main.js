@@ -6,7 +6,8 @@
 //   plan=default    ask the server for a plan with the default settings on load, as the
 //                   "Plan with default settings" button does (see api.js)
 //   sol=4711        Curiosity sol whose Sun lights the scene (default 4711; sun.js)
-//   lt=15:00        local true solar time at the box centre (default 15:00)
+//   lt=15:00        local true solar time at the box centre (default: the plan's best
+//                   time to leave from GET /plan/departure, else 15:00)
 //   light=az,el     debug: a fixed light direction in degrees (azimuth from north towards
 //                   east, elevation) instead of the Sun of Mars
 //   shadows=0       start without cast shadows (the Sun section has the switch; shadows.js)
@@ -418,6 +419,10 @@ async function main() {
     } finally {
       ui('plan-reload').disabled = ui('plan-default').disabled = false;
     }
+    // Then the Sun moves to this plan's best time to leave (sun.js), on the first plan and
+    // on every reload, without holding the page; not with ?check=: a check must give the
+    // same answer whatever the planner says.
+    if (!params.get('check')) void sunView.startAtBestTime(window.viz3d.plan);
   }
   const reloadPlan = () => fetchPlan('Loading the saved plan…', () => loadLastPlan());
   const planDefault = () => fetchPlan('Planning with the default settings… (about 10 s the first time)',
@@ -498,9 +503,6 @@ async function main() {
                   currentViewLink, capture, get fps() { return fps; }, redraw() { dirty = true; }};
   // The terrain is usable while the plan loads. ?plan=default is the user asking.
   const planReady = params.get('plan') === 'default' ? planDefault() : reloadPlan();
-  // Then the Sun moves to that plan's best time to leave (sun.js), but not with ?check=:
-  // a check must give the same answer whatever the planner says.
-  if (!params.get('check')) planReady.then(() => sunView.startAtBestTime(window.viz3d.plan));
   const photosReady = loadPhotos();
   window.viz3d.photosReady = photosReady;
   // Map layers of the 2D planner on the terrain (map_layers.js): nothing is asked until one
