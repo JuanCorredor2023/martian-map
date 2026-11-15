@@ -4,8 +4,8 @@
 
 NASA Space Apps Challenge 2026 · *Interplanetary Survival Guide: Martian Map*
 
-<!-- TODO before submission: live demo link (#122) and 30 s video link (#123). -->
-**Live demo:** coming soon · **30 s video:** coming soon · **Run it locally:** [Quick start](#quick-start) (one server, works offline)
+<!-- TODO before submission: 30 s video link (#123). No hosted demo: the deploy (#122) is future work. -->
+**30 s video:** coming soon · **Run it locally:** [Quick start](#quick-start) (one server, works offline)
 
 ![The planning HUD in step 4 (Walk): the planned tour, the red line 30 min from the habitat, the dark area out of reach with the energy left, and a fixed-distance circle for comparison.](docs/img/hud_walk.jpg)
 
@@ -34,7 +34,7 @@ The reason is that walking back is not walking out: coming back can cost half as
 | --- | --- | --- |
 | **Planner (HUD)** `/` | Habitat crew | Layers (HiRISE photo, slope, steep cells, sand, boulders, walking cost, radio, night temperature, rover photos). Pick science stations. Set time, energy and O₂ limits. Get the best tour, then rehearse it with the safety lines on the map. |
 | **Arm tablet guide** `/guide.html` | Astronaut | Turn-by-turn voice, "can I get back?" meters, a way home on demand, re-routing when off route, a solar-storm return, and a plan-against-the-walk summary. |
-| **3D rehearsal** `/3d/` | Everyone | The 1 m terrain at eye height under the Sun of the EVA's sol, with the route, the map layers and 383 Curiosity Navcam photos at their real camera poses. |
+| **3D rehearsal** `/3d/` | Everyone | The 1 m terrain at eye height under the Sun of the EVA's sol, with the route, the map layers and 383 Curiosity Navcam photos at their real camera poses (the photo catalogue is built from the raw images, see [`web/3d/README.md`](web/3d/README.md); without it the rest works). |
 | **Wrist card** `/card.html` | Astronaut | A printable step list with turn-back rules and a QR code to the guide. |
 
 <table><tr>
@@ -88,7 +88,7 @@ We used Curiosity's real drive through this box (5,247 localized poses, sols 436
 
 ## Quick start
 
-**Requirements:** Python 3.12 and the [GitHub CLI](https://cli.github.com) (`gh`) to download the data. Everything runs locally and needs no internet once the data is downloaded.
+**Requirements:** Python 3.12, the [GitHub CLI](https://cli.github.com) (`gh`) to download the data, and Node.js only for the web tests. Everything runs locally and needs no internet once the data is downloaded.
 
 ```bash
 git clone https://github.com/JuanCorredor2023/martian-map.git && cd martian-map
@@ -102,6 +102,7 @@ foreach ($r in @("base-grid-v2:base","tiles-v2:tiles","e2-trajectory-v1:e2","e12
   $tag, $dir = $r.Split(":"); $zip = $tag.Replace("-", "_").Replace(".", "_") + ".zip"
   gh release download $tag --dir data; Expand-Archive "data\$zip" "data\$dir" -Force; Remove-Item "data\$zip" }
 gh release download stations-v1 --dir data\stations
+gh release download stations-e8-v0 --dir data\stations
 python src/viz3d/build_terrain_assets.py
 ```
 
@@ -112,6 +113,7 @@ for r in base-grid-v2:base tiles-v2:tiles e2-trajectory-v1:e2 e12-dose-v1:e12 e8
   tag=${r%%:*}; dir=${r##*:}; zip=$(echo "$tag" | tr '.-' '__').zip
   gh release download "$tag" --dir data && unzip -oq "data/$zip" -d "data/$dir" && rm "data/$zip"; done
 gh release download stations-v1 --dir data/stations
+gh release download stations-e8-v0 --dir data/stations
 python src/viz3d/build_terrain_assets.py
 ```
 
@@ -126,6 +128,8 @@ python -m uvicorn api.main:app --port 8000
 Open **http://localhost:8000/**:
 1. **Plan the walk** in step 3. The first plan takes 10–30 s while the terrain graph is built.
 2. Then use step 4 for the tablet guide, the 3D view and the wrist card.
+
+User guides with annotated screenshots of every button: [2D planner](docs/user_guide/index.html) and [3D map](docs/user_guide_3d/index.html) (open the HTML files in a browser; Markdown versions: [`docs/user_guide_2d.md`](docs/user_guide_2d.md), [`docs/user_guide_3d.md`](docs/user_guide_3d.md)).
 
 `docs/demo.md` is a 6-minute walkthrough. The same server also has a **landing page**, **http://localhost:8000/home/** (what the app is, in one page), and the demo step by step with screenshots, **http://localhost:8000/home/demo.html**.
 
@@ -169,10 +173,10 @@ We used AI coding agents (Anthropic Claude Code and OpenAI Codex) to write and r
 
 | Member | Pieces |
 | --- | --- |
-| Javier Bonilla ([@JavierBonilla2004](https://github.com/JavierBonilla2004)), team lead | base grid and terrain features, sand U-Net (E8), radio (E11), adaptive walkback (X2)|
-| Aaron ([@aahg1105](https://github.com/aahg1105)) | graph and return map (E4), baselines, boulders (E9, X1), tutorial tips |
+| Javier Bonilla ([@JavierBonilla2004](https://github.com/JavierBonilla2004)), team lead | base grid and terrain features, sand U-Net (E8), radio (E11), adaptive walkback (X2), user guides |
+| Aaron ([@aahg1105](https://github.com/aahg1105)) | graph and return map (E4), baselines, boulders (E9, X1), tutorial tips, paper consolidation |
 | Diana ([@dianagrz](https://github.com/dianagrz)) | tour solver (E5), solver benchmark (E6), departure time (P6), landing page, video |
-| Sebastián Díaz ([@Seredial0326](https://github.com/Seredial0326)) | metabolic cost (E3), API, HUD, tablet guide and wrist card, robustness evaluation (C1–C3) |
+| Sebastián Díaz ([@Seredial0326](https://github.com/Seredial0326)) | metabolic cost (E3), API, HUD, tablet guide and wrist card, robustness evaluation (C1–C3, C5) |
 | Juan Corredor ([@JuanCorredor2023](https://github.com/JuanCorredor2023)) | Curiosity traverse (E2), learned terrain price (E1), radiation (E12), 3D map and rover photos, results table |
 
 Independent project for the NASA Space Apps Challenge 2026; not affiliated with or endorsed by NASA.
