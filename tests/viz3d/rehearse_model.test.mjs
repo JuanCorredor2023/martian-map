@@ -335,6 +335,33 @@ test('energy bar and texts: the same numbers and words as the 2D planner', () =>
   assert.equal(R.energyReadout(model.stateAt(0).profile, null), null);
 });
 
+test('a way home of one point (Return home or the storm pressed at the habitat): the walker stands there', () => {
+  // POST /guide/return_home answers a single vertex when the walker is already home; the
+  // rehearsal builds its route the way rehearse.js _walkRoute does (issue #115).
+  const home = [8143537.992786024, -284463.575189438];
+  const route = {kind: 'route', coords: [home], turnIndex: null, stops: [], totals: {usable_wh: 900},
+                 profile: {t_s: [125], used_wh: [12.5], rv_time_s: [0], rv_wh: [0]}};
+  const model = R.buildRehearsal(route, []);
+  assert.equal(model.start, 125);
+  assert.equal(model.end, 125);
+  assert.equal(model.duration, 0);
+  assert.equal(model.length, 0);
+  assert.deepEqual(model.stops, []);
+  for (const time of [0, 125, 300]) {                      // before, at and after: always the same place
+    const s = model.stateAt(time);
+    assert.deepEqual([s.time, s.x, s.y, s.cx, s.cy, s.distance], [125, ...home, ...home, 0]);
+    assert.equal(s.standing, false);
+    assert.equal(s.heading, null);                         // no direction: the view keeps its own
+    assert.equal(s.profile.used_wh, 12.5);
+    assert.equal(R.progressText(model, s), '0:00 of 0:00 · 0 of 0 m');
+  }
+  assert.deepEqual(model.cameraAt(0), home);
+  assert.equal(model.headingAt(0), null);
+  close(R.eyeAltitude(d => ground(...model.cameraAt(d)), 0, model.length), ground(...home) + R.EYE_HEIGHT, 1e-9);
+  // A route that has a direction still has a heading everywhere.
+  assert.ok(Number.isFinite(modelOf(E4).model.stateAt(0).heading));
+});
+
 test('eye height: follows the ground averaged along the path, never under 1.6 m', () => {
   const flat = () => 5, ramp = d => 0.3 * d, crest = d => -Math.abs(d - 50);
   close(R.eyeAltitude(flat, 20, 100), 5 + R.EYE_HEIGHT, 1e-12);
