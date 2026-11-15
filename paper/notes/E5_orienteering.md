@@ -1,6 +1,6 @@
 # E5 · Station selection and order (orienteering)
 
-Owner: Diana (`@dianagrz`) · Issue: #9 · PRs: #37, #78, #83 · Status: done (in `main` since #37: `/plan` plans the multi-station tour through `plan_tour`; DP up to 20 nodes, CP-SAT above; E8 stations v0 integrated; a v1 is not committed (JB, #9) and would only need a rerun; real time windows have no source) · Last update: 2026-11-15
+Owner: Diana (`@dianagrz`) · Issues: #9, #111 · PRs: #37, #78, #83, #111's PR (time windows from the light) · Status: done (in `main` since #37: `/plan` plans the multi-station tour through `plan_tour`; DP up to 20 nodes, CP-SAT above; E8 stations v0 integrated; a v1 is not committed (JB, #9) and would only need a rerun; time windows now come from the light, #111) · Last update: 2026-11-15
 
 ## Question
 Given N science stations with a value, which subset should the astronaut visit, and in what order, to collect the most value without breaking the energy budget, the EVA duration, the stations' time windows or the walkback rule (always able to walk home)?
@@ -11,7 +11,7 @@ Given N science stations with a value, which subset should the astronaut visit, 
 - **Stations:** the 13 manual stations of release `stations-v1` (Sebas, `data/stations/stations_manual.gpkg`, layer `stations`): 5 ridges, 5 hollows, 2 contacts and 1 Curiosity drill site, scored with the 5/4/4/3 rubric ([product note](product_api_hud.md)), 56 points in total. Every station has 10 min of service (`service_time_min`, a placeholder).
 - **Habitat:** a user input (team decision, 2026-11-14). For this note it is the box centre, (8143537.99, −284463.58), the same illustrative choice as the E4 note.
 - **E8 stations (separate run):** the 15 sand-rock contacts of release `stations-e8-v0` (JB, `data/stations/stations_e8.gpkg`, script `src/dl_boxwork/stations_e8.py`, [E8 note](E8_boxwork_sand.md)), all `type = contact`, scores 1–5 from hollow size and local hollow density, 20 min of service each. With the manual stations they make 28, beyond the DP; they are solved with OR-Tools and reported in their own section and files, so the DP results above them stay as they are.
-- **Not used yet:** time windows (no source; see Limitations).
+- **Time windows (#111):** from the light, not from a file. The Sun (Mars24, the same as the 3D view and P6) and each station's terrain horizon from the 1 m DEM ([P6 note](P6_departure_time.md)), on sol 4711.
 
 ## Method
 1. **Stations on the graph.** Each station falls in one 1 m cell; two stations in the same cell are merged. The habitat is placed with `Graph.place` like E4 and `/plan`: a blocked cell, or one outside the largest strongly connected component, is moved to the nearest valid cell. Stations outside that component are dropped, since the astronaut could not get back from them.
@@ -34,10 +34,17 @@ Given N science stations with a value, which subset should the astronaut visit, 
     Costs are rounded up (energy to 10⁻⁶ of the budget, time to 1 ms) and limits down, so every tour the model accepts also holds exactly. A first phase maximises the points; a second, with the points fixed, minimises the energy (the DP's tie-break). The solver reports whether the optimum is proven and an upper bound on the points. `run.py --solver auto` and `/plan` (`plan_tour(solver="auto")`) use the DP up to 20 nodes and CP-SAT above. Waiting energy is not modelled in it.
 11. **Tried and kept only for comparison: OR-Tools routing** (`solvers/routing.py`): the vehicle-routing library with one vehicle, each station a skippable node whose skipping costs its points, and guided local search. It finds the right tour on the real instances, but on random energy-only instances it misses the optimum in up to 6 of 10 cases, by up to 31 % of the points (`vs_dp_random`, 2 s per case). Its moves change one or two stations at a time, and a tight budget can need several swapped at once. Enabling the path and inactive-node LNS moves made it match the DP on the unit tests' small cases (2–7 nodes) but not on the larger ones.
 12. **Windows DLL clash.** The pip build of OR-Tools and conda-forge's pyarrow (loaded by pandas 3) ship DLLs with the same names (abseil, protobuf); in one Python process whichever loads second fails. When pyarrow is installed on Windows, both OR-Tools solvers run in a fresh Python process that never imports pandas (about 0.2 s per solve).
-13. **Tried and dropped:**
+13. **Time windows from the light** (#111, `src/orienteering/light_windows.py`). Each station is served only while it is in sunlight and out of the terrain's shadow:
+    - For a departure t0, every station is sampled every minute after t0, up to the sol's local midnight (an EVA belongs to its sol), and each sample is dark, shadowed or sunlit by P6's rule (`departure.light_state`) with the station's own horizon (1.7 m eye height, searched to 400 m).
+    - The sunlit samples form stretches. The station's window is the longest stretch with room for its service, as [start, end − service] in seconds after t0, because the work must be done in the light too. The DP takes one window per station, so a station lit, shadowed and lit again keeps only its longest stretch. A station with no stretch long enough is dropped for that departure.
+    - The resulting OPTW is solved with the same solver (DP up to 20 nodes, CP-SAT above), for every departure from 05:00 to 19:00 every 15 min. The recommended departure has the most points; ties go as in P6: the larger sunlit share of the walk, then the higher lowest Sun, then the earliest.
+    - Walking between stations is not limited by the light; its sunlit share is reported. Waiting for a window costs 0 W by default, and also 205 W (the service power) as an upper bound until a resting power is agreed with Sebas (E3 has none).
+    - `run.py --light-sol 4711` sweeps the departures, plans the best one and writes it as usual (walkback check and route GeoPackage).
+14. **Tried and dropped:**
     - The first DP pruned a state whenever going straight to the end was already over budget. That is only valid when the cost matrix satisfies the triangle inequality. Dijkstra matrices do, but the random test matrices did not, and the DP disagreed with brute force on some of them. It now prunes only on the energy already spent.
     - Splitting each station's service cost into half on its incoming and half on its outgoing edges, a common way to turn station costs into edge costs, was considered and dropped. It gives the same totals here but wrong partial totals, which the walkback and windows need.
     - Caching each station's whole Dijkstra result (about 48 MB per station) was dropped for caching only the station-to-station values.
+    - Windows looked for 16 h after the departure reached the next sol's sunrise, so a tour with no duration limit could wait through the night for a station's morning light. Windows now end at the sol's local midnight.
 
 ## Results
 All numbers come from `src/orienteering/paper_figures.py` → `data/e5/summary.json` (habitat at the box centre, 1000 Wh budget, 10 % margin, so 900 Wh usable, 205 W service, plain E3 cost unless stated).
@@ -116,10 +123,29 @@ Kept apart from the DP results above. All numbers come from `src/orienteering/pa
 ![E5 tours with E8 stations](../figures/e5_fig5_ortools_28.png)
 *Figure 5. CP-SAT tours over the 13 manual (circles) and 13 reachable E8 stations (squares). Left: nominal, 900 Wh usable. Right: 120 min limit. Filled markers are visited, open ones skipped; small numbers give the visiting order.*
 
+## Results with time windows from the light (#111)
+Numbers from `src/orienteering/paper_light_windows.py` → `data/e5/light_windows.json` (13 manual stations, the same habitat, budget and service as above, plain E3 cost, sol 4711).
+
+- **Every station spends part of the daylight in a terrain shadow:** from 15 min (Q1) to 89 min (H1) of the sol's daylight (06:02–17:58 local true solar time), all of it within 2 h of sunrise or sunset; at midday every station is lit. So the windows bind only for early and late departures.
+
+| Tour | Ignoring the light | Full points for departures | Best departure | At 15:00 | At 16:00 | At 17:00 |
+|---|---|---|---|---|---|---|
+| Nominal (no time limit) | 56 | 05:00–14:45 | 10:30 | 53 | 37 | 10 |
+| 120 min limit | 37 | 06:00–16:00 | 11:00 | 37 | 37 | 10 |
+
+- **Leaving between 05:00 and 14:45** the nominal tour still collects all 56 points, every station worked in sunlight; the best departure is 10:30, with the whole walk sunlit and the lowest Sun at 65.3°. **Later, the evening shadows take stations away:** 53 points at 15:00, 37 at 16:00, nothing from 17:45. Ignoring the light, the plan would claim 56 points at every departure.
+- **The light changes the choice of stations, not only the departure time.** At 06:00 the 120 min tour still collects 37 points but with a different set (Jaccard 0.78 against the set chosen ignoring the light): it goes H1 > R0 > H0 > R4 > R1 > H2 > R2 > R3, taking H1 instead of H4. Leaving at 06:00, the stations come out of the morning shadow 4 to 51 min after departure (Q1 first, R1 last), and H1 is lit after 20 min. Leaving at 16:00, the last possible start of service is 39 min (H1) to 98 min (Q1) after departure, so the nominal tour serves only 8 stations, in an order the windows force: R1 > R4 > R0 > H0 > H4 > H2 > R2 > R3 (37 points). At 05:00 the 120 min tour keeps only 12 points: waiting for the light uses its time limit.
+- **Waiting cost.** With waiting at 205 W, an upper bound, the points are the same from 05:15 on (the order changes for departures from 05:15 to 06:15, to wait less); leaving at 05:00 the nominal tour drops to 52 points, because waiting for sunrise is no longer free. The 120 min tour's points do not change.
+- **Consistency with P6:** at the recommended departures the share of the service time in sunlight is 1.0 for both tours, and the best departures are those of P6 (10:30 and 11:00).
+- **Speed:** each OPTW solves in at most 0.56 s (14 nodes, DP with Pareto labels). The full sweep of 57 departures takes 50–75 s, most of it scoring the light along the walk of the departures that tie at full points (about 1 s each, for the tie-break).
+
+![Time windows from the light](../figures/e5_fig6_light_windows.png)
+*Figure 6. Left: points collected against the departure time on sol 4711 with time windows from the light (solid), and ignoring the light (dashed); dots mark the recommended departure. Right: overlap (Jaccard) of the stations chosen with the light and ignoring it. Waiting costs 0 W.*
+
 ## Checks
 - **Brute force.** The DP matches exhaustive enumeration of every ordered subset on 500 random instances of 2–7 nodes with asymmetric costs and random start and end: 100/100 with energy only, with service, with time windows, with a maximum duration, and with windows plus a waiting cost (`dp_vs_brute`). The random windows and limits are tight enough to change the best answer in many of those cases.
 - **OR-Tools against the DP:** see the results section above (`vs_dp_manual_14`, `vs_dp_random`); every CP-SAT tour is re-checked with `evaluate_route` before it is returned.
-- **Unit tests:** `pytest tests/orienteering` passes 654 tests (10 of them for E6's metaheuristics). Besides the brute-force cases, they cover:
+- **Unit tests:** `pytest tests/orienteering` passes 735 tests (E6's metaheuristics, P6 and the light windows included). Besides the brute-force cases, they cover:
   - `solve_many` against separate solves and brute force, for several rubrics at once
   - a named toy problem with a known optimum: 10 stations on a circle around the habitat, where the best tour is a run of neighbours of predictable length and energy
   - service changing which stations are picked, waiting energy changing them too, and the habitat served once
@@ -129,6 +155,7 @@ Kept apart from the DP results above. All numbers come from `src/orienteering/pa
   - the route GeoPackage read back, and `plan_tour` with the real `/plan` request model
   - both OR-Tools solvers against the DP on 30 small random instances each (CP-SAT also proves each optimum), windows, a maximum duration, unreachable legs, and CP-SAT on 30 stations on a circle (beyond the DP) with a known optimum
   - reading the manual and E8 files together without repeated ids or cells, and `plan_tour` switching to CP-SAT for 21 stations
+  - time windows from the light: light profiles to windows (the longest stretch with room for the service; stations without one dropped), a hand-made instance where an afternoon shadow fixes the order, the DP against brute force on 60 random instances with windows made from random light profiles, and, on the real terrain, every stop worked in sunlight at 06:00, 11:00 and 16:00 (P6's rule, sampled every 30 s), the morning shadows changing the stations and the evening ones the order
 - **Same cost as `/plan`:** with `human=True`, E5's station matrix equals the one built by `api.planner.graph(base, 30.0, human=True)` (maximum relative difference 0.0 on the 13 stations).
 - **`/plan` integration:** in `main`, `/plan` delegates to `plan_tour` (#64) and refuses a tour that still fails the walkback after the re-plans (#68). The tour and plan tests of `tests/api` pass (17 tests).
 - **Route against solver:** the energy of the written route, recomputed cell by cell with E4's `Graph.path_cost`, equals the solver's energy.
@@ -137,7 +164,7 @@ Kept apart from the DP results above. All numbers come from `src/orienteering/pa
 ## Limitations
 - **Station values are a rubric, not measurements**, and points add up: two Curiosity sites (3 + 3) outweigh one ridge (5). The sensitivity analysis shows the choice of stations does not depend on the rubric once the time budget covers all stations, and that below it S1's own ties are as large an effect as changing the rubric.
 - **Service is a placeholder:** 10 min per station and 205 W are not agreed values (proposed on #2, never confirmed). Service is most of the cost, and from 0.7 × the nominal duration upwards 1.5 × the service time changes the plan more than any fixed rubric does.
-- **No real time windows yet.** The DP and the reader support them (`window_open_min`, `window_close_min`), but nobody provides them; REMS weather data could. Waiting costs no energy unless a waiting power is set.
+- **Time windows come from the light only.** No source gives other windows (operations, temperature); REMS has only each sol's minimum and maximum temperature, not the hour. The light is geometry: no dust, no refraction, no rocks below the 1 m DEM's resolution (as in P6). One window per station: a station lit, shadowed and lit again keeps only its longest stretch. Walking in the shadow or the dark between stations is allowed and reported, not forbidden. Waiting at 205 W is an upper bound, not an agreed resting power.
 - **Pareto labels can grow** with many binding windows. Measured up to 18 nodes with random windows (6.3 s); denser binding windows could be slower; CP-SAT is the fallback.
 - **Walkback never binds for round trips.** For a tour that starts and ends at the habitat and fits the budget, R(v) is never more than the rest of the planned tour, so the check always passes. It only matters for routes that end elsewhere. It covers energy only, not return time; the HUD shows the 30 min return separately.
 - **Costs come from the DEM-based E3 model**, with the same limits as E4: no rocks (E9), and the DEM does not resolve the boxwork ridges ([base grid note](base_grid.md)). The human cost adds only sand, and it does not change the chosen stations here.
@@ -153,6 +180,7 @@ Kept apart from the DP results above. All numbers come from `src/orienteering/pa
 - **E12 (Juan):** the route GeoPackage (`data/e5/e5_route.gpkg`, layers `route` and `stops`) and the `/plan` output have arrival and departure times per stop for the dose timeline.
 - **E8 (JB):** `stations_e8.gpkg` is read together with the manual stations (`read_station_files`, `run.py --stations A B`). Two of the 15 are unreachable from the habitat's component, and only two are worth their 20 min of service in the nominal tour.
 - **E11 (JB):** a limit on the minutes without radio would enter E5 as one more additive resource per leg, like the duration, or need no E5 change at all if the graph prices the cells without radio (#76).
+- **P6 and the HUD (Sebas):** `light_windows.sweep` gives, for each departure, the points, the stations and their windows; the HUD could show the station windows next to the *Best time to leave* line (issue #111, optional, Sebas's files).
 - **E6 (Diana):** the benchmark of the exact solvers against ILS and simulated annealing is in the [E6 note](E6_benchmark.md): at E5's sizes the exact solvers are as fast and always right.
 
 ## Reproduce
@@ -168,6 +196,8 @@ python src/orienteering/run.py --habitat 8143537.99 -284463.58 --max-duration-mi
 python src/orienteering/paper_figures.py
 python src/orienteering/run.py --habitat 8143537.99 -284463.58 --stations data/stations/stations_manual.gpkg data/stations/stations_e8.gpkg
 python src/orienteering/paper_ortools.py
+python src/orienteering/run.py --habitat 8143537.99 -284463.58 --light-sol 4711
+python src/orienteering/paper_light_windows.py   # about 4 min
 python -m pytest tests/orienteering
 ```
 
@@ -176,5 +206,6 @@ python -m pytest tests/orienteering
 - `data/e5/summary.json` (from `paper_figures.py`, about 70 s).
 - `paper/figures/e5_fig1_tour_map.png`, `e5_fig2_prize_vs_budget.png`, `e5_fig3_dp_runtime.png`, `e5_fig4_rubric_sensitivity.png`.
 - With the E8 stations, separately: `data/e5/summary_ortools.json`, `data/e5/e5_route_ortools_28.gpkg` and `e5_route_ortools_28_120min.gpkg` (from `paper_ortools.py`, about 4 min, most of it the routing heuristic's comparison runs), `paper/figures/e5_fig5_ortools_28.png`.
+- Time windows from the light: `data/e5/light_windows.json` (from `paper_light_windows.py`), `paper/figures/e5_fig6_light_windows.png`.
 
 `data/` is not in git; regenerate with the commands above.

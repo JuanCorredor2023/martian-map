@@ -492,3 +492,111 @@ export async function postWalk(summary, log) {
     return res.ok ? (await res.json()).saved : null;
   } catch { return null; }
 }
+
+// --- adaptive walkback (X2, #101) --------------------------------------------------
+// The planner trusts E3's cost. During the walk the guide learns this astronaut's own
+// factor k (real use = k x E3) from each walked segment, through POST /walkback/update
+// (stateless: the posterior it returns is sent back with the next segment), and re-checks
+// the way home with the 90th percentile k_p90. In the demo the "real" use is simulated
+// from a chosen k_true with noise per segment; there is no O2 sensor behind it.
+export const K_SEG_M = 30;               // one observation every 30 m walked
+export const K_NOISE = 0.15;             // simulated noise of log(real / E3) per segment
+export const K_TRUE_CHOICES = [1.0, 1.2, 1.5, 0.8];
+
+// Small seeded generator (mulberry32) and a normal draw, so a demo walk is repeatable.
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function normal(rand) {
+  const u = Math.max(rand(), 1e-12), v = rand();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+export function createAdaptive({kTrue = 1.0, seed = 101, noise = K_NOISE} = {}) {
+  return {kTrue, noise, rand: rng(seed), route: null, lastI: 0, usedReal: 0,
+          result: null, history: [], firstAlarm: null, firstAlarmFixed: null, chain: Promise.resolve()};
+}
+
+// A new route (way home, rejoin): segments restart at its first vertex; the real use
+// so far carries on.
+export function adaptiveNewRoute(state, r) { state.route = r; state.lastI = 0; }
+
+// The segment walked since the last observation, when it is at least K_SEG_M long (or
+// the route ends): E3's predicted use and the simulated real use. null otherwise.
+export function adaptiveSegment(state, r, i) {
+  if (state.route !== r) adaptiveNewRoute(state, r);
+  const j = state.lastI;
+  if (i <= j || (r.d[i] - r.d[j] < K_SEG_M && i < r.coords.length - 1)) return null;
+  const predicted = Math.max(0, r.used[i] - r.used[j]);
+  const observed = state.kTrue * predicted * Math.exp(state.noise * normal(state.rand));
+  state.lastI = i; state.usedReal += observed;
+  return {i, predicted, observed};
+}
+
+// Body of POST /walkback/update for vertex i after a segment (Wh throughout).
+export function adaptiveRequest(state, r, i, seg) {
+  return {posterior: state.result ? state.result.posterior : null,
+          segment: seg ? {observed: seg.observed, predicted: seg.predicted} : null,
+          unit: "Wh", used: state.usedReal, budget: r.usable,
+          return_predicted: r.rv ? r.rv[i] : 0,
+          plan_used: r.used.slice(i), plan_return: r.rv ? r.rv.slice(i) : r.used.slice(i).map(() => 0)};
+}
+
+// Observe vertex i: when a segment is due, ask the server (calls are chained so each
+// carries the previous posterior). Resolves to the new result, or null when nothing
+// was due. postFn is injectable for tests.
+export function adaptiveStep(state, r, i, postFn = post) {
+  const seg = adaptiveSegment(state, r, i);
+  if (!seg) return Promise.resolve(null);
+  const at = {d: r.d[i], t: r.t[i], kind: r.kind};
+  state.chain = state.chain.then(async () => {
+    const res = await postFn("/walkback/update", adaptiveRequest(state, r, i, seg));
+    state.result = res;
+    state.history.push({...at, k: res.k.median, lo: res.k.ci90[0], hi: res.k.ci90[1],
+                        kReserve: res.k.reserve, returnNow: res.return_now, fixedReturnNow: res.fixed.return_now});
+    if (res.return_now && !state.firstAlarm) state.firstAlarm = at;
+    if (res.fixed.return_now && !state.firstAlarmFixed) state.firstAlarmFixed = at;
+    return res;
+  }).catch(() => null);
+  return state.chain;
+}
+
+// The learned-k meter, in the style of meters(): "spare energy after returning" with the
+// real use so far and the way home at k_p90. Full is good; a state word always.
+export function kMeter(res) {
+  if (!res) return null;
+  const left = res.reserve.margin_after_return, budget = res.budget;
+  const state = res.return_now ? "out" : left <= 0.25 * budget ? "low" : "ok";
+  const [lo, hi] = res.k.ci90;
+  return {state, frac: left / budget, good: state === "ok", k: res.k.median, ci90: [lo, hi],
+          kReserve: res.k.reserve, returnNow: res.return_now,
+          word: {ok: "OK", low: "LOW", out: "RETURN NOW"}[state],
+          text: `k ${res.k.median.toFixed(2)} (90 % ${lo.toFixed(2)}–${hi.toFixed(2)}) · ${Math.max(0, left).toFixed(0)} Wh`};
+}
+
+// Banner and voice for the "return now" alarm (shown in #alert).
+export function kAlarmMessage(res) {
+  const need = res.reserve.reserve_needed, left = res.reserve.remaining;
+  return {html: `<b>⚠ RETURN NOW</b> · You are using ${res.k.median.toFixed(2)}× the model. ` +
+                `The way home needs ${need.toFixed(0)} Wh at k ${res.k.reserve.toFixed(2)} (90 %); ` +
+                `${Math.max(0, left).toFixed(0)} Wh left. <span class="muted">Learned from this walk (simulated use).</span>`,
+          speech: "Return now. Your energy use is higher than planned. The way home no longer fits with a safe margin."};
+}
+
+// Extra rows for the "plan against the walk" table: [label, plan, walked].
+export function adaptiveRows(state) {
+  if (!state || !state.history.length) return [];
+  const last = state.history[state.history.length - 1];
+  const at = a => a ? `${a.d.toFixed(0)} m, min ${(a.t / 60).toFixed(0)}${a.kind === "home" ? " (way home)" : ""}` : "never";
+  return [["Metabolic factor k", "1.00 (model)", `${last.k.toFixed(2)} (90 % ${last.lo.toFixed(2)}–${last.hi.toFixed(2)})`],
+          ["Real energy (simulated k)", "—", `${state.usedReal.toFixed(0)} Wh`],
+          ["\"Return now\" with k p90", "—", at(state.firstAlarm)],
+          ["\"Return now\" with k = 1", "—", at(state.firstAlarmFixed)]];
+}

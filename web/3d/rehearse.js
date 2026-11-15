@@ -342,7 +342,8 @@ export class Rehearsal {
     // Look along the slope of the path, a little down: the ground ahead stays in view
     // uphill and downhill.
     const slope = Math.atan2(terrain.surfaceAt(AX, AZ) - ground, Math.max(3, Math.hypot(AX - X, AZ - Z)));
-    const want = {heading: s.heading, pitch: LOOK_DOWN - slope};
+    // A route with no direction (standing at the habitat) keeps the heading shown.
+    const want = {heading: s.heading ?? this.view.heading, pitch: LOOK_DOWN - slope};
     // While playing, a sudden change of direction (leaving a stop, fast playback) is
     // followed over a few frames instead of in one.
     const k = this._snap || !this.playing && !this._easing ? 1 : 1 - Math.exp(-VIEW_EASE * step);
@@ -547,8 +548,10 @@ export class Rehearsal {
     const token = ++this._token;               // a later click, a seek or exit drops this answer
     try {
       const i = this._vertex();
-      const home = await G.returnHome(this.guide, i, this._planRef(), [this.state.x, this.state.y], this._now());
+      let home = await G.returnHome(this.guide, i, this._planRef(), [this.state.x, this.state.y], this._now());
       if (token !== this._token || !this.active) return null;
+      // Already at the habitat: the way home is a single point, walked in no time (#115).
+      if (home.route.coords.length === 1) home = {...home, text: 'You are already at the habitat.', speech: 'You are at the habitat.'};
       if (this.walkLog) G.logEvent(this.walkLog, 'home', home.text, this.guide, this._vertex());
       this._walkRoute(home.route, HOME_LINE, []);
       this._note(home.text);
@@ -562,7 +565,7 @@ export class Rehearsal {
     this.pause(false);
     const i = this._vertex(), pt = G.detourPoint(this.guide, i);
     this._note('Off route (25 m) — recalculating…');
-    this.voice.say('You are off route. Recalculating.');
+    this.voice.say('You are off route. Recalculating.', {priority: 'alert'});   // routine lines cannot cut it off
     const token = ++this._token;
     try {
       const out = await G.rejoin(this.guide, i, pt, this._planRef(), this._now());
@@ -581,7 +584,7 @@ export class Rehearsal {
     alert.hidden = false;
     alert.innerHTML = G.STORM_PENDING;
     if (this.walkLog) G.logEvent(this.walkLog, 'storm', 'solar storm alert: return home', this.guide, this._vertex());
-    this.voice.say('Solar storm alert. Return to the habitat now.');
+    this.voice.say('Solar storm alert. Return to the habitat now.', {priority: 'alert'});
     if (this._radInfo === undefined) {
       try { const res = await fetch('/radiation'); this._radInfo = res.ok ? await res.json() : null; }
       catch { this._radInfo = null; }

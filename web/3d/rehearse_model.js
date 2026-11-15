@@ -15,7 +15,9 @@
 //   - Heading: towards the point LOOK_AHEAD metres further along the smoothed path, never
 //     beyond the next stop (looking past a turn-back point would spin the view). While
 //     the walker stands at a stop the heading turns from the arrival to the departure
-//     direction.
+//     direction. A route with no direction at all (a single point) has no heading: null.
+//   - A route of a single vertex (the way home asked at the habitat, issue #115) is the
+//     walker standing there: no length and no time.
 // Distances are metres along the true route; x east, y north (Mars CRS); headings in
 // radians from north towards east, as in camera_math.js.
 import { cumulativeLength } from './plan_model.js';
@@ -240,22 +242,76 @@ function smoothPath(coords, dist, anchors) {
 
 // ---- the model ----------------------------------------------------------------------
 
-// route: a route of parsePlan(); points: the plan's points (for the stops). Returns
+// The same route with its single vertex (and each profile value) written twice: a
+// segment of no length and no time, which everything below handles.
+function standStill(route) {
+  const twice = a => (Array.isArray(a) || ArrayBuffer.isView(a)) && a.length === 1 ? [a[0], a[0]] : a;
+  const profile = route.profile && Object.fromEntries(Object.entries(route.profile).map(([k, v]) => [k, twice(v)]));
+  return {...route, coords: twice(route.coords), profile};
+}
+
+// route: a route of parsePlan(), or one vertex long (see standStill); points: the plan's
+// points (for the stops). Returns
 //   hasProfile, assumedSpeed (null when the answer gives the time), start, end,
 //   duration (s), length (m), usableWh, stops, anchors (vertices the camera path passes
 //   through exactly), maxOffRoute (m, camera path from the true route), times and
 //   distances (per vertex), and
 //   stateAt(time)  where the walker is at a playback time (seconds on the plan's clock):
 //                  {time, at (fractional vertex), distance, x, y (true route), cx, cy
-//                  (camera path), heading, ahead (the point looked at), leg ('outbound',
-//                  'return' or null), standing, stop, profile (interpolated values or null)}
+//                  (camera path), heading (null on a route with no direction), ahead (the
+//                  point looked at), leg ('outbound', 'return' or null), standing, stop,
+//                  profile (interpolated values or null)}
 //   cameraAt(d), headingAt(d)  the camera path by distance along the route.
-export function buildRehearsal(route, points = []) {
+// ---- simulated energy-use bias (X2, #101) -------------------------------------------
+// The adaptive walkback learns the astronaut's own factor k (real use = k x E3's
+// prediction) from each walked segment. In a rehearsal there is no sensor, so the "real"
+// use is simulated: every BIAS_SEG_M metres of route, k_true x the predicted use x
+// lognormal noise (seeded, repeatable). Nothing else in the rehearsal changes: the
+// profile keeps E3's values and the bias only adds used_real_wh beside them.
+export const BIAS_SEG_M = 30;          // m per observed segment, as web/guide_core.js
+export const BIAS_NOISE = 0.15;        // sd of log(real / predicted) per segment
+
+function seeded(seed) {                // mulberry32
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Segments of BIAS_SEG_M metres over the route and the simulated real use per vertex.
+//   used  E3's cumulative use per vertex (Wh, profile.used_wh); dist: cumulative metres.
+// Returns {kTrue, noise, seed, segments: [{from, to, predicted, observed}], realUsed}
+// with realUsed[v] the simulated cumulative real use, starting at used[0].
+export function biasSegments(used, dist, {kTrue = 1, noise = BIAS_NOISE, seed = 101} = {}) {
+  const n = used.length, rand = seeded(seed), segments = [];
+  const realUsed = new Float64Array(n);
+  realUsed[0] = used[0];
+  let from = 0;
+  while (from < n - 1) {
+    let to = from + 1;
+    while (to < n - 1 && dist[to] - dist[from] < BIAS_SEG_M) to++;
+    const u = Math.max(rand(), 1e-12), v = rand();
+    const factor = kTrue * Math.exp(noise * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v));
+    for (let k = from + 1; k <= to; k++) realUsed[k] = realUsed[k - 1] + factor * (used[k] - used[k - 1]);
+    segments.push({from, to, predicted: used[to] - used[from], observed: realUsed[to] - realUsed[from]});
+    from = to;
+  }
+  return {kTrue, noise, seed, segments, realUsed};
+}
+
+// bias (optional): {kTrue, noise, seed}. Without it the rehearsal is exactly as before.
+export function buildRehearsal(route, points = [], bias = null) {
+  if (route.coords.length === 1) route = standStill(route);
   const {coords, profile} = route, n = coords.length;
   const dist = cumulativeLength(coords), length = dist[n - 1];
   const clockOf = timeline(route, dist), {t, walk, wait} = clockOf;
   const stops = findStops(route, points, clockOf);
   const turn = route.turnIndex;
+  const biasModel = bias && profile && profile.used_wh ? biasSegments(profile.used_wh, dist, bias) : null;
 
   // The camera path passes exactly through the ends, the stops and the turn.
   const anchors = [...new Set([0, n - 1, ...stops.map(s => s.index), ...(turn != null ? [turn] : [])])]
@@ -281,9 +337,10 @@ export function buildRehearsal(route, points = []) {
     return {heading: flat ? null : Math.atan2(q[0] - p[0], q[1] - p[1]), ahead: q};
   };
   // A piece with no length has no direction of its own: take the nearest one that has.
+  // With none at all (a single point) the heading stays null and the view keeps its own.
   const headings = pieces.map(piece => [lookOn(piece, piece.a).heading, lookOn(piece, piece.b).heading]);
   let known = headings.find(h => h[0] !== null);
-  known = known ? known[0] : 0;
+  known = known ? known[0] : null;
   for (const h of headings) { if (h[0] === null) h[0] = h[1] = known; else known = h[1]; }
 
   const pieceAtDistance = d => {
@@ -307,7 +364,7 @@ export function buildRehearsal(route, points = []) {
     const [cx, cy] = onPiece(piece, distance);
     const look = lookOn(piece, distance);
     let heading = look.heading ?? headings[p][0];
-    if (standing && p + 1 < pieces.length) {        // turn towards the way out while waiting
+    if (standing && p + 1 < pieces.length && heading !== null) {   // turn towards the way out while waiting
       const f = smoothstep((e - walk[i]) / wait[i]);
       heading = headings[p][1] + angleDelta(headings[p + 1][0], headings[p][1]) * f;
     }
@@ -320,6 +377,7 @@ export function buildRehearsal(route, points = []) {
         const f = key === 'rv_wh' || key === 'rv_time_s' ? moved : clockF;
         values[key] = lerp(profile[key][i], profile[key][i + 1], f);
       }
+      if (biasModel) values.used_real_wh = lerp(biasModel.realUsed[i], biasModel.realUsed[i + 1], clockF);
     }
     const stop = standing ? stops.find(s => s.index === i + 1) || null : null;
     return {
@@ -335,6 +393,7 @@ export function buildRehearsal(route, points = []) {
     start: t[0], end: t[n - 1], duration: t[n - 1] - t[0], length,
     usableWh: route.totals.usable_wh, stops, anchors, maxOffRoute: maxOff, turnIndex: turn,
     times: t, distances: dist, stateAt,
+    bias: biasModel,                 // null unless a bias was asked for (X2, #101)
     // Camera path (Mars x, y) and heading at a distance along the route, on the piece
     // being walked towards (at a stop: arriving).
     cameraAt(d) { return onPiece(pieces[pieceAtDistance(d)], d); },

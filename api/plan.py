@@ -79,6 +79,8 @@ class WalkbackRequest(BaseModel):
     base: Optional[Tuple[float, float]] = None
     max_cell_slope_deg: Optional[float] = Field(default=30.0, ge=0, le=90)
     human_cost: bool = True
+    # X2 (#101): metabolic factor on E3's energy (k_p90 from /walkback/update); 1 = E3.
+    k: float = Field(default=1.0, gt=0, le=5)
 
 
 class ReturnHomeRequest(BaseModel):
@@ -87,6 +89,8 @@ class ReturnHomeRequest(BaseModel):
     habitat: Tuple[float, float]
     max_cell_slope_deg: Optional[float] = Field(default=30.0, ge=0, le=90)
     human_cost: bool = True
+    # X2 (#101): metabolic factor on E3's energy (k_p90 from /walkback/update); 1 = E3.
+    k: float = Field(default=1.0, gt=0, le=5)
 
 
 class RejoinRequest(BaseModel):

@@ -57,6 +57,7 @@ All numbers from `src/orienteering/paper_departure.py` → `data/p6/departure_su
 ## What other pieces can use
 - **API and HUD (Sebas's files, with his handoff on #45):** `GET /plan/departure?sol=` (`api/departure.py`) scores the last saved plan, an E5 tour or an E4 round trip, and answers 404 without a plan and 422 for a route without a clock. The HUD shows it as the *Best time to leave* line under the plan in step 3, for the sol of *Weather on the day*; it dims with the rest of the plan when the inputs change. In the browser, the HUD's own 120 min plan gives "leave between 06:45 and 15:15; best 11:00 (10:22 on the mission clock)".
 - **3D view (Juan):** the same Sun as `mars_sun.js`; the best departure can set the 3D view's local time (`?lt=`).
+- **E5 (Diana, #111):** the same light rule per station gives each station a time window, so the planner chooses the stations knowing when each is lit ([E5 note](E5_orienteering.md), *Results with time windows from the light*). The best departures it finds are these (10:30 and 11:00).
 - **E12 (Juan):** the departure sets the hours of the EVA; the dose does not depend on them unless there is a solar storm.
 
 ## Reproduce

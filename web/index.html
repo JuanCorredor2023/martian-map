@@ -61,6 +61,7 @@
   /* ---- controls ---- */
   label { display: flex; align-items: center; gap: 9px; margin: 7px 0; cursor: pointer; }
   input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; flex: none; }
+  label:has(> input[type=checkbox]:disabled) { color: var(--muted); cursor: default; }
   input[type=range] { width: 100%; accent-color: var(--accent); margin: 4px 0; }
   input[type=number], select { background: var(--surface-2); color: var(--text); border: 1px solid var(--border-strong);
                                border-radius: 6px; padding: 5px 7px; font: inherit; font-size: 13px; }
@@ -137,6 +138,11 @@
   .st-row .score { text-align: right; font-variant-numeric: tabular-nums; }
   .st-row button { width: auto; padding: 2px 4px; margin: 0; background: transparent; color: var(--muted); font-weight: 400; }
   .st-row button:hover { color: var(--bad); }
+  /* The rover photo nearest to a station, on its own line under the row. */
+  .st-row .st-photo { grid-column: 1 / -1; justify-self: start; margin: -3px 0 2px 50px; font-size: 12px; color: var(--muted);
+                      text-align: left; line-height: 1.35; }
+  .st-row button.st-photo { padding: 0; text-decoration: underline dotted; text-underline-offset: 2px; }
+  .st-row button.st-photo:hover { color: var(--accent); filter: none; }
   /* Save and Next stay in reach however long the list is. */
   .sticky-actions { position: sticky; bottom: -18px; margin: 10px -16px -18px; padding: 8px 16px 14px; background: var(--surface);
                     border-top: 1px solid var(--border); }
@@ -253,6 +259,36 @@
   .lg i.hatch { height: 10px; border: 1px solid rgba(255,255,255,.25); border-radius: 2px; background: var(--hatch); }
   #readout { right: 14px; bottom: 14px; padding: 5px 10px; font-size: 12px; color: var(--muted);
              font-variant-numeric: tabular-nums; }
+  /* Rover photo card: right side, under the map tools and above the readout. */
+  #photo-card { top: 62px; right: 14px; width: min(340px, calc(100% - 28px)); max-height: calc(100% - 118px);
+                overflow-y: auto; padding: 10px 12px 12px; font-size: 12.5px; }
+  #storm-banner:not([hidden]) ~ #photo-card { top: 150px; max-height: calc(100% - 206px); }
+  .pc-head { display: flex; align-items: flex-start; gap: 8px; }
+  .pc-head h2 { flex: 1; margin: 0; font-size: 14px; }
+  #photo-close { width: auto; margin: -4px -6px 0 0; padding: 4px 6px; background: transparent; color: var(--muted); }
+  #photo-close:hover { color: var(--text); }
+  .pc-views { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+  .pc-views button { width: auto; margin: 0; padding: 3px 4px; display: flex; flex-direction: column; align-items: center;
+                     gap: 2px; font-size: 11.5px; border: 1px solid transparent; }
+  .pc-views button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  .pc-views img { display: block; width: 56px; height: 42px; object-fit: cover; border-radius: 4px; }
+  /* A fixed height keeps the card's size known when it opens (the map pans by it). */
+  .pc-img { display: block; width: 100%; height: 200px; object-fit: contain; border-radius: 6px; background: var(--surface-2); }
+  .pc-missing { padding: 24px 10px; text-align: center; color: var(--muted); background: var(--surface-2); border-radius: 6px; }
+  .pc-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; margin: 8px 0; }
+  .pc-facts dt { color: var(--muted); }
+  .pc-facts dd { margin: 0; overflow-wrap: anywhere; }
+  .pc-facts:empty, #photo-actions:empty { display: none; }
+  .pc-note { margin: 8px 0 0; }
+  @media (max-width: 600px) {                 /* phones: the card spans the map, so it stays short */
+    #photo-card { top: 58px; max-height: 55%; }
+    .pc-img { height: 140px; }
+    .pc-views button { padding: 2px 3px; font-size: 11px; }
+    .pc-views img { width: 40px; height: 30px; }
+    /* With the storm banner (about 120 px tall here): the card sits at the bottom of the map
+       so the warning stays readable; the rest of the card scrolls. */
+    #storm-banner:not([hidden]) ~ #photo-card { top: auto; bottom: 8px; max-height: calc(100% - 150px); }
+  }
 
   @media (max-width: 860px) {
     body { grid-template-columns: 1fr; grid-template-rows: 46vh minmax(0, 1fr); }
@@ -328,6 +364,8 @@
         <div class="ticks"><span>cooler at night</span><span>holds heat (rock)</span></div>
         <span id="thermal-note">Mars Odyssey, 81 m pixels: context, not a cost.</span>
       </div>
+      <label title="Navcam photos Curiosity took on the ground, at the place it took them"><input type="checkbox" id="show-photos"> Rover photos</label>
+      <div id="photos-note" class="note" hidden></div>
       <button class="next" data-go="stations">Next: choose stations <span class="arrow"></span></button>
     </section>
 
@@ -484,6 +522,17 @@
     <button id="storm-dismiss" type="button">Dismiss</button>
   </div>
   <div id="mode-banner" class="float" hidden role="status"></div>
+  <section id="photo-card" class="float" hidden aria-labelledby="photo-title" tabindex="-1">
+    <div class="pc-head">
+      <h2 id="photo-title"></h2>
+      <button id="photo-close" type="button" aria-label="Close photo" title="Close (Esc)"></button>
+    </div>
+    <div id="photo-views" class="pc-views" role="group" aria-label="Views of this stop"></div>
+    <div id="photo-media"></div>
+    <dl id="photo-facts" class="pc-facts"></dl>
+    <div id="photo-actions"></div>
+    <p class="muted pc-note">Photos show the view, not a promise that a station is visible.</p>
+  </section>
   <div id="sr-status" class="sr-only" role="status" aria-live="polite"></div>
   <details id="legend" class="float" open>
     <summary>On the map</summary>
@@ -768,6 +817,8 @@ function renderStations() {
       });
     });
     row.append(id, type, service, score, del);
+    const photoLine = photoLineFor(s);                  // only once the rover photo catalogue is in
+    if (photoLine) row.append(photoLine);
     list.append(row);
   });
 }
@@ -832,6 +883,246 @@ async function loadE8Stations() {
       `They count as "contact". Hover an id for the detector's own score.`
     : "The automatic stations are already in the list.";
   markDirty(); renderStations(); redraw();
+}
+
+// ---------------------------------------------------------------------------
+// Rover photos (P3b, issue #103): Curiosity's Navcam photos, one orange dot per stop
+// where the rover stood. web/hud_photos.js reads the catalogue (no DOM); here we draw
+// the dots, the card of a stop and the wedge each view looks along. Optional: without
+// the catalogue the box is disabled and the rest of the HUD works as before.
+// ---------------------------------------------------------------------------
+let photoApi = null, photoModel = null, photoStopsList = [], photoLoad = {state: "loading"};
+let openStop = null, openView = null, openCard = null, photoReturn = null;
+const PHOTO_RGB = [255, 150, 60];
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+// Runs once in the background from main(); never rejects, never blocks the map.
+async function loadPhotos() {
+  let out = null;
+  try { photoApi = await import("/hud_photos.js"); }
+  catch { out = {ok: false, error: "the photo module could not be loaded"}; }
+  try {
+    if (!out) out = await photoApi.loadCatalog();
+    if (out.ok) { photoStopsList = photoApi.photoStops(out.model); photoModel = out.model; }
+  } catch (err) {
+    out = {ok: false, error: `the photo catalogue could not be read (${(err && err.message) || err})`};
+  }
+  if (out.ok && photoModel) {
+    photoLoad = {state: "ok", stops: out.stopCount ?? photoStopsList.length, photos: out.photoCount};
+  } else {
+    photoLoad = {state: "failed", error: out.error || "the photo catalogue could not be read"};
+    photoModel = null; photoStopsList = [];
+    ui("show-photos").checked = false; ui("show-photos").disabled = true;
+    closePhotoCard();
+  }
+  renderPhotosNote();
+  if (photoModel && Object.keys(rubricMeta).length) renderStations();   // otherwise loadStations draws the lines
+  redraw();
+}
+
+function renderPhotosNote() {
+  const note = ui("photos-note");
+  if (photoLoad.state === "failed") {                    // said even with the box off: it cannot be turned on
+    note.textContent = `Unavailable: ${photoLoad.error}. The rest of the map works without them.`;
+    note.hidden = false;
+    return;
+  }
+  note.hidden = !ui("show-photos").checked;
+  note.textContent = photoLoad.state === "ok"
+    ? `${plural(photoLoad.stops, "stop")}, ${plural(photoLoad.photos, "photo")} taken from the ground by Curiosity. Click a dot to see them.`
+    : "Loading…";
+}
+
+// The dots, and under them the wedge of each view of the open stop (the selected one stronger).
+function photoLayers() {
+  if (!photoModel || !ui("show-photos").checked) return [];
+  const out = [];
+  if (openCard) {
+    const sel = v => v.id === openView;
+    const views = openCard.views.filter(v => Array.isArray(v.ring) && v.ring.length > 2)
+      .sort((a, b) => sel(a) - sel(b));                   // the selected view is drawn last, on top
+    out.push(new PolygonLayer({id: "photo-wedges", data: views, pickable: false,
+      getPolygon: v => v.ring.map(([x, y]) => toWorld(x, y)),
+      getFillColor: v => [...PHOTO_RGB, sel(v) ? 80 : 26], getLineColor: v => [...PHOTO_RGB, sel(v) ? 235 : 110],
+      stroked: true, filled: true, lineWidthUnits: "pixels", getLineWidth: v => sel(v) ? 2 : 1,
+      updateTriggers: {getFillColor: openView, getLineColor: openView, getLineWidth: openView}}));
+  }
+  const isOpen = s => s.groupId === openStop;
+  out.push(new ScatterplotLayer({id: "rover-photos", data: photoStopsList, pickable: true,
+    autoHighlight: true, highlightColor: [255, 255, 255, 110],
+    getPosition: s => toWorld(s.x, s.y), getRadius: s => isOpen(s) ? 6.5 : 5, radiusUnits: "pixels",
+    getFillColor: PHOTO_RGB, stroked: true, lineWidthUnits: "pixels",
+    getLineColor: s => isOpen(s) ? [255, 255, 255] : [20, 12, 6], getLineWidth: s => isOpen(s) ? 2 : 1,
+    updateTriggers: {getRadius: openStop, getLineColor: openStop, getLineWidth: openStop}}));
+  return out;
+}
+
+// Card of a stop, showing photoId (or its first view). from.station: opened from that
+// station's line, so the focus moves into the card and comes back to that line.
+function openPhotoCard(groupId, photoId = null, from = {}) {
+  if (!photoModel) return false;
+  let card = null;
+  try { card = photoApi.stopCard(photoModel, groupId); } catch (err) { console.error(err); }
+  if (!card || !Array.isArray(card.views) || !card.views.length) return false;
+  const box = ui("photo-card"), focusInCard = box.contains(document.activeElement);
+  if (!focusInCard) photoReturn = {el: document.activeElement, station: from.station || null};   // else keep the first one
+  if (!ui("show-photos").checked) { ui("show-photos").checked = true; renderPhotosNote(); }
+  openStop = groupId; openCard = card;
+  ui("photo-title").textContent = card.title || "Rover photo stop";
+  // One button per view; two views towards the same compass word get a number.
+  const row = ui("photo-views"), count = {}, seen = {};
+  row.replaceChildren();
+  for (const v of card.views) count[v.direction] = (count[v.direction] || 0) + 1;
+  for (const v of card.views) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "secondary";
+    if (v.thumb) {
+      const img = new Image();
+      img.alt = ""; img.decoding = "async";
+      img.addEventListener("error", () => img.remove(), {once: true});
+      img.src = v.thumb;
+      b.append(img);
+    }
+    seen[v.direction] = (seen[v.direction] || 0) + 1;
+    const word = document.createElement("span");
+    word.textContent = `${v.direction ?? "View"}${count[v.direction] > 1 ? ` ${seen[v.direction]}` : ""}`;
+    b.append(word);
+    if (!v.available) b.title = "Image not available";
+    b.addEventListener("click", () => showPhotoView(v.id));
+    row.append(b);
+  }
+  box.hidden = false;
+  box.scrollTop = 0;
+  showPhotoView((card.views.find(v => v.id === photoId) || card.views[0]).id);
+  keepStopInView(card.x, card.y);
+  // The rebuilt row must not drop a focus that was in the card to the page: the new
+  // selected view takes it.
+  if (focusInCard && !box.contains(document.activeElement)) (row.querySelector('[aria-pressed="true"]') || box).focus({preventScroll: true});
+  else if (from.station) box.focus({preventScroll: true});
+  announce(`Rover photo stop, ${plural(card.views.length, "view")}`);
+  return true;
+}
+
+function showPhotoView(id) {
+  const i = openCard ? openCard.views.findIndex(v => v.id === id) : -1;
+  if (i < 0) return;
+  const v = openCard.views[i];
+  openView = v.id;
+  [...ui("photo-views").children].forEach((b, j) => b.setAttribute("aria-pressed", String(j === i)));
+  // Catalogue text goes in as text and image addresses as .src: never as HTML.
+  const missing = () => Object.assign(document.createElement("div"), {className: "pc-missing", textContent: "Image not available"});
+  if (v.card) {
+    const img = new Image();
+    img.className = "pc-img"; img.alt = v.alt || "Rover photo"; img.decoding = "async";
+    img.addEventListener("error", () => img.replaceWith(missing()), {once: true});
+    img.src = v.card;
+    ui("photo-media").replaceChildren(img);
+  } else ui("photo-media").replaceChildren(missing());
+  const facts = ui("photo-facts");
+  facts.replaceChildren();
+  for (const [label, value] of v.facts || []) {
+    const dt = document.createElement("dt"), dd = document.createElement("dd");
+    dt.textContent = label; dd.textContent = String(value ?? "");
+    facts.append(dt, dd);
+  }
+  const actions = ui("photo-actions");
+  actions.replaceChildren();
+  if (typeof v.open3d === "string" && v.open3d.startsWith("/3d/")) {
+    const a = document.createElement("a");
+    a.className = "btn ext"; a.href = v.open3d; a.target = "_blank"; a.rel = "noopener";
+    a.title = "See this photo where it was taken, in the 3D view";
+    a.textContent = "Open in 3D";
+    a.insertAdjacentHTML("beforeend", " " + icon("ext"));
+    actions.append(a);
+  }
+  redraw();
+}
+
+// The longest part of [lo, hi] that none of the [a, b] cuts covers.
+function freeSpan(lo, hi, cuts) {
+  let best = [lo, lo], at = lo;
+  for (const [a, b] of cuts.filter(([a, b]) => b > lo && a < hi).sort((p, q) => p[0] - q[0])) {
+    if (a - at > best[1] - best[0]) best = [at, a];
+    at = Math.max(at, b);
+  }
+  return hi - at > best[1] - best[0] ? [at, hi] : best;
+}
+
+// When the open card's stop is hidden (off the visible map, within 40 px of the card, or
+// under the legend or the map tools), pan the map, zoom unchanged, so the stop sits in the
+// middle of the largest strip of map the card leaves free (left of it on wide layouts,
+// below or above it on phones), with the legend and the tools cut out of that strip.
+// A stop that is already clear stays put.
+function keepStopInView(x, y) {
+  const vp = deckgl && deckgl.getViewports()[0];
+  if (!vp || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const map = ui("map").getBoundingClientRect();
+  const local = (el, pad) => {                   // an element's box on the map, grown by pad px; null when not shown
+    const c = el.getBoundingClientRect();
+    return c.width && c.height ? {l: c.left - map.left - pad, t: c.top - map.top - pad,
+                                  r: c.right - map.left + pad, b: c.bottom - map.top + pad} : null;
+  };
+  const card = local(ui("photo-card"), 0);
+  if (!card) return;
+  const others = [local(ui("legend"), 8), local(ui("map-tools"), 8)].filter(Boolean);
+  const [px, py] = vp.project(toWorld(x, y)), M = 40, EDGE = 20, W = vp.width, H = vp.height;
+  const inside = (r, m = 0) => px >= r.l - m && px <= r.r + m && py >= r.t - m && py <= r.b + m;
+  const offMap = px < EDGE || px > W - EDGE || py < EDGE || py > H - EDGE;
+  if (!offMap && !inside(card, M) && !others.some(r => inside(r))) return;
+  // The strips around the card; in each, the longest stretch the legend and the tools leave.
+  const tall = (x0, x1) => {
+    const [y0, y1] = freeSpan(0, H, others.filter(r => r.r > x0 && r.l < x1).map(r => [r.t, r.b]));
+    return {x0, x1, y0, y1};
+  };
+  const wide = (y0, y1) => {
+    const [x0, x1] = freeSpan(0, W, others.filter(r => r.b > y0 && r.t < y1).map(r => [r.l, r.r]));
+    return {x0, x1, y0, y1};
+  };
+  const strips = [tall(0, Math.max(0, card.l)), tall(Math.min(W, card.r), W),      // left and right of the card
+                  wide(0, Math.max(0, card.t)), wide(Math.min(H, card.b), H)];     // above and below it
+  const area = s => Math.max(0, s.x1 - s.x0) * Math.max(0, s.y1 - s.y0);
+  const best = strips.reduce((a, s) => area(s) > area(a) ? s : a);
+  if (area(best) <= 0) return;
+  // Moving the view centre by the stop's offset from the strip's centre brings it there.
+  const [tx, ty] = vp.unproject([W / 2 + px - (best.x0 + best.x1) / 2, H / 2 + py - (best.y0 + best.y1) / 2]);
+  deckgl.setProps({initialViewState: {target: [tx, ty, 0], zoom: vp.zoom, minZoom: -1, maxZoom: 8,
+    transitionDuration: reduceMotion ? 0 : 400, transitionInterpolator: new deck.LinearInterpolator(["target", "zoom"])}});
+}
+
+// Closes the card and its wedges. When the focus was inside, it goes back to where the
+// card was opened from (the station's line, or the map).
+function closePhotoCard() {
+  if (!openCard) return;
+  const back = photoReturn, box = ui("photo-card"), hadFocus = box.contains(document.activeElement);
+  openStop = openView = openCard = photoReturn = null;
+  box.hidden = true;
+  ui("photo-views").replaceChildren(); ui("photo-media").replaceChildren();
+  if (hadFocus) {
+    const line = back && back.station && [...document.querySelectorAll("#station-list .st-photo")]
+      .find(b => b.dataset.station === back.station);
+    const el = line || (back && back.el && back.el.isConnected && back.el !== document.body ? back.el : ui("map"));
+    el.focus({preventScroll: true});
+  }
+  redraw();
+}
+
+// The rover photo nearest to a station, as a line under its row: a button when a photo is near.
+function photoLineFor(s) {
+  if (!photoModel) return null;
+  let p = null;
+  try { p = photoApi.stationPhotoLine(photoModel, {x: s.x, y: s.y}); } catch (err) { console.error(err); }
+  if (!p || !p.short) return null;
+  const el = document.createElement(p.groupId ? "button" : "div");
+  el.className = "st-photo";
+  el.textContent = p.short;
+  if (p.text) el.title = p.text;
+  if (p.groupId) {
+    el.type = "button";
+    el.dataset.station = s.id;
+    el.setAttribute("aria-label", `Rover photo for ${s.id}: ${p.short}`);     // named with its station, like the row's other controls
+    el.addEventListener("click", () => openPhotoCard(p.groupId, p.photoId, {station: s.id}));
+  }
+  return el;
 }
 
 // ---------------------------------------------------------------------------
@@ -1603,6 +1894,10 @@ function renderLegend() {
   if (ui("show-slope").checked) fill("linear-gradient(90deg,#2e9b3e,#f2d43a,#f28c28,#d7301f)", currentTab === "walk" ? "Slope (faded here)" : "Slope, 0° to 45°");
   if (ui("show-sand").checked) fill("rgb(250,246,235)", "Sand detected");
   if (ui("show-rocks").checked) it.push(`<div class="lg"><i class="rock"></i>Boulders (bigger dot, more cover)</div>`);
+  if (ui("show-photos").checked && photoModel) {
+    dot("rgb(255,150,60)", "Rover photo stop");
+    if (openCard) fill("rgba(255,150,60,.4)", "Where the photo looks");
+  }
   if (ui("show-thermal").checked) fill("linear-gradient(90deg,#2b0a56,#af315b,#fba007,#f1ee74)", "Night temperature, cool to warm");
   if (ui("show-cost").checked) fill("linear-gradient(90deg,#000004,#8c2981,#fe9f6d,#fcfdbf)", "Walking cost, low to high");
   ui("legend-items").innerHTML = it.join("");
@@ -1676,6 +1971,7 @@ function layers() {
               Math.pow(Math.min(Number(ui("slope-opacity").value), currentTab === "walk" ? 0.18 : 1), 2.2)),
     ...overlayLayers(),
     ...planLayers(),
+    ...photoLayers(),                       // under the stations, so they stay on top
     ...stationLayers(),
     ...wbLayers(),
     ...headingLayer(),
@@ -1739,9 +2035,17 @@ async function main() {
     onViewStateChange: ({viewState}) => {              // labels are decluttered per zoom level
       if (Math.abs(viewState.zoom - viewZoom) > 0.2) { viewZoom = viewState.zoom; redraw(); }
     },
-    onClick: info => { if (info.coordinate) handleMapClick(info.coordinate); },
-    getCursor: ({isDragging}) => isDragging ? "grabbing"
-      : ([...document.querySelectorAll(".click-mode")].some(e => e.checked) ? "crosshair" : "grab"),
+    onClick: info => {
+      // A rover photo dot opens its card, unless a placing mode owns the click.
+      if (!activeMode() && info.layer && info.layer.id === "rover-photos" && info.object) {
+        openPhotoCard(info.object.groupId);
+        return;
+      }
+      if (info.coordinate) handleMapClick(info.coordinate);
+    },
+    getCursor: ({isDragging, isHovering}) => isDragging ? "grabbing"
+      : ([...document.querySelectorAll(".click-mode")].some(e => e.checked) ? "crosshair" : isHovering ? "pointer" : "grab"),
+    pickingRadius: 4,                                   // the photo dots are small: easier to hit
     layers: layers(),
     onHover: info => {
       if (!info.coordinate) return;
@@ -1761,12 +2065,20 @@ async function main() {
   playLabel(false);
   document.querySelectorAll(".next .arrow").forEach(el => { el.outerHTML = icon("arrow"); });
   document.querySelectorAll("a.btn.ext").forEach(el => el.insertAdjacentHTML("beforeend", " " + icon("ext")));
+  loadPhotos().catch(err => console.error(err));                  // background: the map does not wait for it
 }
 
 for (const id of ["show-ortho", "show-hillshade", "show-slope", "slope-opacity",
-                  "show-cost", "show-sand", "show-rocks", "show-thermal", "show-radio", "block-on", "block-slope", "show-radius"]) {
+                  "show-cost", "show-sand", "show-rocks", "show-thermal", "show-radio", "show-photos", "block-on", "block-slope",
+                  "show-radius"]) {
   ui(id).addEventListener("input", redraw);
 }
+ui("show-photos").addEventListener("input", () => {
+  if (!ui("show-photos").checked) closePhotoCard();
+  renderPhotosNote();
+});
+ui("photo-close").innerHTML = icon("close");
+ui("photo-close").addEventListener("click", () => closePhotoCard());
 ui("show-cost").addEventListener("input", showCostLegend);
 ui("show-sand").addEventListener("input", () => { ui("sand-legend").hidden = !ui("show-sand").checked; });
 ui("show-rocks").addEventListener("input", async () => {
@@ -1830,8 +2142,11 @@ document.querySelectorAll(".click-mode").forEach(box => box.addEventListener("in
 ui("new-type").addEventListener("input", renderModeBanner);
 window.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
+  const placing = activeMode();
   document.querySelectorAll(".click-mode").forEach(b => { b.checked = false; });
   renderModeBanner();
+  // Esc stops a placing mode first; with none on (or from inside the card) it closes the photo card.
+  if (openCard && (!placing || ui("photo-card").contains(document.activeElement))) closePhotoCard();
 });
 document.querySelectorAll(".tabs [role=tab]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
 document.querySelector(".tabs").addEventListener("keydown", e => {          // arrows, Home and End move between tabs
