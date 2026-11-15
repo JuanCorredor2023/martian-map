@@ -749,5 +749,339 @@ async function stationsCheck(viz) {
   return out;
 }
 
+// ?check=walk : does "Walk freely" (issue #109) move at the speeds it says, keep the eye
+// 1.7 m over the ground, stay inside the box and out of the habitat dome, turn with the
+// mouse or a finger, and does leaving put everything back?
+//
+// Drives the mode by hand at 60 updates per second of time, through the same handlers
+// as a person: keys as keyboard events on the window, the arrow pad as pointer events on
+// its buttons, looking as a touch drag on the view (a captured mouse cannot be faked:
+// both end in the same look() of walk_model.js). After every update in first person, the
+// eye's height above the drawn ground under it. Nothing is asked from the server.
+export function walkCheck({terrain, scene, camera, controls, walk, overlays, markers, photoMarkers}) {
+  const round = (v, d = 3) => Number(v.toFixed(d)), DEG = Math.PI / 180;
+  const out = {check: 'walk', quality: terrain.quality, mesh_step_m: terrain.step};
+  const ui = id => document.getElementById(id);
+  const snapshot = () => ({
+    position: camera.position.toArray(), quaternion: camera.quaternion.toArray(), fov: camera.fov, near: camera.near,
+    k: terrain.k, yaw: controls.yaw, pitch: controls.pitch, enabled: controls.enabled,
+    children: scene.children.map(o => o.name || o.type).join(' '),
+    label: ui('relief-label').textContent, slider: ui('relief').disabled, bar: ui('walk-bar').hidden,
+    walking: document.body.classList.contains('walking'), route: overlays.group.visible,
+    photos: photoMarkers.group.visible, button: ui('walk').textContent});
+  const before = snapshot();
+  const key = (code, down, init = {}) => window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', {code, bubbles: true, ...init}));
+  const tap = code => { key(code, true); key(code, false); };
+  const eye = {min: Infinity, max: 0, max_off_true_scale_m: 0};
+  // Hold for `seconds` of time; returns the horizontal distance walked.
+  const hold = seconds => {
+    const from = [...walk.position];
+    for (let i = 0; i < Math.round(seconds * 60); i++) {
+      walk.update(1 / 60);
+      if (walk.chase) continue;
+      const p = camera.position, h = p.y - terrain.surfaceAt(p.x, p.z);
+      eye.min = Math.min(eye.min, h); eye.max = Math.max(eye.max, h);
+      eye.max_off_true_scale_m = Math.max(eye.max_off_true_scale_m, Math.abs(p.y - terrain.surfaceAt(p.x, p.z, 1) - 1.7));
+    }
+    return Math.hypot(walk.position[0] - from[0], walk.position[1] - from[1]);
+  };
+
+  walk.enter();
+  const habitat = markers.items.find(it => it.marker.kind === 'habitat');
+  const toHabitat = () => habitat ? round(Math.hypot(walk.position[0] - habitat.position[0], walk.position[1] - habitat.position[2]), 2) : null;
+  out.start = {habitat: Boolean(habitat), from_habitat_centre_m: toHabitat(), heading_deg: round(walk.yaw / DEG, 1),
+               to_route_m: walk.toRoute === null ? null : round(walk.toRoute, 2)};
+  out.while_walking = {relief_k: terrain.k, relief_label: ui('relief-label').textContent, slider_disabled: ui('relief').disabled,
+                       near_m: camera.near, fov_deg: camera.fov, controls_enabled: controls.enabled,
+                       route_lines_shown: overlays.group.visible, photo_pins_shown: photoMarkers.group.visible,
+                       ground_paths: walk.ground.children.filter(o => o.name === 'walk path').length,
+                       station_marks: walk.ground.children.filter(o => o.name === 'walk station').length,
+                       walker_in_scene: scene.children.includes(walk.walker), bar_shown: !ui('walk-bar').hidden};
+
+  // Speeds: 10 s with W, then with Shift, then fast travel (F) for 3 s; W + D together;
+  // S backwards; the pad's forward button for 2 s.
+  const speeds = {};
+  key('KeyW', true); speeds.walk_m_s = round(hold(10) / 10); key('KeyW', false);
+  key('ShiftLeft', true); key('KeyW', true, {shiftKey: true}); speeds.run_m_s = round(hold(10) / 10);
+  key('KeyW', false, {shiftKey: true}); key('ShiftLeft', false);
+  tap('KeyF'); key('ArrowUp', true); speeds.fast_m_s = round(hold(3) / 3); key('ArrowUp', false); tap('KeyF');
+  speeds.fast_off_after_second_f = !walk.fast;
+  key('KeyW', true); key('KeyD', true); speeds.diagonal_m_s = round(hold(5) / 5); key('KeyW', false); key('KeyD', false);
+  key('KeyS', true); speeds.backwards_m_s = round(hold(5) / 5); key('KeyS', false);
+  const pad = document.querySelector('#walk-pad [data-walk="forward"]');
+  pad.dispatchEvent(new PointerEvent('pointerdown', {pointerId: 91, bubbles: true}));
+  speeds.pad_forward_m_s = round(hold(2) / 2);
+  pad.dispatchEvent(new PointerEvent('pointerup', {pointerId: 91, bubbles: true}));
+  speeds.stops_when_released_m = round(hold(1), 6);
+  speeds.no_frame_when_still = !walk.update(1 / 60);
+  out.speeds = speeds;
+  out.to_route_after_walking_m = walk.toRoute === null ? null : round(walk.toRoute, 2);
+  out.readout = walk.positionText();
+
+  // Looking: a touch drag of 100 px to the left turns the view right by the same angle
+  // the free-flight and rehearsal drags use; huge drags stop at the pitch limit.
+  const canvas = walk.canvas, drag = (dx, dy) => {
+    canvas.dispatchEvent(new PointerEvent('pointerdown', {pointerId: 92, pointerType: 'touch', clientX: 400, clientY: 300, bubbles: true}));
+    canvas.dispatchEvent(new PointerEvent('pointermove', {pointerId: 92, pointerType: 'touch', clientX: 400 + dx, clientY: 300 + dy, bubbles: true}));
+    canvas.dispatchEvent(new PointerEvent('pointerup', {pointerId: 92, pointerType: 'touch', clientX: 400 + dx, clientY: 300 + dy, bubbles: true}));
+    walk.update(1 / 60);
+  };
+  const yaw0 = walk.yaw;
+  drag(-100, 0);
+  let turned = (walk.yaw - yaw0) / DEG;
+  turned = ((turned + 540) % 360) - 180;
+  out.look = {drag_100px_left_turns_deg: round(turned, 3),
+              expected_deg: round(100 * camera.fov / canvas.clientHeight, 3)};
+  drag(0, 20000); out.look.pitch_up_limit_deg = round(walk.pitch / DEG, 3);
+  drag(0, -40000); out.look.pitch_down_limit_deg = round(walk.pitch / DEG, 3);
+  drag(0, 40000 - 20000 * 0); walk.pitch = 6 * DEG; walk.update(0);
+
+  // The box: from 30 m inside each edge, 5 s of fast travel straight out (100 m).
+  const half = terrain.half, edges = {east: [[half - 30, 0], 90], west: [[-(half - 30), 0], -90],
+                                       north: [[0, -(half - 30)], 0], south: [[0, half - 30], 180]};
+  out.box = {half_m: half};
+  let farthest = 0;
+  walk.setFast(true);
+  for (const [name, [p, heading]] of Object.entries(edges)) {
+    walk.position = p; walk.yaw = heading * DEG;
+    key('KeyW', true);
+    for (let i = 0; i < 300; i++) {
+      walk.update(1 / 60);
+      farthest = Math.max(farthest, Math.abs(walk.position[0]), Math.abs(walk.position[1]));
+    }
+    key('KeyW', false);
+    out.box[`${name}_edge_left_m`] = round(half - Math.max(Math.abs(walk.position[0]), Math.abs(walk.position[1])), 6);
+  }
+  out.box.farthest_from_centre_m = round(farthest, 6);
+  out.box.eye_after_m = round(camera.position.y - terrain.surfaceAt(camera.position.x, camera.position.z), 6);
+
+  // The habitat dome: from 30 m west of it, 3 s of fast travel straight at its centre.
+  if (habitat) {
+    walk.position = [habitat.position[0] - 30, habitat.position[2]]; walk.yaw = 90 * DEG;
+    let closest = Infinity;
+    key('KeyW', true);
+    for (let i = 0; i < 180; i++) { walk.update(1 / 60); closest = Math.min(closest, toHabitat()); }
+    key('KeyW', false);
+    out.dome = {closest_to_centre_m: round(closest, 6), limit_m: 4.3};
+  }
+  walk.setFast(false);
+
+  // The view from behind (C), then first person again.
+  tap('KeyC');
+  walk.update(1 / 60);
+  const w = walk.walker.position, p = camera.position;
+  out.chase = {on: walk.chase, walker_shown: walk.walker.visible,
+               camera_above_ground_m: round(p.y - terrain.surfaceAt(p.x, p.z)),
+               camera_to_walker_m: round(p.distanceTo(w)),
+               walker_feet_above_ground_m: round(w.y - 0.85 - terrain.surfaceAt(w.x, w.z), 6)};
+  tap('KeyC');
+  walk.update(1 / 60);
+  out.chase.off_again = !walk.chase && !walk.walker.visible;
+  out.eye = {min_m: round(eye.min), max_m: round(eye.max), max_off_1_7_at_true_scale_m: round(eye.max_off_true_scale_m, 6)};
+
+  // Leave with Escape, then once more from the chase view with the Exit button.
+  tap('Escape');
+  const after1 = snapshot();
+  walk.enter(); walk.setChase(true); key('KeyW', true); hold(1); key('KeyW', false); ui('wk-exit').click();
+  const after2 = snapshot();
+  const same = after => ({
+    camera_moved_m: round(Math.hypot(...after.position.map((v, i) => v - before.position[i])), 9),
+    camera_turned: round(Math.max(...after.quaternion.map((v, i) => Math.abs(v - before.quaternion[i]))), 9),
+    rest_equal: ['fov', 'near', 'k', 'yaw', 'pitch', 'enabled', 'children', 'label', 'slider', 'bar', 'walking',
+                 'route', 'photos', 'button'].every(k => after[k] === before[k])});
+  out.after_exit = {escape: same(after1), exit_button: same(after2), relief_k: after2.k, fov_deg: after2.fov,
+                    near_m: after2.near, scene: after2.children, listeners_left: walk._listeners.length};
+  return out;
+}
+
+// ?check=layers : are the map layers of the 2D planner drawn on the right 1 m cells?
+//
+// For every layer of map_layers_model.js: pick it, read the image the 2D shows (the PNG as
+// served, or the slope tiles put together) through a 2D canvas, and render the layer's
+// group alone from straight above (orthographic, the box exactly on 2000 x 2000 pixels:
+// one pixel a 1 m cell, north up), at full opacity with no blending so each texel is
+// written as it is. The two are compared over black (a 2D canvas keeps colours
+// premultiplied and rounds faint ones coarsely) on the cells inside the terrain mesh less
+// one all round: share of cells within 3 levels, the errors, the shift that fits best
+// (it must be 0, 0) and the error against the image flipped north-south (it must be
+// clearly worse). The same at relief x5, which must not move the layer. Five named cells
+// with both colours. Then the slope steeper than the plan's limit against the steep-cell
+// layer, as masks: two different sources on the same cells. Then "Relief only", the photo
+// view, and the terrain's own materials, untouched. It only GETs the images and the info
+// JSON the 2D asks for. Everything is put back as it was.
+async function layersCheck(viz) {
+  const {terrain, scene, renderer, shadows, sunView, mapLayers: layers} = viz;
+  const M = await import('./map_layers_model.js');
+  const round = (v, d = 4) => (typeof v === 'number' && Number.isFinite(v) ? Number(v.toFixed(d)) : v ?? null);
+  const wait = ms => new Promise(done => setTimeout(done, ms));       // not frames: a hidden page draws none
+  const out = {check: 'layers', quality: terrain.quality, mesh_step_m: terrain.step};
+  if (!layers) return {...out, error: 'map layers not loaded', note: document.getElementById('layer-note').textContent};
+  const started = performance.now();
+  const W = 2000, cell = terrain.size / W, bbox = terrain.meta.bbox;
+  // The mesh's vertices run from `first` to first + (n - 1) step metres from the west and
+  // north edges: the cells wholly inside it, less one all round.
+  const lo = Math.ceil(terrain.first / cell) + 1;
+  const hi = Math.floor((terrain.first + (terrain.n - 1) * terrain.step) / cell) - 1;
+  const region = {i0: lo, j0: lo, i1: hi, j1: hi};
+  Object.assign(out, {render_px: W, relief_k: terrain.k,
+                      region: {...region, cells: (hi - lo) ** 2, rows_and_columns: `${lo} to ${hi - 1}, row 0 north`}});
+  const before = {state: layers.state(), k: terrain.k, reliefOnly: sunView.reliefOnly,
+                  children: scene.children.map(o => o.name || o.type).join(' ')};
+  const terrainLook = () => terrain.materials.map(m => ({map: m.map, color: m.color.getHex()}));
+  const look = terrainLook();
+
+  const camera = new THREE.OrthographicCamera(-terrain.half, terrain.half, terrain.half, -terrain.half, 1, 20000);
+  camera.position.set(0, 8000, 0);
+  camera.up.set(0, 0, -1);                                 // north at the top of the image
+  camera.lookAt(0, 0, 0);
+  // The layer alone, its texels as they are; rows north first. The target is sRGB like the
+  // texture: the shader works in linear and the GPU encodes the bytes back on writing.
+  const topDown = () => {
+    const m = layers.material, target = new THREE.WebGLRenderTarget(W, W, {colorSpace: THREE.SRGBColorSpace});
+    const saved = {opacity: m.opacity, blending: m.blending, fog: scene.fog, background: scene.background,
+                   clear: renderer.getClearColor(new THREE.Color()), alpha: renderer.getClearAlpha(), cast: shadows.enabled};
+    const hidden = scene.children.filter(o => o !== layers.group && o.visible);
+    try {
+      hidden.forEach(o => { o.visible = false; });
+      shadows.set(false);                                  // no shadow map drawn of a scene with no terrain
+      scene.fog = null;
+      scene.background = null;
+      renderer.setClearColor(0x000000, 0);
+      m.opacity = 1;
+      m.blending = THREE.NoBlending;
+      renderer.setRenderTarget(target);
+      renderer.render(scene, camera);
+      const rgba = new Uint8Array(W * W * 4);
+      renderer.readRenderTargetPixels(target, 0, 0, W, W, rgba);     // rows from the south
+      return M.flipRows(rgba, W, W);
+    } finally {
+      renderer.setRenderTarget(null);
+      m.opacity = saved.opacity;
+      m.blending = saved.blending;
+      Object.assign(scene, {fog: saved.fog, background: saved.background});
+      renderer.setClearColor(saved.clear, saved.alpha);
+      hidden.forEach(o => { o.visible = true; });
+      shadows.set(saved.cast);
+      target.dispose();
+    }
+  };
+  const shift = s => ({dx: s.dx, dy: s.dy, err: round(s.err), err_at_zero: round(s.err_at_zero)});
+  const at = (rgba, row, col) => [...rgba.subarray((row * W + col) * 4, (row * W + col) * 4 + 4)];
+  const sample = (name, row, col, png, drawn) => ({name, x: round(bbox.xmin + (col + 0.5) * cell, 2),
+                                                  y: round(bbox.ymax - (row + 0.5) * cell, 2), cell: [row, col],
+                                                  png: at(png, row, col), drawn: at(drawn, row, col)});
+  const maskImage = mask => {                              // 0/1 mask -> grey RGBA, for bestShift
+    const rgba = new Uint8Array(mask.length * 4);
+    for (let c = 0; c < mask.length; c++) { rgba.fill(mask[c] * 255, c * 4, c * 4 + 3); rgba[c * 4 + 3] = 255; }
+    return rgba;
+  };
+  const crop = mask => {                                   // the region of a W x W mask
+    const part = new Uint8Array((hi - lo) ** 2);
+    for (let i = lo; i < hi; i++) part.set(mask.subarray(i * W + lo, i * W + hi), (i - lo) * (hi - lo));
+    return part;
+  };
+
+  out.layers = [];
+  const masks = {};
+  try {
+    for (const layer of M.LAYERS) {
+      try {
+        const got = await layers.select(layer.id);
+        if (got.error || !got.image) { out.layers.push({id: layer.id, error: got.error || 'nothing drawn'}); continue; }
+        const src = await layers.imageData();
+        if (src.w !== W || src.h !== W) { out.layers.push({id: layer.id, error: `image of ${src.w} x ${src.h} px`}); continue; }
+        const drawnRaw = topDown();
+        const expected = M.premultiply(src.rgba), drawn = M.premultiply(drawnRaw);
+        const c = M.compareRGBA(expected, drawn, W, W, {tol: 3, region});
+        const s = M.bestShift(expected, drawn, W, W, {max: 3, tol: 3, region});
+        const flipped = M.compareRGBA(M.flipRows(expected, W, W), drawn, W, W, {tol: 3, region});
+        viz.setRelief(5);
+        const k5 = terrain.k, drawn5 = M.premultiply(topDown());
+        viz.setRelief(before.k);
+        const c5 = M.compareRGBA(expected, drawn5, W, W, {tol: 3, region});
+        const s5 = M.bestShift(expected, drawn5, W, W, {max: 3, tol: 3, region});
+        const [hx, hy] = layers.habitat;
+        let first = null;
+        for (let i = lo; i < hi && !first; i++) {
+          for (let j = lo; j < hi; j++) if (src.rgba[(i * W + j) * 4 + 3] > 0) { first = [i, j]; break; }
+        }
+        const samples = [['box centre', W / 2, W / 2],
+                         ['habitat', Math.floor((bbox.ymax - hy) / cell), Math.floor((hx - bbox.xmin) / cell)],
+                         ['NW quarter', W / 4, W / 4], ['SE quarter', (3 * W) / 4, (3 * W) / 4]]
+          .map(([name, row, col]) => sample(name, row, col, src.rgba, drawnRaw));
+        samples.push(first ? sample('first painted cell of the region', ...first, src.rgba, drawnRaw)
+                           : {name: 'first painted cell of the region', cell: null});
+        out.layers.push({
+          id: layer.id, label: layer.label, slider: layers.slider,
+          match_pct: round(c.match_pct), mean_abs_err: round(c.mean_abs_err), max_abs_err: c.max_abs_err,
+          best_shift: shift(s), mean_abs_err_flipped_ns: round(flipped.mean_abs_err),
+          coverage_png: round(M.coverage(src.rgba, W, W, {region})), coverage_drawn: round(M.coverage(drawnRaw, W, W, {region})),
+          relief_k5: k5, match_pct_k5: round(c5.match_pct), mean_abs_err_k5: round(c5.mean_abs_err), best_shift_k5: shift(s5),
+          samples,
+        });
+        if (layer.id === 'slope' && Number.isFinite(layers.limit)) {
+          masks.limit = layers.limit;
+          masks.slope = M.slopeMask(src.rgba, W, W, layers.limit);
+        }
+        if (layer.id === 'steep') masks.steep = M.alphaMask(src.rgba, W, W);
+      } catch (err) {
+        console.error(err);
+        out.layers.push({id: layer.id, error: err.message});
+      }
+    }
+
+    // Two sources, one set of cells: the slope tiles steeper than the limit, against the
+    // cells blocked.png draws. Both come from slope_deg.tif; cells just over the limit (up
+    // to ~0.07° at 30°) are blocked but their 8-bit tile colour reads as the limit itself.
+    if (masks.slope && masks.steep) {
+      const a = M.maskAgreement(crop(masks.slope), crop(masks.steep));
+      const s = M.bestShift(maskImage(masks.slope), maskImage(masks.steep), W, W, {max: 3, region});
+      out.slope_vs_steep = {limit_deg: masks.limit, cells: a.cells, agree_pct: round(a.agree_pct),
+                            only_slope_tiles: a.only_a, only_steep_png: a.only_b, both: a.both, best_shift: shift(s)};
+    } else {
+      out.slope_vs_steep = {error: 'the slope or the steep layer did not load (or the plan blocks no cell)'};
+    }
+    delete masks.slope; delete masks.steep;
+
+    // Once, with a layer on: "Relief only" keeps it; the photo view hides it and gives it back.
+    const shown = out.layers.filter(l => !l.error).map(l => l.id).at(-1);
+    if (shown) {
+      if (layers.current.id !== shown) await layers.select(shown);
+      sunView.setReliefOnly(true);
+      out.relief_only = {layer: shown, group_visible: layers.group.visible,
+                         layer_map_kept: Boolean(layers.texture) && layers.material.map === layers.texture,
+                         terrain_photo_hidden: terrain.materials.every(m => m.map === null)};
+      sunView.setReliefOnly(before.reliefOnly);
+      const inPhotoView = document.body.classList.contains('photo-view');
+      document.body.classList.add('photo-view');
+      await wait(50);
+      const hiddenThere = !layers.group.visible;
+      document.body.classList.remove('photo-view');
+      await wait(50);
+      out.photo_view = {layer: shown, hidden_in_photo_view: hiddenThere, shown_again_after: layers.group.visible};
+      if (inPhotoView) document.body.classList.add('photo-view');
+    }
+    if (layers.layersMeta && layers.layersMeta.grid) {
+      const g = layers.layersMeta.grid.bbox;
+      out.layers_box_vs_terrain_box_m = round(Math.max(...['xmin', 'ymin', 'xmax', 'ymax'].map(key => Math.abs(g[key] - bbox[key]))), 6);
+    }
+  } finally {
+    await layers.restore(before.state);
+    if (terrain.k !== before.k) viz.setRelief(before.k);
+    sunView.setReliefOnly(before.reliefOnly);
+    viz.redraw();
+  }
+  const now = terrainLook(), after = layers.state();
+  out.terrain_untouched = now.every((l, i) => l.map === look[i].map && l.color === look[i].color);
+  const children = scene.children.map(o => o.name || o.type).join(' ');
+  out.after_exit = {same: after.id === before.state.id && after.slider === before.state.slider && terrain.k === before.k &&
+                          children === before.children,
+                    state_before: before.state, state_after: after, relief_before: before.k, relief_after: terrain.k,
+                    scene_children_same: children === before.children};
+  out.seconds = round((performance.now() - started) / 1000, 1);
+  return out;
+}
+
 export const CHECKS = {shading: shadingCheck, route: routeCheck, rehearse: rehearseCheck, sun: sunCheck,
-                       shadows: shadowsCheck, guide: guideCheck, photos: photosCheck, stations: stationsCheck};
+                       shadows: shadowsCheck, guide: guideCheck, photos: photosCheck, stations: stationsCheck,
+                       walk: walkCheck, layers: layersCheck};

@@ -34,7 +34,7 @@ Besides the demo, the team will submit a scientific paper. This folder collects 
 | E4 · graph, R(v), walkback · MVP baselines | [notes/E4_walkback.md](notes/E4_walkback.md) | Aaron |
 | E5 · orienteering · E6 benchmark | [notes/E5_orienteering.md](notes/E5_orienteering.md) · [notes/E6_benchmark.md](notes/E6_benchmark.md) | Diana |
 | E8 · boxwork top-hat and U-Net | [notes/E8_boxwork_sand.md](notes/E8_boxwork_sand.md) | JB |
-| E9 · BoulderNet and distillation | [notes/E9_boulders.md](notes/E9_boulders.md) | Aaron |
+| E9 · BoulderNet and distillation · X1 boulder uncertainty (GP) | [notes/E9_boulders.md](notes/E9_boulders.md) | Aaron |
 | E12 · radiation dose and SEP alert | [notes/E12_radiation_dose.md](notes/E12_radiation_dose.md) | Juan |
 | Product: API, HUD, manual stations, guide mode (P2), data types (P4), E11 radio in the UI | [notes/product_api_hud.md](notes/product_api_hud.md) | Sebas |
 | P1 · 3D map of the box and route rehearsal | [notes/P1_3d_map.md](notes/P1_3d_map.md) | Juan |

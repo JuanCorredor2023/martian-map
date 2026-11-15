@@ -48,17 +48,18 @@
   .key { white-space: nowrap; margin-right: 8px; }
   .key i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; margin-right: 4px;
            vertical-align: middle; }
-  #plan-box button, #share button, #player button, #player select, .card-action {
+  #plan-box button, #share button, #player button, #player select, #walk-bar button, .card-action {
     padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px; background: #1c222b;
     color: var(--text); font: inherit; cursor: pointer; }
   #plan-box button, #share button { margin-top: 8px; }
-  #plan-box button:hover:not(:disabled), #share button:hover, #player button:hover, .card-action:hover { background: #262e3a; }
+  #plan-box button:hover:not(:disabled), #share button:hover, #player button:hover, #walk-bar button:hover,
+  .card-action:hover { background: #262e3a; }
   #view-link { width: 100%; box-sizing: border-box; margin-top: 6px; padding: 3px 6px; border: 1px solid var(--border);
                border-radius: 6px; background: #1c222b; color: var(--text); font: inherit; font-size: 12px; }
   #share-note { margin-top: 4px; }
   #share-note:empty { display: none; }
-  /* The link is of the free-flight view: not offered while the rehearsal owns the camera. */
-  body.rehearsing #copy-view, body.rehearsing #view-link { display: none; }
+  /* The link is of the free-flight view: not offered while the rehearsal or the walk owns the camera. */
+  body.rehearsing #copy-view, body.rehearsing #view-link, body.walking #copy-view, body.walking #view-link { display: none; }
   #plan-box button:disabled { opacity: 0.5; cursor: default; }
   #rehearse-note { margin-top: 4px; }
   #plan-default-note { margin-top: 4px; }
@@ -111,8 +112,29 @@
   #rh-alert b { color: #ff6b61; }
   /* While rehearsing: the readout moves to the top (the player takes the bottom) and the
      "reset the view" button goes away (the rehearsal owns the camera). */
-  body.rehearsing #home { display: none; }
-  body.rehearsing #readout { bottom: auto; top: 16px; left: 50%; transform: translateX(-50%); white-space: nowrap; }
+  body.rehearsing #home, body.walking #home { display: none; }
+  body.rehearsing #readout, body.walking #readout { bottom: auto; top: 16px; left: 50%; transform: translateX(-50%);
+                                                     white-space: nowrap; }
+  /* Walking freely: its bar at the bottom centre, like the player. The arrow pad only on
+     touch screens; there the key list and the mouse hint are of no use. */
+  #walk-bar { bottom: 16px; left: 50%; transform: translateX(-50%); box-sizing: border-box;
+              width: min(460px, calc(100% - 16px)); padding: 10px 12px; }
+  #walk-bar button { padding: 4px 8px; }
+  #walk-bar button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  #wk-exit { margin-left: auto; }
+  #wk-keys, #wk-hint { margin-top: 6px; }
+  #walk-pad { display: none; grid-template-columns: repeat(3, 56px); grid-auto-rows: 52px; gap: 6px;
+              justify-content: center; margin-top: 8px; }
+  #walk-bar #walk-pad button { font-size: 20px; padding: 0; touch-action: none; user-select: none;
+                               -webkit-user-select: none; -webkit-touch-callout: none; }
+  #walk-pad [data-walk="forward"] { grid-column: 2; }
+  #walk-pad [data-walk="left"] { grid-column: 1; grid-row: 2; }
+  #walk-pad [data-walk="back"] { grid-column: 2; grid-row: 2; }
+  #walk-pad [data-walk="right"] { grid-column: 3; grid-row: 2; }
+  @media (hover: none) and (pointer: coarse) {
+    #walk-pad { display: grid; }
+    #wk-keys, #wk-hint { display: none; }
+  }
   /* Side card: under the compass, or over the info panel on a phone. */
   #card { top: 158px; right: 16px; width: 230px; box-sizing: border-box; max-height: calc(100% - 180px);
           overflow-y: auto; }
@@ -129,6 +151,7 @@
   .card-note { margin-top: 8px; }
   .card-action { margin-top: 10px; }
   @media (max-width: 900px) { body.rehearsing #readout { display: none; } }
+  @media (max-width: 520px) { body.walking #readout { display: none; } }
   @media (max-width: 520px) {
     #info { width: auto; right: 76px; }
     #card { top: 16px; left: 16px; right: 76px; width: auto; max-height: 45%; z-index: 2; }
@@ -139,6 +162,7 @@
   }
 </style>
 <link rel="stylesheet" href="photos.css">
+<link rel="stylesheet" href="map_layers.css">
 </head>
 <body>
 <canvas id="view"></canvas>
@@ -160,6 +184,8 @@
     <!-- Walk the route at eye height (rehearse.js). Disabled, with the reason, when there is no route. -->
     <button id="rehearse" disabled>Rehearse the route</button>
     <div class="muted" id="rehearse-note">No route to rehearse yet.</div>
+    <!-- Walk anywhere at eye height, with the keys (walk.js). Works without a plan too. -->
+    <button id="walk" title="First person anywhere in the box: W A S D or arrows, mouse to look">Walk freely</button>
     <!-- Shown only while there is no plan. The page never plans by itself (api.js). -->
     <div id="plan-default-box" hidden>
       <button id="plan-default">Plan with default settings</button>
@@ -184,6 +210,15 @@
     <label class="check muted" title="Shadows cast by the relief as shown and by the habitat">
       <input type="checkbox" id="shadows" checked>Shadows</label>
   </details>
+  <!-- One layer of the 2D planner draped on the terrain (map_layers.js); the rest of the list comes from JS. -->
+  <details id="layers-box" open>
+    <summary class="muted">Map layer</summary>
+    <select id="layer-pick" aria-label="Map layer drawn on the terrain"><option value="">Off</option></select>
+    <label class="muted" id="layer-opacity-label" for="layer-opacity">Opacity</label>
+    <input type="range" id="layer-opacity" min="0" max="1" step="0.05" value="1" disabled>
+    <div id="layer-legend"></div>
+    <div class="muted" id="layer-note"></div>
+  </details>
   <!-- Curiosity's own photos, pinned where the camera was (photos.js, P3). -->
   <details id="photos-box" open>
     <summary class="muted">Rover photos</summary>
@@ -199,7 +234,9 @@
       <b>Touch:</b> one finger rotates, two fingers move, pinch to zoom, twist to turn.<br>
       Compass: face north. House: reset the view.<br>
       <b>Rehearsing the route:</b> drag to look around, double-click to look forward again, space bar
-      to play or pause. Click a pin for its card.</div>
+      to play or pause. Click a pin for its card.<br>
+      <b>Walking freely:</b> W A S D or arrows to move, click the view and move the mouse to look,
+      Shift to run, F for fast travel, C for the view from behind, Esc to leave.</div>
     <!-- The free-flight view as an address (view_link.js) and the picture as a PNG file. -->
     <div id="share">
       <button id="copy-view" title="An address that opens the map on this view, relief and Sun">Copy link to this view</button>
@@ -274,6 +311,23 @@
   </div>
   <div id="rh-alert" hidden></div>
   <div id="rh-note" class="muted"></div>
+</div>
+<!-- "Walk freely" (walk.js): its buttons, the keys, and an arrow pad on touch screens. -->
+<div id="walk-bar" class="panel" hidden>
+  <div class="player-row">
+    <button id="wk-run" aria-pressed="false" title="Run at 3 m/s (or hold Shift)">Run</button>
+    <button id="wk-fast" aria-pressed="false" title="Fast travel at 20 m/s (F)">Fast</button>
+    <button id="wk-chase" aria-pressed="false" title="See the astronaut from behind (C)">Chase view</button>
+    <button id="wk-exit" title="Back to free flight, as it was (Esc)">Exit</button>
+  </div>
+  <div id="wk-keys" class="muted">W A S D or arrows: move · Shift: run · F: fast · C: chase view · Esc: exit</div>
+  <div id="wk-hint" class="muted"></div>
+  <div id="walk-pad">
+    <button data-walk="forward" aria-label="Walk forward">▲</button>
+    <button data-walk="left" aria-label="Step left">◀</button>
+    <button data-walk="back" aria-label="Walk back">▼</button>
+    <button data-walk="right" aria-label="Step right">▶</button>
+  </div>
 </div>
 <div id="message" class="panel" hidden></div>
 

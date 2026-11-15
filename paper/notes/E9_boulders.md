@@ -1,6 +1,6 @@
 # E9 · Boulders: BoulderNet as teacher, distilled to a light CNN (`rocas.tif`)
 
-Owner: Aaron (`@aahg1105`) · Issues: #12, #102 (X1, uncertainty) · PRs: #99, X1 PR · Status: done · Last update: 2026-11-15
+Owner: Aaron (`@aahg1105`) · Issues: #12, #102 (X1, uncertainty) · PRs: #99 (E9), #132 (X1) · Releases: `e9-rocks-v1`, `x1-rocks-gp-v1` · Status: done · Last update: 2026-11-15
 
 ## Question
 Where are the boulders in the 2 × 2 km study box, and can a CNN about 50 times smaller than a published boulder detector reproduce its map well enough to serve as a terrain layer (`rocas.tif`, fraction of each 1 m cell covered by boulders) for route costs and the HUD?
@@ -219,7 +219,8 @@ On the training blocks the values are similar (r = 0.68 per cell, 0.74 at 10 m),
 
 ## What other pieces can use
 - **`data/e9/rocas.tif`** (Juan, Sebas): float32 on the base grid, 1 m, NaN nodata. Values are the fraction of the cell covered by boulders (0–1; median 0.0004, 99th percentile 0.087).
-  - As a HUD layer, it reads best at 10 m (Figure 2b).
+  - As a HUD layer, it reads best at 10 m (Figure 2b). It is in the HUD: `GET /layers/rocks.png` and the "Boulders" toggle draw it as a halftone per 10 m square, as context only and not in the route cost (Sebas, PR #106).
+  - **E1 (Juan, PR #108)** tried it as a learned route cost against Curiosity's traverse. In sample the boulders look priced, but on held-out blocks neither the student's layer (2 of 5 blocks better than distance alone) nor the teacher's (0 of 5) beats the control. E1's weights stay sand-only, so no boulder price is validated ([E1 note](E1_maxent_irl.md)).
   - As a cost, it could multiply E3's energy like the E1 sand factor in `api/planner.graph(human=True)`. Its weight is a modelling choice to be stated, not a measured number.
 - **`data/e9/rocks_mean.tif`, `rocks_std.tif`** (Sebas, X1): float32 on the base grid, fraction 0–1, NaN nodata.
   - These are a 20 m-scale GP mean and predictive std of the teacher's cover, for a HUD uncertainty layer.

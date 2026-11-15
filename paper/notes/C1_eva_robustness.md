@@ -61,6 +61,8 @@ The correlated-noise stress test is a negative calibration result: the existing 
 
 The scientific Python environment is `C:/Users/usuario/.conda/envs/martian/python.exe`; the default Python lacks the dependencies. No dependencies were installed for this block. Every summary identifies Python/NumPy, input hash, script/filter SHA-256 and source commit. Script hashes identify the executed implementation even when it has not yet been committed.
 
+**Clean-checkout correction:** the directed-graph exporter test originally mocked the graph but still hashed the real `data/base/` metadata. Its success on a populated workspace did not establish independence from scientific data. It now hashes temporary synthetic metadata alongside its synthetic graph, without skipping the test. Validation includes running this test module from an isolated copy of the physics/graph sources and the test, with no `data/` directory. This changes test isolation only; the production exporter still hashes the real input files and the experiment results are unchanged.
+
 ## Limitations and remaining C1 work
 
 - Simulation only, with one E5 tour and one habitat; no human, suit, physiological-sensor or out-of-site validation. Noise and bias are assumed.

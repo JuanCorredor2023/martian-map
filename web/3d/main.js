@@ -34,6 +34,7 @@ import { SunView } from './sun.js';
 import { clockText, parseClock, parseSol } from './sun_model.js';
 import { Terrain, BUILD_HINT } from './terrain.js';
 import { formatView, parseView, viewLink } from './view_link.js';
+import { Walk } from './walk.js';
 
 const ui = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -73,7 +74,7 @@ window.addEventListener('pointerdown', e => {
 
 async function main() {
   if (window.innerWidth < 700 || window.innerHeight < 500) {
-    ui('about').open = ui('plan-box').open = ui('sun-box').open = ui('photos-box').open = false;
+    ui('about').open = ui('plan-box').open = ui('sun-box').open = ui('photos-box').open = ui('layers-box').open = false;
   }
   const quality = pickQuality();
   const canvas = ui('view');
@@ -118,9 +119,10 @@ async function main() {
                                        {leftDrag: params.get('drag') === 'pan' ? 'pan' : 'rotate'});
   controls.autoRotate = params.get('spin') === '1';
   controls.home();
-  // While rehearsing the camera belongs to the rehearsal: these two do nothing then.
-  ui('compass').addEventListener('click', () => { if (!rehearsal.active) controls.faceNorth(); });
-  ui('home').addEventListener('click', () => { if (!rehearsal.active) controls.home(); });
+  // While rehearsing or walking the camera belongs to that mode: these two do nothing then.
+  const busy = () => rehearsal.active || walk.active;
+  ui('compass').addEventListener('click', () => { if (!busy()) controls.faceNorth(); });
+  ui('home').addEventListener('click', () => { if (!busy()) controls.home(); });
 
   // What is drawn on the ground: the route of the plan, the markers, and the walkback
   // lines of the rehearsal.
@@ -151,11 +153,13 @@ async function main() {
   resize();
 
   function readout() {
-    // What is at the middle of the screen; while rehearsing, where the walker is.
-    const centre = rehearsal.active ? null : controls.centreGround();
+    // What is at the middle of the screen; while rehearsing or walking, where the walker is.
+    const centre = busy() ? null : controls.centreGround();
     let text = 'Looking at the sky';
     if (rehearsal.active) {
       text = rehearsal.positionText();
+    } else if (walk.active) {
+      text = walk.positionText();
     } else if (centre && Math.abs(centre[0]) <= terrain.half && Math.abs(centre[2]) <= terrain.half) {
       const [x, y] = terrain.toMars(centre[0], centre[2]);
       text = `x ${x.toFixed(0)} m · y ${y.toFixed(0)} m · elevation ` +
@@ -165,7 +169,7 @@ async function main() {
     }
     ui('readout').textContent = continuous ? `${text} · ${fps.toFixed(0)} fps` : text;
     // The needle shows where north is on screen: it turns against the heading.
-    const heading = rehearsal.active ? rehearsal.viewYaw : controls.yaw;
+    const heading = rehearsal.active ? rehearsal.viewYaw : walk.active ? walk.viewYaw : controls.yaw;
     ui('compass-needle').setAttribute('transform', `rotate(${-THREE.MathUtils.radToDeg(heading)})`);
   }
 
@@ -234,11 +238,14 @@ async function main() {
                                    stationMedia: s => (photos && s.x != null
                                      ? (photos.stationPreview({x: s.x, y: s.y, label: s.id}, {interactive: false}) || {}).media || null
                                      : null)});
+  // "Walk freely" (walk.js, issue #109): first person anywhere in the box, with the keys.
+  const walk = new Walk({terrain, scene, camera, canvas, controls, relief, overlays, markers});
+  ui('walk').addEventListener('click', () => (walk.active ? walk.exit() : walk.enter()));
 
   // Fly to where a marker is seen from about 60 m, coming from where the camera is now.
   function flyToMarker(marker) {
     const point = markers.positionOf(marker.id);
-    if (!point || rehearsal.active) return;
+    if (!point || busy()) return;
     const dx = point[0] - controls.position[0], dz = point[2] - controls.position[2];
     const yaw = Math.hypot(dx, dz) > 1 ? Math.atan2(dx, -dz) : controls.yaw;       // north is -Z
     controls.flyToLook(point, 60, {yaw, pitch: THREE.MathUtils.degToRad(20)});
@@ -266,6 +273,7 @@ async function main() {
   let press = null;
   canvas.addEventListener('pointerdown', e => { press = {x: e.clientX, y: e.clientY, id: e.pointerId}; });
   canvas.addEventListener('pointerup', e => {
+    if (walk.active) return;                   // walking, a click captures the mouse to look
     if (!press || press.id !== e.pointerId || Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4) return;
     const r = canvas.getBoundingClientRect();
     const ndc = [(e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height * 2 - 1)];
@@ -283,13 +291,13 @@ async function main() {
   // leaves the rest of the map as it is.
   let photos = null;
   const photosNote = text => { ui('photos-note').textContent = text; };
-  const showPhotoPins = () => photos && photos.setVisible(ui('photos-show').checked && !rehearsal.active);
+  const showPhotoPins = () => photos && photos.setVisible(ui('photos-show').checked && !busy());
   async function loadPhotos() {
     try {
       const {PhotoLayer} = await import('./photos.js');
       const layer = new PhotoLayer({terrain, controls, camera, canvas, relief, sunView, markers: photoMarkers,
                                     showCard, hideCard, onChange: () => { dirty = true; },
-                                    isBusy: () => rehearsal.active});
+                                    isBusy: busy});
       const got = await layer.load();
       if (!got.ok) {
         photosNote(`No rover photos: ${got.error}. The rest of the map works without them ` +
@@ -309,21 +317,27 @@ async function main() {
     }
   }
   ui('photos-show').addEventListener('change', showPhotoPins);
-  // The rehearsal takes the camera and the relief: leave the photo view before it starts.
+  // The rehearsal and the free walk take the camera and the relief: leave the photo view
+  // (and the other mode) before one starts.
   document.addEventListener('click', e => {
-    if (photos && photos.active && e.target.closest && e.target.closest('#rehearse')) photos.exit();
+    const mode = e.target.closest && e.target.closest('#rehearse, #walk');
+    if (!mode) return;
+    if (photos && photos.active) photos.exit();
+    if (mode.id === 'rehearse') walk.exit(); else rehearsal.exit();
   }, true);
   // Photo pins out of the way of the walk and back after it, whoever starts or ends it
-  // (its button, a check, a plan that replaces the route): the rehearsal's own calls go
+  // (its button, a check, a plan that replaces the route): the modes' own calls go
   // through these, so nothing waits for a frame to be drawn.
-  for (const name of ['enter', 'exit']) {
-    const original = rehearsal[name].bind(rehearsal);
-    rehearsal[name] = (...args) => {
-      const result = original(...args);
-      showPhotoPins();
-      dirty = true;
-      return result;
-    };
+  for (const mode of [rehearsal, walk]) {
+    for (const name of ['enter', 'exit']) {
+      const original = mode[name].bind(mode);
+      mode[name] = (...args) => {
+        const result = original(...args);
+        showPhotoPins();
+        dirty = true;
+        return result;
+      };
+    }
   }
 
   // ---- plan ---------------------------------------------------------------------
@@ -338,12 +352,14 @@ async function main() {
   // page draws what the answer contains; a plan with no route still shows its points.
   function showPlan(got) {
     const model = got.fc ? parsePlan(got.fc) : null;
+    walk.exit();                               // its path on the ground is of the old route
     rehearsal.setPlan(model);                  // leaves the rehearsal: its route is gone
     hideCard();
     overlays.setPlan(model);
     markers.set(model ? planMarkers(model, got.stationTypes || {}) : []);
     shadows.invalidate();                      // the habitat dome casts one
     window.viz3d.plan = {...got, model};
+    window.viz3d.mapLayers?.setPlan(model);    // the radio antenna and the steep limit follow the plan
 
     const route = model && mainRoute(model), facts = [], warnings = ui('plan-warnings');
     const origin = model && model.properties.source ? ` (${model.properties.source})` : '';
@@ -444,6 +460,7 @@ async function main() {
     if (pendingRelief !== null) { setRelief(pendingRelief); pendingRelief = null; }
     if (controls.update((now - last) / 1000)) dirty = true;    // wheel easing, auto-rotate, drags, flights
     if (rehearsal.update((now - last) / 1000)) dirty = true;   // every frame only while playing or dragging
+    if (walk.update((now - last) / 1000)) dirty = true;        // every frame only while moving or looking
     last = now;
     if (!dirty && !continuous) return;
     if (camera.fov !== shownFov) {             // a flight or the rehearsal changed it: resize the pins
@@ -466,12 +483,23 @@ async function main() {
   // `plan` is {fc, source, error, missing, stationTypes, model} once a plan was asked for.
   // `photos` is the PhotoLayer once its catalogue has loaded (photosReady), else missing.
   window.viz3d = {terrain, scene, camera, controls, renderer, sun, sunDirection, sunView, shadows, overlays, markers,
-                  photoMarkers, rehearsal, walkbackLines, plan: null, showPlan, reloadPlan, planDefault, setRelief,
+                  photoMarkers, rehearsal, walk, walkbackLines, plan: null, showPlan, reloadPlan, planDefault, setRelief,
                   currentViewLink, capture, get fps() { return fps; }, redraw() { dirty = true; }};
   // The terrain is usable while the plan loads. ?plan=default is the user asking.
   const planReady = params.get('plan') === 'default' ? planDefault() : reloadPlan();
   const photosReady = loadPhotos();
   window.viz3d.photosReady = photosReady;
+  // Map layers of the 2D planner on the terrain (map_layers.js): nothing is asked until one
+  // is picked, and an error in that part leaves the rest of the map as it is.
+  window.viz3d.mapLayersReady = (async () => {
+    try {
+      const {setupMapLayers} = await import('./map_layers.js');
+      window.viz3d.mapLayers = setupMapLayers(window.viz3d);
+    } catch (err) {
+      console.error(err);
+      ui('layer-note').textContent = `Map layers not available (${err.message}).`;
+    }
+  })();
 
   // ?photo=<id>: its card and the photo view, once the plan has drawn (it hides the card).
   const startPhoto = params.get('photo');
@@ -496,6 +524,7 @@ async function main() {
     const {CHECKS} = await import('./checks.js');
     await planReady;
     await photosReady;
+    await window.viz3d.mapLayersReady;
     const result = CHECKS[check] ? await CHECKS[check](window.viz3d) : {error: `unknown check: ${check}`};   // guide is async
     window.viz3d.checkResult = result;
     console.log(JSON.stringify(result));
