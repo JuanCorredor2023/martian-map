@@ -49,7 +49,7 @@ This follows the guide's demo script (zero-to-hero REV3, section 51).
 3. **Steep cells (20 s).** Move *Block cells steeper than N°* (30° by default; 20° blocks 30 % of the box). This is the decision that changes routes the most (E3 sensitivity).
 4. **Science stations (45 s).** The right panel lists 13 stations. Three are Curiosity's real drill sites (Nevado Sajama ridge, Valle de la Luna hollow, Altadena); the rest are candidates. The rubric (ridge 5, hollow 4, contact 4, Curiosity site 3) is editable live; its literature review is in `docs/research/`.
 5. **Plan (60 s).** Set the EVA limits (energy budget, margin, **max duration**) and press *Plan EVA*. E4 builds the round trip live. Press **▶ Play**: the budget bar splits energy into used, needed to return and free. It only shrinks, and the arrow shows the heading.
-6. **Walkback (45 s).** Pause anywhere. The **red line** is the 30 min emergency-oxygen return (R_T = 1800 s); the **cyan line** is where the astronaut can still go and come back with the energy left (F_E + R_E). Neither is a circle: scarps and slopes shape them.
+6. **Walkback (45 s).** Pause anywhere. The **red line** is the 30 min emergency-oxygen return (R_T = 1800 s); the **cyan line** is where the astronaut can still go and come back with the energy left (F_E + R_E). Neither is a circle: scarps and slopes shape them. The thin circles are the classic fixed-radius rules (1.35 km, Apollo 1.7 km): about a third of what they call safe cannot get back in 30 min.
 7. **Solar storm (30 s).** In *Radiation (E12)* pick a storm and press *Simulate SEP alert*: the dose on the way back is the return time × the storm rate. Background radiation does not change the plan; a storm does.
 
 ## 4. What to say honestly

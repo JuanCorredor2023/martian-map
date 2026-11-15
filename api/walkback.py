@@ -118,3 +118,40 @@ def return_fields(base_dir, max_cell_slope_deg, base_node, human=True):
 def forward_energy(base_dir, max_cell_slope_deg, start_node, limit_j, human=True):
     g = grid(base_dir, max_cell_slope_deg, human)
     return dijkstra(g.energy, directed=True, indices=start_node, limit=limit_j).reshape(g.shape)
+
+
+# Fixed-radius rules the real return time is compared with (guide section 15.2).
+FIXED_RADII_M = {"30 min at 0.75 m/s (guide)": 1350.0, "Apollo rule 1.7 km (3.4 km/h)": 1700.0}
+
+
+def fixed_radius_check(g, r_t, base_xy, threshold_s):
+    """For each fixed radius: the circle (metres, DEM CRS) and, over the cells of
+    the box, the share of cells INSIDE the circle that cannot get back within
+    threshold_s (falsely safe), and the share of the truly safe zone left OUTSIDE.
+    The circle can extend past the 2 x 2 km box; only box cells are counted."""
+    rows, cols = g.shape
+    a, c, e, f = g.transform.a, g.transform.c, g.transform.e, g.transform.f
+    xs = c + (np.arange(cols) + 0.5) * a
+    ys = f + (np.arange(rows) + 0.5) * e
+    dist = np.hypot(xs[None, :] - base_xy[0], ys[:, None] - base_xy[1])
+    truly_safe = np.isfinite(r_t) & (r_t <= threshold_s)
+    out = []
+    for name, radius in FIXED_RADII_M.items():
+        inside = dist <= radius
+        n_inside = int(inside.sum())
+        falsely_safe = inside & ~truly_safe
+        no_way_back = inside & ~np.isfinite(r_t)                 # blocked or cut off
+        too_slow = inside & np.isfinite(r_t) & (r_t > threshold_s)
+        missed = truly_safe & ~inside
+        ang = np.linspace(0, 2 * np.pi, 145)
+        circle = np.column_stack([base_xy[0] + radius * np.cos(ang),
+                                  base_xy[1] + radius * np.sin(ang)])
+        out.append({
+            "rule": name, "radius_m": radius,
+            "circle": np.round(circle, 2).tolist(),
+            "falsely_safe_pct": float(100 * falsely_safe.sum() / max(n_inside, 1)),
+            "falsely_safe_no_way_back_pct": float(100 * no_way_back.sum() / max(n_inside, 1)),
+            "falsely_safe_too_slow_pct": float(100 * too_slow.sum() / max(n_inside, 1)),
+            "missed_safe_pct": float(100 * missed.sum() / max(int(truly_safe.sum()), 1)),
+        })
+    return out

@@ -13,6 +13,15 @@ from fisica.metabolic import J_PER_WH, KJ_PER_LITER_O2  # noqa: E402 (planner se
 from grafos.walkback import check_walkback  # noqa: E402
 
 try:
+    # Preferred: E5's own /plan entry point (Diana, src/orienteering/tour.py). It owns
+    # the tour logic (O2 limit, walkback re-planning); this module only adapts names.
+    from orienteering.tour import plan_tour as _e5_plan_tour
+    from grafos.labels import NoFeasibleRoute as _E4NoRoute
+    DELEGATE = True
+except ImportError:
+    DELEGATE = False
+
+try:
     from orienteering.data_io import Stations
     from orienteering.network import route_path, station_matrices
     from orienteering.problem import Problem
@@ -20,6 +29,7 @@ try:
     AVAILABLE = True
 except ImportError:                       # E5 not merged yet
     AVAILABLE = False
+AVAILABLE = AVAILABLE or DELEGATE
 
 
 class NoTour(Exception):
@@ -31,6 +41,39 @@ def plan_tour(req, base_dir, service_power_w):
 
     Raises ValueError (bad input) or NoTour (nothing fits the limits)."""
     g = planner.graph(str(base_dir), req.max_cell_slope_deg, req.human_cost)
+    if DELEGATE:
+        return _delegate(req, g)
+    return _local_tour(req, g, service_power_w)
+
+
+def _delegate(req, g):
+    """Call E5's plan_tour on the shared graph (E3 or human cost) and normalise names
+    for the HUD and the guide (order -> visit_order)."""
+    try:
+        fc, info = _e5_plan_tour(req, g)
+    except _E4NoRoute as err:
+        raise NoTour(str(err))
+    route = next(f for f in fc["features"] if f["properties"]["kind"] == "route")
+    p = route["properties"]
+    # E5 lists the habitat at both ends of order/stop_index; the HUD and the guide
+    # expect only the stations, in visiting order, with their positions on the line.
+    order, idx = list(p.get("order", [])), list(p.get("stop_index", []))
+    pairs = [(o, i) for o, i in zip(order, idx) if o != "habitat"] if len(order) == len(idx)         else [(o, None) for o in order if o != "habitat"]
+    p["visit_order"] = [o for o, _ in pairs]
+    if all(i is not None for _, i in pairs):
+        p["stop_index"] = [int(i) for _, i in pairs]
+    if p["stop_index"] and p.get("turn_index") is None:
+        p["turn_index"] = int(p["stop_index"][-1])
+    info = dict(info)
+    info["visit_order"] = p["visit_order"]
+    info["stations_considered"] = len(req.stations)
+    info["cost_model"] = g.cost_model
+    info["engine"] = "E5 plan_tour (src/orienteering)"
+    return fc, info
+
+
+def _local_tour(req, g, service_power_w):
+    """Fallback built on E5's primitives, for E5 versions without plan_tour."""
     hr, hc, h_moved = g.place(*req.start, label="habitat")
     hx, hy = (float(v) for v in g.cell_to_xy(hr, hc))
 
@@ -103,7 +146,8 @@ def plan_tour(req, base_dir, service_power_w):
                 "solver": sol.solver, "solver_runtime_s": round(sol.runtime_s, 3)}}
     start = {"type": "Feature", "geometry": {"type": "Point", "coordinates": [hx, hy]},
              "properties": {"kind": "start", "requested": list(req.start), "moved_m": h_moved}}
-    info = {"cost_model": g.cost_model, "habitat_moved_m": h_moved, "visit_order": visit, "prize": float(sol.prize),
+    info = {"engine": "api/tour.py on E5 primitives", "cost_model": g.cost_model,
+            "habitat_moved_m": h_moved, "visit_order": visit, "prize": float(sol.prize),
             "stations_considered": len(keep), "service_power_w": service_power_w,
             "moved": moved}
     return {"type": "FeatureCollection", "features": [line, start]}, info

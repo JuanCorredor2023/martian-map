@@ -147,6 +147,51 @@ def main():
     ax.grid(alpha=0.3)
     fig.savefig(FIG / "e4_fig2_safe_area.png", dpi=120)
 
+    baselines_figure(g, hab, hs, ext, s)
+    (OUT / "summary.json").write_text(json.dumps(s, indent=2), encoding="utf-8")
+
+
+def baselines_figure(g, hab, hs, ext, s, fraction=0.5):
+    """What each baseline DECLARES safe vs the exact safe region (whole grid).
+    Red = declared safe although no route fits the budget (sure danger)."""
+    from grafos.baselines import FLAT_J_PER_M, RATE_W, BaselineEvaluator
+    ev = BaselineEvaluator(g, hab)
+    b = fraction * ev.farthest_loop_j()
+    exact = ev.loop_e <= b
+    hr, hc = g.cell(hab)
+    rows, cols = np.divmod(np.arange(g.n), g.width)
+    straight = np.hypot(rows - hr, cols - hc) * abs(g.transform[0])
+    reach = np.isfinite(ev.loop_e)
+    declared = {
+        "B1 A*-slope: 2 x path length x flat J/m": (2 * ev.len_out * FLAT_J_PER_M <= b) & reach,
+        "B2 fixed radius": (straight <= b / (2 * FLAT_J_PER_M)) & reach,
+        "B3 linear O2 (293 W x time)": (RATE_W * (ev.t_out + ev.t_back) <= b) & reach,
+    }
+    s["baselines_map"] = {"budget_fraction": fraction, "budget_wh": round(b / J_PER_WH, 1),
+                          "exact_safe_fraction": round(float(exact.mean()), 4)}
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5.2), constrained_layout=True)
+    for a, (name, dec) in zip(ax, declared.items()):
+        img = np.full(g.n, np.nan)
+        img[exact & dec] = 0          # agree: safe
+        img[~dec & exact] = 1         # baseline too conservative
+        img[dec & ~exact] = 2         # declared safe, impossible
+        a.imshow(hs, cmap="gray", extent=ext)
+        a.imshow(img.reshape(g.shape), cmap=matplotlib.colors.ListedColormap(
+            ["#4caf50", "#2196f3", "#e53935"]), vmin=0, vmax=2, alpha=0.6, extent=ext,
+            interpolation="nearest")
+        a.plot(hc, hr, marker="*", color="yellow", ms=14, mec="k")
+        bad = float((dec & ~exact).sum() / max(dec.sum(), 1))
+        s["baselines_map"][name.split(":")[0]] = {
+            "declared_safe_fraction": round(float(dec.mean()), 4),
+            "impossible_among_declared": round(bad, 4)}
+        a.set_title(f"{name}\n{100 * bad:.1f}% of 'safe' cells cannot be done", fontsize=9)
+        a.set_xlabel("column (m, east)")
+    ax[0].set_ylabel("row (m, south)")
+    fig.suptitle(f"Green: safe for both. Red: baseline says safe, exact E4 says impossible. "
+                 f"Blue: baseline too cautious. Budget {b / J_PER_WH:.0f} Wh "
+                 f"({fraction:.0%} of the farthest round trip).", fontsize=10)
+    fig.savefig(FIG / "e4_fig3_baselines_map.png", dpi=100)
+
 
 if __name__ == "__main__":
     main()

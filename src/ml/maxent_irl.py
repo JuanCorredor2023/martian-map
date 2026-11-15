@@ -52,13 +52,23 @@ walks diverges. For a uniform price c per metre this happens when
 every other weight >= 0 keeps every cell at >= 2.0 per metre, so Z is finite.
 """
 
+import os
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
-import torch
+# On Windows, PyTorch and conda's NumPy/SciPy (MKL) can each load their own Intel
+# OpenMP runtime (libiomp5md.dll). The second one aborts the process ("OMP: Error
+# #15", seen as "Fatal Python error: Aborted" inside SciPy's L-BFGS-B) unless this
+# is set. Intel warns it may give wrong results in rare cases; the gradient tests
+# (tests/ml) compare against autograd and finite differences and would catch that.
+# setdefault: whoever needs another value can still set it. tests/ml/conftest.py
+# does the same for the tests, which import torch before this module.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
+import numpy as np  # noqa: E402
+import torch  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # src/, for fisica
 

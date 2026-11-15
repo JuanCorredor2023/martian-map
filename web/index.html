@@ -136,6 +136,7 @@
   <div class="muted"><b style="color: var(--text)">Walkback</b> · <span style="color:#ff3b30">━</span> 30 min return
     · <span style="color:#36d1ff">━</span> energy-safe area</div>
   <label><input type="checkbox" id="wb-mode" class="click-mode"> Click the map to place the astronaut</label>
+  <label><input type="checkbox" id="show-radius" checked> Compare with fixed-radius rules</label>
   <label><input type="checkbox" id="base-mode" class="click-mode"> Click the map to move the base</label>
   <div class="row"><span class="muted">Energy left (Wh)</span>
     <input type="number" id="wb-energy" min="0" step="10" value="150" style="width:70px"></div>
@@ -429,6 +430,13 @@ function wbLayers() {
                      getColor: color, getWidth: width, widthUnits: "pixels",
                      jointRounded: true, capRounded: true}),
     ];
+    if (ui("show-radius").checked) {
+      const circles = wbFC.features.filter(f => f.properties.kind === "fixed_radius");
+      out.push(new PathLayer({id: "fixed-radius", data: circles,
+        getPath: f => f.geometry.coordinates.map(([x, y]) => toWorld(x, y)),
+        getColor: (f, {index}) => index === 0 ? [255, 255, 255, 220] : [170, 170, 170, 200],
+        getWidth: 1.5, widthUnits: "pixels"}));
+    }
     out.push(...outline("energy-boundary", lines("energy_safe_boundary"), [54, 209, 255], 2.5));
     out.push(...outline("red-line", lines("emergency_time_boundary"), [255, 59, 48], 3));
   }
@@ -459,6 +467,12 @@ async function requestWalkback() {
     ok(p.contingency_ok, `Return time ${(p.return_time_s / 60).toFixed(1)} min (limit 30)`) +
     ok(p.energy_ok, `Return energy ${p.return_energy_wh.toFixed(1)} Wh · ` +
                     `${p.energy_left_after_return_wh.toFixed(1)} Wh left after returning`) +
+    out.features.filter(f => f.properties.kind === "fixed_radius").map(f => {
+      const r = f.properties;
+      return `<div class="muted" style="margin-top:4px">○ ${r.rule}, ${(r.radius_m / 1000).toFixed(2)} km: ` +
+        `<b style="color:#ff6b61">${r.falsely_safe_pct.toFixed(0)} %</b> of it cannot get back in 30 min ` +
+        `(${r.falsely_safe_no_way_back_pct.toFixed(0)} % no way back, ${r.falsely_safe_too_slow_pct.toFixed(0)} % too slow)</div>`;
+    }).join("") +
     p.warnings.map(w => `<div class="warn">⚠ ${w}</div>`).join("");
   redraw();
 }
@@ -693,7 +707,7 @@ async function main() {
 }
 
 for (const id of ["show-ortho", "show-hillshade", "show-slope", "slope-opacity",
-                  "show-cost", "show-sand", "block-on", "block-slope"]) {
+                  "show-cost", "show-sand", "block-on", "block-slope", "show-radius"]) {
   ui(id).addEventListener("input", () => deckgl && deckgl.setProps({layers: layers()}));
 }
 ui("show-cost").addEventListener("input", showCostLegend);

@@ -210,7 +210,7 @@ def _box_centre():
 def walkback(req: WalkbackRequest):
     """Red line R_T = threshold (cached per base) and the energy-safe boundary
     F_E(p, v) + R_E(v) = E_remaining (recomputed for each position and energy).
-    PROVISIONAL return fields until E4 delivers rv.tif."""
+    Also compares the red line with the fixed-radius rules (guide section 15.2)."""
     limit = req.max_cell_slope_deg if req.max_cell_slope_deg else None
     base_xy = req.base or _box_centre()
     try:
@@ -238,6 +238,8 @@ def walkback(req: WalkbackRequest):
         feature("Point", list(base_xy), kind="base"),
         feature("Point", list(req.current_position), kind="current_position"),
     ]
+    for chk in wb.fixed_radius_check(g, r_t, base_xy, req.emergency_return_time_s):
+        features.append(feature("LineString", chk.pop("circle"), kind="fixed_radius", **chk))
     crs_wkt = (BASE / "crs.wkt").read_text(encoding="utf-8").strip()
     return feature_collection(
         features, crs_wkt,
@@ -270,12 +272,14 @@ def _plan_tour(req):
         warnings.append(f"habitat moved {info['habitat_moved_m']:.1f} m to the nearest walkable cell")
     if req.service_energy_wh_per_min is None:
         warnings.append(f"service power assumed {service_w:.0f} W (E4 default)")
+    warnings += info.get("warnings", [])                 # E5: O2 limit, re-plans, moved stations
     fc["features"] += [feature("Point", [s.x, s.y], kind="station", id=s.id, type=s.type,
                                score=s.score, service_time_min=s.service_time_min,
                                visited=s.id in order, order=order.get(s.id))
                        for s in req.stations]
     fc["properties"] = dict(
-        model="santee_2001", source="E5_orienteering_on_E4 (live)", habitat=list(req.start),
+        model="santee_2001", source=f"E5 tour (live, {info.get('engine', 'E5')})",
+        habitat=list(req.start),
         cost_model=info["cost_model"], human_cost=req.human_cost,
         units={"coordinates": "m", "energy": "Wh", "time": "s"},
         energy_budget_wh=req.energy_budget_wh, energy_usable_wh=p["usable_wh"],
