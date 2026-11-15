@@ -80,7 +80,7 @@ with $M$, $W_\text{level}$ and $W_\text{slope}$ in watts and $\alpha$ in degrees
 
 Reduced gravity enters only through $W_\text{slope}$, the work done raising or lowering the body's mass; the cost of moving the legs on level ground does not scale with $g$. The alternative of scaling the whole power by $g/g_\oplus$, used for example in a recent NASA traverse model [@Kim2025] on top of the Pandolf equation [@Pandolf1977], fails a simple lunar check: on flat ground it predicts 52 W on the Moon, whereas about 290 W has been inferred for the Apollo 14 EVAs [@Carr2003]. We therefore keep the Pandolf variant only for a sensitivity test.
 
-Walking speed follows the Apollo regression $V(\alpha) = 0.75 - 0.01\,\alpha$ m s⁻¹, with $\alpha$ signed so that walking downhill is faster. The published regression does not state whether the slope is signed, so we adopt the signed reading and test the unsigned one as a sensitivity case. The astronaut's total mass is $m = 124.2$ kg, a 75 kg person carrying 47.8 kg of suit and load, and $g = 3.71$ m s⁻².
+Walking speed follows the Apollo regression $V(\alpha) = 0.75 - 0.01\,\alpha$ m s⁻¹, with $\alpha$ signed so that walking downhill is faster. The published regression does not state whether the slope is signed, so we adopt the signed reading and test the unsigned one as a sensitivity case. The astronaut's total mass is $m = 124.2$ kg, the Apollo 14 commander's 76.4 kg plus a 47.8 kg suit [@Carr2003], and $g = 3.71$ m s⁻².
 
 The grid becomes a graph by connecting each cell to its eight neighbours. For the move from cell $u$ to cell $v$, of horizontal length $d_h \in \{1, \sqrt2\}$ m,
 $$\alpha_{uv} = \arctan\frac{z_v - z_u}{d_h},\qquad \Delta t_{uv} = \frac{d_h}{V(\alpha_{uv})\cos\alpha_{uv}},\qquad E_{uv} = M(\alpha_{uv}, V(\alpha_{uv}), g)\,\Delta t_{uv}.$$
@@ -101,7 +101,8 @@ the metabolic power divided by the horizontal speed, because it shows where walk
 | Quantity | Implementation | Hand computation |
 |---|---|---|
 | Flat power at 0.75 m s⁻¹ (Earth, Moon, Mars) | 292.23 W in all three | 292.23 W |
-| Pandolf flat on Earth → whole-power scaling on the Moon | 315.87  W | 52.16 W |
+| Pandolf flat power, Earth | 316.63 W | 316.63 W |
+| Pandolf × $g_\text{Moon}/g_\text{Earth}$, flat | 52.29 W | 52.29 W |
 | Test route of 5 km (4.1 km flat + 0.9 km at +10°) | 2215.5 kJ, 615.4 Wh, 110.2 L, 1.91 h | same |
 | Minimum cost per horizontal metre, signed speed | 338.75 J m⁻¹ at −7.10° | same |
 | Same with speed from \|α\| | 351.00 J m⁻¹ at −5.41° | same |
@@ -125,8 +126,8 @@ Table 4 varies one parameter at a time on the route from the centre of the area 
 | speed from \|α\| | 138.4 Wh | 84.4 % | 53.1 % | 93.5 Wh / 15.9 min | 100 % |
 | gravity Moon 1.62 | 125.6 Wh | 84.4 % | 63.4 % | 81.8 Wh / 15.7 min | 82 % |
 | gravity Earth 9.81 | 145.1 Wh | 84.4 % | 63.4 % | 127.0 Wh / 15.8 min | 100 % |
-| Pandolf + correction | 205.2 Wh | 84.4 % | 63.4 % | 139.9 Wh / 15.8 min | 89 % |
-| Pandolf + correction × g/g⊕ | 77.6 Wh | 84.4 % | 63.4 % | 52.9 Wh / 15.8 min | 89 % |
+| Pandolf + correction | 200.8 Wh | 84.4 % | 63.4 % | 137.8 Wh / 15.8 min | 89 % |
+| Pandolf + correction × g/g⊕ | 75.9 Wh | 84.4 % | 63.4 % | 52.1 Wh / 15.8 min | 89 % |
 | cell block 20° | 95.3 Wh | 42.9 % | 35.9 % | 94.8 Wh / 16.0 min | 39 % |
 | no cell block | 107.5 Wh | 99.1 % | 92.4 % | 93.3 Wh / 15.7 min | 100 % |
 
@@ -563,7 +564,7 @@ Brady, A. L. et al. (2019). BASALT science operations: station selection against
 
 Calef, F. J. III and Parker, T. J. (2016). MSL Gale crater HiRISE orthophoto mosaics, colour and greyscale, 0.25 m/pixel, from HiRISE images acquired 2006–2011. USGS Astrogeology Science Center. https://astrogeology.usgs.gov/search/map/mars_msl_gale_merged_orthophoto_mosaic_25cm
 
-Carr, C. E., Newman, D. J. and Hodges, K. V. (2003). Apollo 14 EVA energy estimates. Massachusetts Institute of Technology. http://web.mit.edu/aeroastro/www/people/dnewman/pdfs/DJN_paper3.43.pdf
+Carr, C. E., Newman, D. J. and Hodges, K. V. (2003). Geologic traverse planning for planetary EVA. SAE Technical Paper 2003-01-2416. http://web.mit.edu/aeroastro/www/people/dnewman/pdfs/DJN_paper3.43.pdf
 
 Centro de Astrobiología and NASA. Mars Science Laboratory REMS weather data, one record per sol. https://mars.nasa.gov/rss/api/?feed=weather&category=msl&feedtype=json
 
