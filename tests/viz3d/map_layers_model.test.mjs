@@ -69,8 +69,8 @@ test('legend data copied from the HUD, literally', () => {
   assert.deepEqual(g('radio'), {kind: 'fill', css: 'rgba(42,120,214,0.75)', sidebar: 'rgba(42,120,214,0.7)', border: null,
     text: 'Habitat antenna in sight', caption: 'the habitat antenna is in sight', ticks: [], unit: null,
     note: 'Line of sight on the 1 m terrain model (cautious).'});
-  assert.deepEqual(g('slope'), {kind: 'gradient', css: 'linear-gradient(90deg,#2e9b3e,#f2d43a,#f28c28,#d7301f)',
-    sidebar: 'linear-gradient(90deg, #2e9b3e 0%, #f2d43a 33%, #f28c28 66%, #d7301f 100%)', border: null,
+  assert.deepEqual(g('slope'), {kind: 'gradient', css: 'linear-gradient(90deg,#1a9850 0%,#fee08b 33.3%,#f46d43 66.7%,#a50026 100%)',
+    sidebar: 'linear-gradient(90deg, #1a9850 0%, #fee08b 33.3%, #f46d43 66.7%, #a50026 100%)', border: null,
     text: 'Slope, 0° to 45°', caption: null, ticks: ['0°', '15°', '30°', '45°+'], unit: '°', note: null});
   const hatch = 'repeating-linear-gradient(45deg, rgba(14,16,20,.95) 0 3px, rgba(14,16,20,.45) 3px 6px)';
   assert.deepEqual(g('steep'), {kind: 'hatch', css: hatch, sidebar: hatch, border: '1px solid rgba(255,255,255,.25)',
@@ -97,7 +97,7 @@ test('legend data copied from the HUD, literally', () => {
 test('the copied legend strings are still in web/index.html', () => {
   // Map legend (renderLegend).
   inHud('fill("rgba(42,120,214,0.75)", "Habitat antenna in sight")');
-  inHud('fill("linear-gradient(90deg,#2e9b3e,#f2d43a,#f28c28,#d7301f)", currentTab === "walk" ? "Slope (faded here)" : "Slope, 0° to 45°")');
+  inHud('fill("linear-gradient(90deg,#1a9850 0%,#fee08b 33.3%,#f46d43 66.7%,#a50026 100%)", currentTab === "walk" ? "Slope (faded here)" : "Slope, 0° to 45°")');
   inHud('<i class="hatch"></i>Too steep to cross (over ${blockLimit()}°)');
   inHud('fill("rgb(250,246,235)", "Sand detected")');
   inHud('<i class="rock"></i>Boulders (bigger dot, more cover)');
@@ -105,7 +105,7 @@ test('the copied legend strings are still in web/index.html', () => {
   // Sidebar legends and their CSS.
   inHud('<span class="swatch" style="background: rgba(42,120,214,0.7)"></span>the habitat antenna is in sight');
   inHud('<span id="radio-note">Line of sight on the 1 m terrain model (cautious).</span>');
-  inHud('background: linear-gradient(90deg, #2e9b3e 0%, #f2d43a 33%, #f28c28 66%, #d7301f 100%);');
+  inHud('background: linear-gradient(90deg, #1a9850 0%, #fee08b 33.3%, #f46d43 66.7%, #a50026 100%);');
   inHud('<span>0°</span><span>15°</span><span>30°</span><span>45°+</span>');
   inHud(`--hatch: ${L.layerById('steep').legend.css};`);
   inHud('.lg i.hatch { height: 10px; border: 1px solid rgba(255,255,255,.25);');
@@ -367,7 +367,8 @@ test('the slope tile ramp is the one of src/gis/tiles.py; the HUD legend ramp is
   const stops = line[1].split('\\n').map(s => s.split(' ').map(Number)).map(([deg, r, g, b]) => ({deg, rgb: [r, g, b]}));
   assert.deepEqual(L.SLOPE_TILE_RAMP, stops);
   const hex = ramp => ramp.map(s => '#' + s.rgb.map(v => v.toString(16).padStart(2, '0')).join(''));
-  assert.deepEqual(hex(L.SLOPE_LEGEND_RAMP), ['#2e9b3e', '#f2d43a', '#f28c28', '#d7301f']);
+  assert.deepEqual(hex(L.SLOPE_LEGEND_RAMP), ['#1a9850', '#fee08b', '#f46d43', '#a50026']);
+  assert.deepEqual(L.SLOPE_LEGEND_RAMP, L.SLOPE_TILE_RAMP.slice(0, 4));   // since #149: legend = tiles, 0-45°
   assert.deepEqual(L.SLOPE_LEGEND_RAMP.map(s => s.deg), [0, 15, 30, 45]);
 });
 
@@ -376,12 +377,12 @@ test('slopeFromColor reads the angle back from a ramp colour', () => {
     for (const s of ramp) assert.equal(L.slopeFromColor(...s.rgb, ramp), s.deg);
   }
   // The four stops of the spec, on the HUD legend colours.
-  assert.equal(L.slopeFromColor(0x2e, 0x9b, 0x3e, L.SLOPE_LEGEND_RAMP), 0);
-  assert.equal(L.slopeFromColor(0xf2, 0xd4, 0x3a, L.SLOPE_LEGEND_RAMP), 15);
-  assert.equal(L.slopeFromColor(0xf2, 0x8c, 0x28, L.SLOPE_LEGEND_RAMP), 30);
-  assert.equal(L.slopeFromColor(0xd7, 0x30, 0x1f, L.SLOPE_LEGEND_RAMP), 45);
+  assert.equal(L.slopeFromColor(0x1a, 0x98, 0x50, L.SLOPE_LEGEND_RAMP), 0);
+  assert.equal(L.slopeFromColor(0xfe, 0xe0, 0x8b, L.SLOPE_LEGEND_RAMP), 15);
+  assert.equal(L.slopeFromColor(0xf4, 0x6d, 0x43, L.SLOPE_LEGEND_RAMP), 30);
+  assert.equal(L.slopeFromColor(0xa5, 0x00, 0x26, L.SLOPE_LEGEND_RAMP), 45);
   // Midpoints: halfway between 15 and 30 on the legend, between 0 and 15 on the tiles (the default).
-  close(L.slopeFromColor(242, 176, 49, L.SLOPE_LEGEND_RAMP), 22.5, 1e-9, 'legend 15-30');
+  close(L.slopeFromColor(249, 166.5, 103, L.SLOPE_LEGEND_RAMP), 22.5, 1e-9, 'legend 15-30');
   close(L.slopeFromColor(140, 188, 109.5), 7.5, 1e-9, 'tiles 0-15');
   // Off the ramp it clamps to the nearest end; 8-bit colours of the tiles read back within half a degree to 45°.
   assert.equal(L.slopeFromColor(0, 255, 0), 0);
