@@ -18,6 +18,8 @@ Source: `tools/deploy_audit.py` → `data/deploy-phase1/audit.json`. Inventory: 
 `tests/deploy/test_public_mode.py` exercises write rejection, unknown methods, immutable replay, unchanged local behavior, pinned graph/habitat/query settings, credit insertion/content length, malformed/oversized requests and computational concurrency. Test inputs are synthetic; downloaded data and a network service are not needed. The JUnit result is `data/deploy-phase1/public_mode.xml`. A local TestClient smoke check with the existing data also opened `/`, `/3d/`, `/guide.html`, `/card.html`, the frozen plan, tile metadata, public status and health, and rejected station/walk writes. This is HTTP-level validation, not browser or hosting validation. The Linux image is not built because Docker is unavailable; no package was installed.
 
 ## Limitations
+The concurrency regression also checks `/home/assets/hero.webp`: the new landing folder bypasses the computational gate while a route calculation is running. This change supports Diana's separate landing-page PR without editing its frontend files.
+
 The fixed public mode still computes return fields and radio, so it does not fit a 512 MB server merely because planning is disabled. Full public optimization needs per-visitor storage isolation and bounded compute; it is not implemented. A fixed demo also needs Claude's client integration to explain disabled editing/logging. Banner positioning, Linux GDAL, data completeness, cold starts and the hosted walkthrough remain phase-2 checks. No address has been published and no data transferred. All such actions require explicit approval from Sebas.
 
 ## What other pieces can use

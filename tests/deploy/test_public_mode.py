@@ -123,7 +123,8 @@ def test_computations_do_not_overlap_but_static_pages_remain_available(saved):
             return JSONResponse({"ok": True})
 
         app = PublicMode(Starlette(routes=[Route("/walkback", slow, methods=["POST"]),
-                                           Route("/map.html", lambda req: HTMLResponse("<body>Map</body>"))]),
+                                           Route("/map.html", lambda req: HTMLResponse("<body>Map</body>")),
+                                           Route("/home/assets/hero.webp", lambda req: JSONResponse({"asset": True}))]),
                          mode="readonly", snapshot=saved)
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
             first = asyncio.create_task(client.post("/walkback", json={}))
@@ -131,6 +132,7 @@ def test_computations_do_not_overlap_but_static_pages_remain_available(saved):
             assert (await client.post("/walkback", json={})).status_code == 503
             assert (await client.get("/layers/cost.png")).status_code == 503
             assert (await client.get("/map.html")).status_code == 200
+            assert (await client.get("/home/assets/hero.webp")).status_code == 200
             release.set()
             assert (await first).status_code == 200
             assert not app.gate.locked()

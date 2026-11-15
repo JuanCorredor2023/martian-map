@@ -165,7 +165,7 @@ class PublicMode:
             receive = replay_receive
             scope = {**scope, "headers": [(k, v) for k, v in scope.get("headers", []) if k.lower() != b"content-length"]
                      + [(b"content-length", str(len(body)).encode())]}
-        computational = method == "POST" or (not path.startswith(("/tiles/", "/vendor/", "/3d/"))
+        computational = method == "POST" or (not path.startswith(("/tiles/", "/vendor/", "/3d/", "/home/"))
                                              and not path.endswith((".html", ".js", ".css", ".ico")) and path != "/")
         # Credit banner is public-only; it does not change any web/ source file.
         start_message, chunks = None, []
