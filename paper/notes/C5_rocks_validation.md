@@ -38,6 +38,8 @@ All values in the following table come from `src/fisica/rocks_validation.py` →
 
 Overall mean widths are 1.3425 percentage points for the GP and 1.2880 for smoothing. Whole-tile bootstrap 95% coverage intervals are [90.81%, 95.14%] and [81.69%, 91.72%], respectively (same script → `validation.json.scores.*`). They overlap; this is not a formal superiority test. Aggregate coverage conceals substantial undercoverage on rocky and near-nodata blocks, consistent with the warning in the original X1 note. A GP interval is not a guarantee of safe terrain.
 
+These held-out tiles are 400 m wide, so this is **extrapolation** across tiles, not interpolation. Here the GP beats a smoother tuned on training data only (RMSE 1.3064 vs 1.3874), which agrees with X1's own tile results (1.280 vs 1.309). X1's statement that the GP does not beat a 20 m smoother refers to **random blocks** (1.154 vs 1.142, `x1-gp-rmse-random`). This study does not test that setting, so it does not contradict it (Aaron's review, PR #161).
+
 ![Held-out interval coverage, including near-nodata failures](../figures/c5_fig1_spatial_coverage.png)
 
 Figure source: `rocks_validation.py:draw` → `paper/figures/c5_fig1_spatial_coverage.png`, using `validation.json`.
@@ -64,6 +66,7 @@ Stronger assumed caution diverts these routes away from teacher detections with 
 
 - The teacher has detector bias and misses unresolved boulders; its coverage cannot establish physical ground-hazard coverage. The validation target is block-average teacher cover, not individual rocks or one-metre hazards.
 - Coverage conditional on positive teacher cover and proximity to nodata is poor despite satisfactory aggregate coverage. Treat these as subgroup diagnostics, not calibrated per-cell safety probabilities.
+- The smoother's interval is an envelope with one width for every block, while the GP's width changes from place to place. Part of the coverage gap on rocky blocks (positive teacher cover: 79.80% vs 74.46%) therefore comes from the shape of the interval, not only from the mean predictor.
 - The separate calibration holdout and training buffer differ from Aaron's original CV, so these scores should not be compared as identical-protocol benchmarks. The smoother has additional calibration labels for its envelope; neither mean predictor receives them.
 - A single spatial fold assignment and finite map support limit generalisation. Whole-tile bootstrap summaries do not remove dependence between fitted folds or prove geographic transfer.
 - The exported full-fit standard deviation is not itself scored in sample. Validation concerns the same fitting procedure under honest holdout; routes use the released maps. This distinction must survive any presentation of the results.
