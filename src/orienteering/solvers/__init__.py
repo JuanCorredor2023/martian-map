@@ -7,9 +7,11 @@ Orienteering solvers. Every solver is solve(problem: Problem) -> Solution.
     routing : OR-Tools routing with guided local search, heuristic (kept for comparison)
     ils     : iterated local search, heuristic (E6)
     sa      : simulated annealing, heuristic, seeded (E6)
+    aco     : ant colony system, heuristic, seeded (E6)
+    ga      : genetic algorithm, heuristic, seeded (E6)
 The OR-Tools solvers need the ortools package and import it only when used.
 """
-from orienteering.solvers import brute, cpsat, dp, ils, routing, sa
+from orienteering.solvers import aco, brute, cpsat, dp, ga, ils, routing, sa
 
 SOLVERS = {
     "dp": dp.solve,
@@ -18,6 +20,8 @@ SOLVERS = {
     "routing": routing.solve,
     "ils": ils.solve,
     "sa": sa.solve,
+    "aco": aco.solve,
+    "ga": ga.solve,
 }
 
 MAX_STATIONS = {
@@ -27,6 +31,8 @@ MAX_STATIONS = {
     "routing": routing.MAX_STATIONS,
     "ils": ils.MAX_STATIONS,
     "sa": sa.MAX_STATIONS,
+    "aco": aco.MAX_STATIONS,
+    "ga": ga.MAX_STATIONS,
 }
 
 EXACT = {"dp", "brute"}

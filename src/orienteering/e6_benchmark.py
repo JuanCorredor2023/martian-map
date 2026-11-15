@@ -1,5 +1,6 @@
-"""E6 benchmark: exact solvers (bitmask DP, OR-Tools CP-SAT) against two metaheuristics
-(iterated local search, simulated annealing): gap to the optimum and running time.
+"""E6 benchmark: exact solvers (bitmask DP, OR-Tools CP-SAT) against four metaheuristics
+(iterated local search, simulated annealing, ant colony system, genetic algorithm): gap to
+the optimum and running time.
 
 Run from the repo root:
     python src/orienteering/e6_benchmark.py [--quick] [--no-real] [--figure-only]
@@ -33,16 +34,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from orienteering.instances import instance_dir, random_instance, tsiligirides  # noqa: E402
 from orienteering.problem import evaluate_route  # noqa: E402
-from orienteering.solvers import cpsat, dp, ils, sa  # noqa: E402
+from orienteering.solvers import aco, cpsat, dp, ga, ils, sa  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 OUT, FIG = REPO / "data" / "e6", REPO / "paper" / "figures"
 SIZES, PER_SIZE = (10, 14, 18), 10
 SA_SEEDS = (0, 1, 2)
+ACO_SEEDS = (0, 1, 2)
+GA_SEEDS = (0, 1, 2)
 CPSAT_LIMIT_S = 120.0
-METHODS = ("exact", "ils", "sa")
-LABELS = {"exact": "Exact (DP / CP-SAT)", "ils": "ILS", "sa": "SA"}
-COLOURS = {"exact": "#2a78d6", "ils": "#eb6834", "sa": "#1baf7a"}   # dataviz slots 1-3, validated
+METHODS = ("exact", "ils", "sa", "aco", "ga")
+LABELS = {"exact": "Exact (DP / CP-SAT)", "ils": "ILS", "sa": "SA", "aco": "ACO", "ga": "GA"}
+COLOURS = {"exact": "#2a78d6", "ils": "#eb6834", "sa": "#1baf7a", "aco": "#eda100",
+           "ga": "#e87ba4"}   # dataviz slots 1-5, validated
 SETS = ("random_energy", "random_windows", "tsiligirides", "e5_real")
 SET_LABELS = {"random_energy": "Random, energy\n(N 10-18)", "random_windows": "Random, windows\n(N 10-18)",
               "tsiligirides": "Tsiligirides\n(N 21-33)", "e5_real": "E5 real terrain\n(N 14, 27)"}
@@ -83,9 +87,14 @@ def main():
             print(f"{k + 1}/{len(instances)} instances, {time.time() - t0:.0f} s")
 
     summary = summarise(rows)
-    out = {"sizes": SIZES, "per_size": per_size, "sa_seeds": SA_SEEDS, "cpsat_limit_s": CPSAT_LIMIT_S,
+    out = {"sizes": SIZES, "per_size": per_size, "sa_seeds": SA_SEEDS, "aco_seeds": ACO_SEEDS, "ga_seeds": GA_SEEDS, "cpsat_limit_s": CPSAT_LIMIT_S,
            "ils": {"max_no_improve": ils.MAX_NO_IMPROVE, "time_limit_s": ils.TIME_LIMIT_S},
            "sa": {"steps": sa.STEPS, "t_start": sa.T_START, "t_end": sa.T_END},
+           "aco": {"ants": aco.ANTS, "iterations": aco.ITERATIONS, "max_no_improve": aco.MAX_NO_IMPROVE,
+                   "beta": aco.BETA, "q0": aco.Q0, "rho": aco.RHO},
+           "ga": {"population": ga.POPULATION, "generations": ga.GENERATIONS,
+                  "max_no_improve": ga.MAX_NO_IMPROVE, "elite": ga.ELITE, "tournament": ga.TOURNAMENT,
+                  "mutation": ga.MUTATION},
            "summary": summary, "rows": rows}
     (OUT / "e6_results.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
     with open(OUT / "e6_table.csv", "w", newline="", encoding="utf-8") as fh:
@@ -98,7 +107,7 @@ def main():
 
 
 def run(group, name, p):
-    """Exact reference first (DP up to 20 nodes, else CP-SAT), then ILS and SA."""
+    """Exact reference first (DP up to 20 nodes, else CP-SAT), then ILS, SA, ACO and GA."""
     rows = []
     if p.n <= dp.MAX_STATIONS:
         ref = dp.solve(p)
@@ -110,6 +119,10 @@ def run(group, name, p):
     rows.append(row(group, name, p, "ils", "ils", ils.solve(p), ref.prize, proven))
     for seed in SA_SEEDS:
         rows.append(row(group, name, p, "sa", f"sa-{seed}", sa.solve(p, seed=seed), ref.prize, proven))
+    for seed in ACO_SEEDS:
+        rows.append(row(group, name, p, "aco", f"aco-{seed}", aco.solve(p, seed=seed), ref.prize, proven))
+    for seed in GA_SEEDS:
+        rows.append(row(group, name, p, "ga", f"ga-{seed}", ga.solve(p, seed=seed), ref.prize, proven))
     return rows
 
 
@@ -184,11 +197,11 @@ def real_instances():
 def figure(summary):
     groups = [g for g in SETS if any(r["set"] == g for r in summary)]
     fig, (ax_gap, ax_time) = plt.subplots(1, 2, figsize=(12, 4.6), constrained_layout=True)
-    width = 0.26
+    width = 0.16
     x = np.arange(len(groups))
     for m, method in enumerate(METHODS):
         get = {r["set"]: r for r in summary if r["method"] == method}
-        xs = x + (m - 1) * width
+        xs = x + (m - (len(METHODS) - 1) / 2) * width
         gaps = [get[g]["mean_gap_pct"] if g in get else np.nan for g in groups]
         times = [get[g]["median_time_s"] if g in get else np.nan for g in groups]
         ax_gap.bar(xs, gaps, width - 0.03, color=COLOURS[method], label=LABELS[method],
