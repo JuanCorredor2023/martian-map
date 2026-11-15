@@ -81,21 +81,6 @@ test('the landing page opens the three app views and the demo page', () => {
   for (const want of ['/', '/3d/', '/guide.html', 'demo.html']) assert.ok(hrefs.includes(want), want);
 });
 
-test('the hero has one button, and it starts the demo at step 1 (#173)', () => {
-  const html = read('index.html');
-  const hero = html.match(/<section class="hero"[\s\S]*?<\/section>/)?.[0];
-  assert.ok(hero, 'hero section');
-  const buttons = hero.match(/<a[^>]*class="btn[^"]*"[^>]*>/g) ?? [];
-  assert.equal(buttons.length, 1, buttons.join('\n'));
-  assert.match(buttons[0], /href="demo\.html#step-1"/);
-  assert.match(read('demo.html'), /<article class="step" id="step-1"/);
-});
-
-test('step 1 of the demo opens the planner, so the tutorial can start there', () => {
-  const step1 = read('demo.html').match(/<article class="step" id="step-1"[\s\S]*?<\/article>/)?.[0];
-  assert.match(step1, /<a href="\/">/);
-});
-
 test('every image in assets/ is used by a page (no dead weight)', async () => {
   const { readdirSync } = await import('node:fs');
   const used = new Set(PAGES.flatMap(p => urls(read(p)).map(u => u.url)).filter(u => u.startsWith('assets/')));
@@ -106,4 +91,15 @@ test('every image in assets/ is used by a page (no dead weight)', async () => {
 test('styles.css has no mock-only rules', () => {
   const css = readFileSync(new URL('styles.css', HOME), 'utf8');
   assert.doesNotMatch(css, /mock|data-hero|toast/i);
+});
+
+test('"Try it" opens the planner on 1 Terrain, in the header and the hero (#173)', () => {
+  for (const page of PAGES) {
+    const html = read(page);
+    const tryIt = html.match(/<a[^>]*class="btn btn-primary[^"]*"[^>]*>Try it<\/a>/g) ?? [];
+    assert.ok(tryIt.length >= 1, `${page}: a Try it button`);
+    for (const a of tryIt) assert.match(a, /href="\/\?tab=terrain"/, a);
+    assert.doesNotMatch(html, /class="btn[^"]*"[^>]*>Plan \(2D\)</, `${page}: no Plan (2D) button left`);
+  }
+  assert.match(read('index.html'), /<section class="hero"[\s\S]*?>Try it<\/a>[\s\S]*?<\/section>/);
 });
