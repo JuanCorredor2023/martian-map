@@ -251,6 +251,21 @@ export function flipRows(rgba, w, h) {
   return out;
 }
 
+// The colours over black: [r a/255, g a/255, b a/255, a], rounded. A 2D canvas keeps its
+// pixels this way (premultiplied), so the RGB it gives back for a faint pixel is rounded
+// coarsely; compare two images in this space. A new Uint8Array.
+export function premultiply(rgba) {
+  const out = new Uint8Array(rgba.length);
+  for (let k = 0; k < rgba.length; k += 4) {
+    const a = rgba[k + 3];
+    out[k] = Math.round(rgba[k] * a / 255);
+    out[k + 1] = Math.round(rgba[k + 1] * a / 255);
+    out[k + 2] = Math.round(rgba[k + 2] * a / 255);
+    out[k + 3] = a;
+  }
+  return out;
+}
+
 // Half-open region {i0, j0, i1, j1} (i rows, j columns), clipped to the image.
 function clip(region, w, h) {
   const r = region || {i0: 0, j0: 0, i1: h, j1: w};

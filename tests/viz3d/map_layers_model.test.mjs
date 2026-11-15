@@ -402,3 +402,13 @@ test('masks: alpha, steeper than a limit, and their agreement', () => {
   assert.deepEqual(L.maskAgreement([], []), {cells: 0, agree_pct: null, only_a: 0, only_b: 0, both: 0});
   assert.throws(() => L.maskAgreement([1], [1, 0]), /length/);
 });
+
+test('premultiply puts the colours over black, as a 2D canvas keeps them, and leaves the input alone', () => {
+  const src = Uint8Array.from([255, 128, 0, 128, 42, 120, 214, 110, 9, 9, 9, 0, 10, 20, 30, 255]);
+  const copy = src.slice();
+  assert.deepEqual([...L.premultiply(src)], [128, 64, 0, 128, 18, 52, 92, 110, 0, 0, 0, 0, 10, 20, 30, 255]);
+  assert.deepEqual(src, copy);
+  // Two straight colours that a canvas cannot tell apart at alpha 3 are the same over black.
+  assert.deepEqual([...L.premultiply([200, 100, 50, 3])], [...L.premultiply([170, 85, 51, 3])]);
+  assert.ok(L.premultiply(new Uint8ClampedArray(8)) instanceof Uint8Array);
+});
