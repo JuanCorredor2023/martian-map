@@ -124,8 +124,18 @@ def test_candidates_endpoint(tmp_path, monkeypatch):
 
 
 def test_curiosity_drill_targets_match_places():
-    from api.candidates import curiosity_targets
-    t = {c["id"]: c for c in curiosity_targets()}
+    """Raw PLACES data when present; else the released candidates.json; else skip."""
+    import json as _json
+    raw = REPO / "data" / "03_curiosity" / "places_pds" / "data_mechanisms" / "mech_drill.csv"
+    released = REPO / "data" / "stations" / "candidates.json"
+    if raw.exists():
+        from api.candidates import curiosity_targets
+        targets = curiosity_targets()
+    elif released.exists():
+        targets = _json.loads(released.read_text(encoding="utf-8"))["candidates"]
+    else:
+        pytest.skip("needs raw PLACES data or release stations-candidates-v1")
+    t = {c["id"]: c for c in targets}
     ridge, hollow = t["R0"], t["H0"]
     d = ((ridge["x"] - hollow["x"]) ** 2 + (ridge["y"] - hollow["y"]) ** 2) ** 0.5
     assert 8 < d < 12                      # NASA: drilled ridge ~10 m from the drilled hollow

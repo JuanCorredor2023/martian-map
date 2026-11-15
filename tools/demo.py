@@ -49,6 +49,8 @@ RELEASES = [
      "stations_manual.gpkg", False, "the science stations"),
     ("stations-e8-v0", ["stations_e8.gpkg", "stations_e8_preview.png"], "stations",
      "stations_e8.gpkg", False, "the E8 contact stations (rock next to sand)"),
+    ("stations-candidates-v1", ["candidates.json"], "stations", "candidates.json", False,
+     "Curiosity's drill sites (Load Curiosity sites)"),
     ("e12-dose-v1", ["e12_dose_v1.zip"], "e12", "sep_alert.json", False,
      "the radiation panel and the storm alarm"),
     ("e8-v0", ["e8_v0.zip"], "e8", "sand.tif", False, "the sand layer"),
