@@ -11,8 +11,8 @@ from rasterio.transform import from_origin
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from fisica.metabolic import G_EARTH, G_MARS, G_MOON, TOTAL_MASS_KG, segment_cost  # noqa: E402
-from radiation.route_dose import (DoseRate, out_and_back, resample_line, route_steps,  # noqa: E402
-                                  route_timeline, sample_raster, step_costs, walk)
+from radiation.route_dose import (DoseRate, load_route, out_and_back, resample_line,  # noqa: E402
+                                  route_steps, route_timeline, sample_raster, step_costs, walk)
 from radiation.sensitivity import budget_limited  # noqa: E402
 
 
@@ -76,6 +76,45 @@ def test_stations_add_dwell_and_dose(tmp_path):
     assert tl["dwell_s"].idxmax() == 50
     assert tl["t_s"].iloc[-1] == pytest.approx(100 / 0.75 + 1800)
     assert tl["walk_s"].iloc[-1] == pytest.approx(100 / 0.75)
+
+
+def test_ordered_stations_dwell_on_the_visit(tmp_path):
+    # out along y = 100.5 and back; A sits on the outbound path but is visited on the way back, after B
+    dem = make_dem(tmp_path, 0.0)
+    xs = np.arange(10.5, 61.0)
+    xy = out_and_back(np.column_stack([xs, np.full_like(xs, 100.5)]))
+    a = {"id": "A", "x": 20.5, "y": 100.5, "service_time_min": 10.0}
+    b = {"id": "B", "x": 60.5, "y": 100.5, "service_time_min": 10.0}
+    plain = route_timeline(xy, dem, DoseRate.constant(144.0), stations=[a, b])
+    assert plain["dwell_s"].to_numpy().nonzero()[0].tolist() == [10, 50]     # nearest point: the first pass
+    tour = route_timeline(xy, dem, DoseRate.constant(144.0), stations=[{**b, "order": 1}, {**a, "order": 2}])
+    assert tour["dwell_s"].to_numpy().nonzero()[0].tolist() == [50, 90]      # A on the way back
+    assert tour["t_s"].iloc[-1] == pytest.approx(plain["t_s"].iloc[-1])
+
+
+@pytest.mark.filterwarnings("ignore:'crs' was not provided")
+def test_e5_tour_geopackage(tmp_path):
+    gpd = pytest.importorskip("geopandas")
+    from shapely.geometry import LineString, Point
+
+    from radiation.return_time import resolve_habitat
+    xs = np.arange(10.5, 61.0)
+    xy = out_and_back(np.column_stack([xs, np.full_like(xs, 100.5)]))
+    path = tmp_path / "tour.gpkg"
+    gpd.GeoDataFrame({"order_text": ["habitat>B>A>habitat"]}, geometry=[LineString(xy)]).to_file(
+        path, layer="route", driver="GPKG")
+    gpd.GeoDataFrame({"order": [0, 1, 2, 3], "id": ["habitat", "B", "A", "habitat"],
+                      "type": ["habitat", "ridge", "hollow", "habitat"],
+                      "service_time_min": [0.0, 10.0, 10.0, 0.0]},
+                     geometry=[Point(10.5, 100.5), Point(60.5, 100.5), Point(20.5, 100.5), Point(10.5, 100.5)]
+                     ).to_file(path, layer="stops", driver="GPKG")
+    route_xy, stations = load_route(path)
+    assert np.allclose(route_xy, xy)
+    assert [(s["id"], s["order"], s["service_time_min"]) for s in stations] == [("B", 1, 10.0), ("A", 2, 10.0)]
+    assert resolve_habitat(None, path) == ((10.5, 100.5), "route file point (habitat)")
+    tl = route_timeline(route_xy, make_dem(tmp_path, 0.0), DoseRate.constant(144.0), stations=stations)
+    assert tl.attrs["method"] == "e3_edges"
+    assert tl["dwell_s"].to_numpy().nonzero()[0].tolist() == [50, 90]
 
 
 def test_far_station_is_ignored(tmp_path):

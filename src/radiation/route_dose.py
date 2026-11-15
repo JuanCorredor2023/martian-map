@@ -17,7 +17,8 @@ Steps:
    mode "energy": E x eta, time unchanged (Pandolf-style surface factor);
    mode "speed":  V / eta, so time x eta and power at the slower speed.
    Applied where the optional --sand-raster is >= 0.5, or everywhere without it.
-4. Stations: each one adds its service_time_min at the nearest route point.
+4. Stations: each one adds its service_time_min at the nearest route point (for an
+   E5 tour, matched in visiting order).
 5. Dose: constant boxwork background (default) or the real RAD series from
    --start-utc on, integrated exactly over the piecewise-linear series.
 6. Return time to the HABITAT, a user input (return_time.py): return_s is the
@@ -26,8 +27,8 @@ Steps:
    the route itself (meaningful only when the route starts at the habitat).
 
 Usage:
-    python src/radiation/route_dose.py --habitat X Y [--route data/e2/trajectory.geojson]
-        [--out-and-back] [--stations FILE] [--return-raster rv_time_s.tif]
+    python src/radiation/route_dose.py --habitat X Y [--route data/e5/tour_nominal.gpkg]
+        [--out-and-back] [--stations FILE] [--return-raster data/e4/rv_time_s.tif]
         [--start-utc 2025-11-11T10:00:00Z] [--g 3.71] [--eta 1.0 --eta-mode energy]
         [--sand-raster FILE] [--step-m 1] [--every-m 5] [--out data/e12/route_dose.geojson]
 Writes the GeoJSON (Point per output step) and <out>_summary.json.
@@ -59,11 +60,14 @@ CELL_CENTRE_TOL_M = 0.05        # vertices this close to cell centres count as a
 # ----------------------------------------------------------------------------- route
 
 def load_route(path):
-    """First LineString of a GeoJSON (metres, DEM CRS) -> (N, 2) array; plus stations.
+    """First LineString of a route file (metres, DEM CRS) -> (N, 2) array; plus stations.
 
-    Stations are Point features with kind == "station" (the /plan output) and an
-    optional service_time_min.
+    - GeoJSON (the /plan output): stations are Point features with kind == "station"
+      and an optional service_time_min.
+    - E5 tour GeoPackage (src/orienteering/run.py --out): see load_e5_tour.
     """
+    if Path(path).suffix.lower() == ".gpkg":
+        return load_e5_tour(path)
     fc = json.loads(Path(path).read_text(encoding="utf-8"))
     line = next((f for f in fc["features"] if f["geometry"]["type"] == "LineString"), None)
     if line is None:
@@ -82,6 +86,27 @@ def load_stations_fc(fc):
             out.append({"id": p.get("id"), "x": float(x), "y": float(y),
                         "service_time_min": float(p.get("service_time_min") or 0.0)})
     return out
+
+
+def load_e5_tour(path):
+    """E5 tour GeoPackage (Diana, layers "route" and "stops") -> (N, 2) array, visited stations.
+
+    The route layer holds the tour's cell path, habitat to habitat. The stops layer
+    holds only the stations the tour visits, with their visiting "order" and
+    service_time_min; the habitat stops (type "habitat") are not stations. The
+    order is kept so that each station's service time lands on its visit (see
+    station_indices), even where the tour passes the same cell again.
+    """
+    import geopandas as gpd
+    line = gpd.read_file(path, layer="route").geometry
+    if line.empty or line.iloc[0].geom_type != "LineString":
+        raise SystemExit(f"{path}: layer 'route' has no LineString")
+    xy = np.asarray(line.iloc[0].coords, dtype=float)[:, :2]
+    stops = gpd.read_file(path, layer="stops").sort_values("order")
+    stations = [{"id": r.id, "x": float(r.geometry.x), "y": float(r.geometry.y),
+                 "service_time_min": float(r.service_time_min), "order": int(r.order)}
+                for r in stops.itertuples() if str(r.type).lower() != "habitat"]
+    return xy, stations
 
 
 def load_stations(path):
@@ -217,12 +242,23 @@ def step_costs(d_h, alpha_deg, g_mps2=G_MARS, mass_kg=TOTAL_MASS_KG, eta=None, e
 
 
 def station_indices(points, stations):
-    """Index of the route point nearest to each station, and its distance (m)."""
-    out = []
-    for s in stations:
-        d = np.hypot(points[:, 0] - s["x"], points[:, 1] - s["y"])
-        i = int(np.argmin(d))
-        out.append((i, float(d[i])))
+    """Index of the route point nearest to each station, and its distance (m).
+
+    When every station has an "order" (an E5 tour), they are matched in that order,
+    each one at or after the point of the previous one: a tour can pass a
+    station's cell on another leg, and the service time belongs to the visit.
+    """
+    ordered = bool(stations) and all(s.get("order") is not None for s in stations)
+    seq = sorted(range(len(stations)), key=lambda k: stations[k]["order"]) if ordered else range(len(stations))
+    out = [None] * len(stations)
+    lo = 0
+    for k in seq:
+        s = stations[k]
+        d = np.hypot(points[lo:, 0] - s["x"], points[lo:, 1] - s["y"])
+        i = lo + int(np.argmin(d))
+        out[k] = (i, float(d[i - lo]))
+        if ordered:
+            lo = i
     return out
 
 
@@ -430,7 +466,8 @@ def to_geojson(tl, every_m, props):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--route", default=str(E2_OUTPUT / "trajectory.geojson"),
-                    help="GeoJSON with a LineString (default: Curiosity's trajectory, provisional)")
+                    help="GeoJSON with a LineString, or an E5 tour GeoPackage "
+                         "(default: Curiosity's trajectory, the old provisional route)")
     ap.add_argument("--habitat", nargs=2, type=float, metavar=("X", "Y"),
                     help="habitat in DEM metres (the same input E4 uses); else taken from the route file")
     ap.add_argument("--out-and-back", action="store_true",

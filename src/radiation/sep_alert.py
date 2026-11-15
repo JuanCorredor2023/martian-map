@@ -13,7 +13,8 @@ now", and its cost depends on where you are, through the time to get back.
 2. Return time to the HABITAT, a user input (return_time.py): fastest walk back
    (time, not energy: dose is rate x time) from E4's rv_time_s.tif, or E12's
    provisional fallback with the same recipe until E4 delivers it.
-3. Replay: the provisional EVA (Curiosity's route out and back) placed so the
+3. Replay: the EVA (an E5 tour with --no-out-and-back; by default the old
+   provisional route, Curiosity's traverse out and back) placed so the
    real alarm of the strongest event arrives when the astronaut is farthest from
    the habitat, and at 25 % / 75 % of the EVA time. Compares "ignore the alarm"
    (finish the plan) with "return now" (fastest walk back), counting only the dose
@@ -21,8 +22,8 @@ now", and its cost depends on where you are, through the time to get back.
    (hypothetical: only the excess over the baseline is scaled).
 
 Usage:
-    python src/radiation/sep_alert.py --habitat X Y [--route data/e2/trajectory.geojson]
-        [--no-out-and-back] [--return-raster rv_time_s.tif]
+    python src/radiation/sep_alert.py --habitat X Y [--route data/e5/tour_nominal.gpkg]
+        [--no-out-and-back] [--return-raster data/e4/rv_time_s.tif] [--out-dir DIR]
 Writes data/e12/sep_alert.json and sep_thresholds.csv (and the fallback return-time
 raster if no E4 raster is given).
 """
@@ -202,7 +203,7 @@ def main():
     if not args.no_out_and_back:
         xy = out_and_back(xy)
 
-    # 3. replay on the provisional EVA
+    # 3. replay on the EVA
     replays = None
     if strongest:
         tl = route_timeline(xy, args.dem, DoseRate.constant(background_rate()), stations=stations,
