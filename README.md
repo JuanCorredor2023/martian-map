@@ -4,8 +4,8 @@
 
 NASA Space Apps Challenge 2026 · *Interplanetary Survival Guide: Martian Map*
 
-<!-- TODO before submission: 30 s video link (#123). No hosted demo: the deploy (#122) is future work. -->
-**30 s video:** coming soon · **Run it locally:** [Quick start](#quick-start) (one server, works offline)
+<!-- No hosted demo: the deploy (#122) is future work. -->
+**30 s video:** [YouTube](https://www.youtube.com/watch?v=7LSQqSFdU6c) · **Run it locally:** [Quick start](#quick-start) (one server, works offline)
 
 ![The planning HUD in step 4 (Walk): the planned tour, the red line 30 min from the habitat, the dark area out of reach with the energy left, and a fixed-distance circle for comparison.](docs/img/hud_walk.jpg)
 

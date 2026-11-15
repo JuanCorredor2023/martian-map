@@ -43,15 +43,13 @@
         </div>
       </div>
       <div class="video__frame">
-        <video controls playsinline preload="metadata" width="1920" height="1080"
-               poster="assets/demo-video-poster.webp"
-               aria-label="Demo video, 30 seconds, English voice and burned-in English subtitles">
-          <source src="assets/demo-video.mp4" type="video/mp4">
-          <p>Your browser cannot play the video: <a href="assets/demo-video.mp4">download it (MP4, 9 MB)</a>.</p>
-        </video>
+        <iframe src="https://www.youtube-nocookie.com/embed/7LSQqSFdU6c?rel=0" title="Mars EVA Planner: the 30-second demo (YouTube)"
+                loading="lazy" referrerpolicy="strict-origin-when-cross-origin"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowfullscreen></iframe>
       </div>
-      <!-- When the video is on YouTube: put its URL in href and remove "hidden". -->
-      <p class="video__alt"><a class="btn btn-primary" data-youtube-link href="#" hidden>Watch on YouTube</a></p>
+      <!-- The video is on YouTube; the button also works where the embed cannot load (offline). -->
+      <p class="video__alt"><a class="btn btn-primary" data-youtube-link href="https://www.youtube.com/watch?v=7LSQqSFdU6c">Watch on YouTube</a></p>
     </div>
   </section>
 

@@ -59,7 +59,8 @@ for (const page of PAGES) {
   });
 
   test(`${page}: offline, no external scripts, styles or images`, () => {
-    const html = read(page);
+    // The one exception: the demo video's YouTube embed (an iframe; its button links out too).
+    const html = read(page).replace(/<iframe src="https:\/\/www\.youtube-nocookie\.com\/embed\/[\w-]+(\?[^"]*)?"/g, '<iframe');
     assert.doesNotMatch(html, /<script[^>]+src="https?:/);
     assert.doesNotMatch(html, /<link[^>]+href="https?:/);
     assert.doesNotMatch(html, /\s(src|srcset)="https?:/);

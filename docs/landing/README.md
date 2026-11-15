@@ -35,7 +35,7 @@ Juan's Claude made the design mock (PR #153, 2026-11-15); Diana's Claude moved i
   - one message per section, a short headline over 1–2 sentences, and a large real image;
   - one filled button for the most likely action;
   - 44 px targets, contrast of at least 4.5:1 (most text is above 6:1), and light and dark modes.
-- **Offline, like the demo.** No YouTube embed: both pages play the 30 s demo video from `assets/demo-video.mp4` (H.264, 9 MB, poster `assets/demo-video-poster.webp`), so it works without a network. When the video is on YouTube, put its URL in the hidden `<a data-youtube-link>` on both pages and remove `hidden`.
+- **Offline, like the demo, except the video.** Both pages embed the 30 s demo video from YouTube (https://www.youtube.com/watch?v=7LSQqSFdU6c, through youtube-nocookie.com), the only external resource; the "Watch on YouTube" button under it links out too, for when the embed cannot load. Everything else is served by the app.
 - **Button names** follow the brief: *Plan (2D)*, *Open in 3D*, *Guide (tablet)*, *Watch the demo*. The demo page quotes the app's current labels (for example *3D view*) so that whoever presents presses the right button.
 - **Team:** first names only, alphabetical, no titles.
 
