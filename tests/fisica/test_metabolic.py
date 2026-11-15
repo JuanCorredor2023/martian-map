@@ -65,7 +65,8 @@ def test_uphill_downhill_asymmetry():
 
 def test_pandolf_cf_branch_reference_values():
     from fisica.metabolic import pandolf_cf_power
-    assert pandolf_cf_power(75, 47.8, 0.75, 0) == pytest.approx(315.87, abs=0.01)   # guide section 6
+    # Carr et al. 2003: 76.4 kg astronaut + 47.8 kg suit (the guide's section 6 used W = 75 kg: 315.87 W)
+    assert pandolf_cf_power(76.4, 47.8, 0.75, 0) == pytest.approx(316.63, abs=0.01)
     up = pandolf_cf_power(75, 47.8, 0.65, 10)
     assert up == pytest.approx(pandolf_cf_power(75, 47.8, 0.65, 10, eta=1.0))      # no CF uphill
     assert pandolf_cf_power(75, 47.8, 0.85, -10) > 0
