@@ -30,7 +30,7 @@ Source: `src/gis/comms_figures.py` → `data/comms/summary.json`, figure [e11_fi
 
 ## Limitations
 - **Pure line of sight.** No diffraction, link budget, multipath or antenna pattern. Real UHF suit radios get some signal past a ridge crest, so this is a conservative coverage map.
-- The DEM misses the 1–3 m boxwork ridges (`base_grid.md`). Boulders and the ridges themselves can block a 1.7 m radio that the DEM says is clear.
+- The DEM misses the 1–3 m boxwork ridges (`base_grid.md`). Boulders and the ridges themselves can block a 1.7 m radio that the DEM says is clear. E9 (Aaron, #12, in progress) finds about 8,400 boulders in the box (median diameter 1.7 m, top 5 % above 3.8 m). The largest can block the line of sight at short range; `rocas.tif` could be added to the DEM once it lands.
 - The pair model is fixed-gap on the same route. Real partners move apart at stations, and the gap changes with speed. With one route and a gap ≤ 100 m, the separation limit never binds (the straight-line distance is at most the gap).
 - One demo route and one habitat for the pair numbers. They show the mechanism, not a general rate.
 
