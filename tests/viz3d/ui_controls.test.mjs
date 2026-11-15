@@ -742,7 +742,7 @@ test('keyboard lists: each camera mode disables both lists with a reason, then r
     ui: id => nodes.get(id), rehearsal, photos, T: globalThis.TERMS,
     busy: () => rehearsal.active || walk.active, photoListNote: 'No photo stops in this catalogue.',
   });
-  for (const [mode, reason] of [[rehearsal, 'Exit Rehearse'], [walk, 'Exit Walk freely'], [photos, 'Exit the photo view']]) {
+  for (const [mode, reason] of [[rehearsal, 'Exit the rehearsal'], [walk, 'Exit Walk freely'], [photos, 'Exit the photo view']]) {
     mode.active = true;
     update();
     for (const kind of ['station', 'photo']) {

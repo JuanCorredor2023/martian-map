@@ -308,7 +308,7 @@ async function main() {
   // another mode owns the camera; the reason stays readable outside the disabled group.
   function updateStopControls() {
     const reason = busy()
-      ? (rehearsal.active ? `Exit ${T.NAMES.rehearse} to choose a stop.` : 'Exit Walk freely to choose a stop.')
+      ? (rehearsal.active ? 'Exit the rehearsal to choose a stop.' : 'Exit Walk freely to choose a stop.')
       : photos?.active ? 'Exit the photo view to choose a stop.' : '';
     for (const kind of ['station', 'photo']) {
       const empty = ui(`${kind}-list`).children.length === 0;
