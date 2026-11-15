@@ -20,6 +20,9 @@ RELEASES = [
     ("e2", ["trajectory.geojson"], "e2-trajectory-v1", True, "the fixed test route"),
     ("stations", ["stations_manual.gpkg", "stations_rubric.json"], "stations-v1", False,
      "saved science stations (the HUD can still add them by hand)"),
+    ("stations", ["candidates.json"], "stations-candidates-v1", False,
+     "the 'Load Curiosity sites' button (Curiosity's drill sites)"),
+    ("e9", ["rocas.tif"], "e9-rocks-v1", False, "the Boulders layer (E9)"),
     ("e12", ["sep_alert.json", "rad_summary.json", "route_dose.geojson"], "e12-dose-v1", False,
      "the radiation panel"),
     ("e8", ["sand.tif"], "e8-v0", False, "the sand layer and E1's sand price"),
@@ -40,7 +43,7 @@ def download_hint(folder, release):
     if release == "generated":
         return "python src/viz3d/build_terrain_assets.py"
     zip_name = release.replace("-", "_") + ".zip"
-    if release == "stations-v1":
+    if release in ("stations-v1", "stations-candidates-v1"):
         return f"gh release download {release} --dir data/{folder}"
     return (f"gh release download {release} --dir data   then unzip data/{zip_name} "
             f"into data/{folder}  (PowerShell: Expand-Archive data\\{zip_name} data\\{folder} -Force)")

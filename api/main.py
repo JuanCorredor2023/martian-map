@@ -162,10 +162,12 @@ def stations_save(body: st.StationSet):
 
 @app.get("/stations/candidates")
 def stations_candidates():
-    """Suggested stations (python -m api.candidates). The HUD loads them unsaved."""
+    """Suggested stations (release stations-candidates-v1). The HUD loads them unsaved."""
     path = STATIONS / "candidates.json"
     if not path.exists():
-        raise HTTPException(status_code=404, detail="run: python -m api.candidates")
+        raise HTTPException(status_code=404,
+                            detail="Curiosity sites missing: gh release download "
+                                   "stations-candidates-v1 -D data/stations")
     return _read_json(path)
 
 
