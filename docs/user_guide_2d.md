@@ -2,7 +2,7 @@
 
 **Illustrated version:** open `docs/user_guide/index.html` in a browser: the same guide with annotated screenshots of every button.
 
-*Draft (JB's Claude, 2026-11-15), from `web/index.html` and `docs/demo.md` in main, and checked against the running app (every quoted text below is what the screen shows). Covers the 2D planner at `http://localhost:8000/` only; the tablet guide, the 3D map and the wrist card have their own guides (to do).*
+*Draft (JB's Claude, 2026-11-15), from `web/index.html` and `docs/demo.md` in main, and checked against the running app (every quoted text below is what the screen shows). Covers the 2D planner at `http://localhost:8000/` only; the 3D map has its own guide (`docs/user_guide_3d.md`, illustrated in `docs/user_guide_3d/index.html`); the tablet guide and the wrist card are to do.*
 
 ## 1. What the planner does
 

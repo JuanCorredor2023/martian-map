@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mars EVA Planner 3D Guide</title>
+<meta name="description" content="How to use the 3D map of the Mars EVA Planner: navigation, the plan, Sun and shadows, map layers, the rehearsal with the tablet meters, walking freely and rover photos, with annotated screenshots.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap">
+<style>
+/* Same design as the 2D planner guide (docs/user_guide/template.html). Layout: a field manual. Sticky contents on the left, one column of steps on the right,
+   each step = annotated screenshot + numbered key. Accent = the planner's own orange. */
+:root {
+  --bg: #f4f6f8; --surface: #ffffff; --surface-2: #eaeef2; --line: #d3dae1;
+  --fg: #12181f; --muted: #55606c; --accent: #e8642c; --accent-ink: #ffffff;
+  --ok: #1e8a4c; --warn: #a86400; --bad: #c0362c; --code-bg: #e9edf1;
+  --mark: #ff7a45; --mark-ink: #1a0f08;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d1116; --surface: #151b22; --surface-2: #1c242d; --line: #2c3743;
+  --fg: #e7ecf1; --muted: #9aa6b2; --accent: #ff8a55; --accent-ink: #1a0f08;
+  --ok: #4ccb84; --warn: #f2b34a; --bad: #ff7266; --code-bg: #1c242d; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0d1116; --surface: #151b22; --surface-2: #1c242d; --line: #2c3743;
+  --fg: #e7ecf1; --muted: #9aa6b2; --accent: #ff8a55; --accent-ink: #1a0f08;
+  --ok: #4ccb84; --warn: #f2b34a; --bad: #ff7266; --code-bg: #1c242d; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+a { color: var(--accent); text-underline-offset: 2px; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+code, kbd { font-family: var(--mono); font-size: .88em; background: var(--code-bg); border-radius: 4px; padding: .08em .35em; }
+kbd { border: 1px solid var(--line); border-bottom-width: 2px; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.15; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.1rem, 4.2vw, 3.1rem); letter-spacing: -.01em; }
+h2 { font-size: 1.85rem; }
+h3 { font-size: 1.2rem; margin-top: 1.6rem; }
+p { margin: .7rem 0; max-width: 68ch; }
+.muted { color: var(--muted); }
+
+.page { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 48px; max-width: 1320px; margin: 0 auto; padding-block: 32px 80px; }
+@media (max-width: 960px) { .page { grid-template-columns: minmax(0, 1fr); gap: 24px; } }
+
+/* contents */
+nav.toc { position: sticky; top: max(16px, env(safe-area-inset-top, 0px)); align-self: start; max-height: calc(100vh - 32px); overflow: auto; }
+nav.toc .eyebrow { font: 600 .72rem/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; counter-reset: s -1; }
+nav.toc li { counter-increment: s; }
+nav.toc a { display: grid; grid-template-columns: 26px 1fr; gap: 6px; padding: 7px 10px; border-radius: 8px; color: var(--fg); text-decoration: none; font-size: .95rem; }
+nav.toc a::before { content: counter(s); font: 600 .8rem/1.6 var(--mono); color: var(--muted); }
+nav.toc a:hover, nav.toc a.on { background: var(--surface-2); }
+nav.toc a.on::before { color: var(--accent); }
+@media (max-width: 960px) { nav.toc { position: static; max-height: none; }
+  nav.toc ol { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); } }
+
+/* hero */
+header.hero { padding-bottom: 28px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+header.hero .eyebrow { font: 600 .78rem/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+header.hero p.lead { font-size: 1.18rem; color: var(--muted); max-width: 60ch; }
+.flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 22px; }
+@media (max-width: 700px) { .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.flow a { display: block; padding: 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); color: var(--fg); text-decoration: none; }
+.flow a:hover { border-color: var(--accent); }
+.flow .k { font: 600 .74rem/1 var(--mono); color: var(--accent); letter-spacing: .08em; }
+.flow b { display: block; font-family: var(--display); font-size: 1.15rem; margin: 6px 0 2px; }
+.flow span { font-size: .9rem; color: var(--muted); }
+
+section.step { padding-top: 44px; }
+section.step > .head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+section.step > .head .tag { font: 600 .78rem/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+
+/* annotated screenshots */
+figure.shot { margin: 18px 0 8px; }
+figure.shot .frame { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: #0b0e12;
+  box-shadow: 0 14px 40px -24px rgba(0,0,0,.55); }
+figure.shot img { display: block; width: 100%; height: auto; max-width: 100%; }
+figure.shot svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+figure.shot .hl { fill: rgba(255,122,69,.10); stroke: var(--mark); stroke-width: 3; }
+figure.shot .lead { stroke: var(--mark); stroke-width: 3; }
+figure.shot .arrowhead { fill: var(--mark); }
+figure.shot .badge { fill: var(--mark); stroke: #0b0e12; stroke-width: 3; }
+figure.shot .badge-n { fill: var(--mark-ink); font: 700 18px var(--mono); text-anchor: middle; }
+figure.shot .mark { transition: opacity .15s; }
+figure.shot.focus .mark { opacity: .18; }
+figure.shot.focus .mark.on { opacity: 1; }
+figure.shot.focus .mark.on .hl { fill: rgba(255,122,69,.22); stroke-width: 4; }
+figure.shot .zoom { display: inline-block; margin-top: 6px; font-size: .85rem; }
+
+/* the numbered key under each screenshot */
+ol.keys { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+ol.keys li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; padding: 12px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--line); cursor: default; }
+ol.keys li:hover, ol.keys li:focus-within, ol.keys li.on { border-color: var(--accent); }
+ol.keys .n { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font: 700 .9rem var(--mono);
+  background: var(--mark); color: var(--mark-ink); }
+ol.keys li > div > b:first-child { display: block; margin-bottom: 2px; }
+ol.keys p { margin: 0; font-size: .93rem; color: var(--muted); }
+
+/* callouts and tables */
+.note { border-left: 4px solid var(--accent); background: var(--surface); padding: 12px 16px; border-radius: 0 10px 10px 0; margin: 16px 0; max-width: 78ch; }
+.note.warn { border-left-color: var(--warn); }
+.note b:first-child { color: var(--accent); }
+.note.warn b:first-child { color: var(--warn); }
+.tablewrap { overflow-x: auto; margin: 14px 0; }
+table { border-collapse: collapse; min-width: 560px; width: 100%; font-size: .94rem; background: var(--surface); border-radius: 10px; overflow: hidden; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 .78rem/1.3 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pill { display: inline-block; font: 600 .82rem/1.3 var(--body); padding: 2px 9px; border-radius: 999px; border: 1px solid currentColor; }
+.pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); }
+
+/* learning routes */
+.routes { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; margin-top: 16px; }
+.route { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+.route h3 { margin: 0 0 4px; font-size: 1.1rem; }
+.route .time { font: 600 .74rem/1 var(--mono); color: var(--accent); letter-spacing: .06em; }
+.route ol { margin: 10px 0 0; padding-left: 20px; font-size: .94rem; }
+.route li { margin: 4px 0; }
+.route .see { margin-top: 10px; font-size: .9rem; color: var(--muted); }
+
+pre.cmd { background: var(--code-bg); border-radius: 10px; padding: 12px 14px; overflow-x: auto; font: .9rem/1.5 var(--mono); }
+footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line); font-size: .88rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<nav class="toc" aria-label="Contents">
+  <div class="eyebrow">Contents</div>
+  <ol id="toc">
+    <li><a href="#start">Before you start</a></li>
+    <li><a href="#screen">The screen</a></li>
+    <li><a href="#move">Moving around</a></li>
+    <li><a href="#plan">The plan</a></li>
+    <li><a href="#sun">Sun and shadows</a></li>
+    <li><a href="#layer">Map layer</a></li>
+    <li><a href="#rehearse">Rehearse the walk</a></li>
+    <li><a href="#events">Return home, off route, storm</a></li>
+    <li><a href="#walk">Walk freely</a></li>
+    <li><a href="#photos">Rover photos</a></li>
+    <li><a href="#about">Share a view</a></li>
+    <li><a href="#keys">Keyboard</a></li>
+    <li><a href="#routes">Learning routes</a></li>
+    <li><a href="#numbers">What the numbers mean</a></li>
+    <li><a href="#trouble">When something looks wrong</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">Mars EVA Planner · 3D map · user guide</div>
+  <h1>Walk the plan before anyone leaves the habitat</h1>
+  <p class="lead">The 3D map puts the plan of the 2D planner on the real relief of the boxwork, lights it with the Sun of Mars, and lets you walk it at eye height with the arm tablet's meters. Each orange number points at a control; the same number in the list below the picture says what it does. Hover a list item to light up its control.</p>
+  <div class="flow" aria-label="What you can do">
+    <a href="#screen"><span class="k">LOOK</span><b>The terrain</b><span>Relief, photo, pins and route</span></a>
+    <a href="#sun"><span class="k">LIGHT</span><b>Sun and shadows</b><span>Any sol, any local time</span></a>
+    <a href="#rehearse"><span class="k">REHEARSE</span><b>The walk</b><span>Eye height, with the meters</span></a>
+    <a href="#walk"><span class="k">EXPLORE</span><b>Walk freely</b><span>Anywhere in the box</span></a>
+  </div>
+</header>
+
+<section class="step" id="start">
+  <div class="head"><span class="tag">Before you start</span><h2>How to open it, and what it shows</h2></div>
+  <p>The 3D map shows the same 2 × 2 km box of the Gale boxwork as the 2D planner: the 1 m terrain model with the HiRISE photo (25 cm) on top. It <b>reads the plan</b> you made in the 2D planner; it never makes one unless you ask. Everything is local: the page needs no internet.</p>
+  <pre class="cmd">python src/viz3d/build_terrain_assets.py      # once: the 3D terrain (a few seconds)
+python -m uvicorn api.main:app --port 8000    # then open http://localhost:8000/3d/</pre>
+  <p>From the 2D planner, the <b>3D</b> link in step 4 (Walk) opens it with the same plan. Plan first in the 2D planner; with no plan saved the terrain still works and the panel offers <b>Plan with default settings</b>.</p>
+  <div class="note warn"><b>Plan with default settings replaces the saved plan</b>, the one the 2D planner and the tablet also read. Use it only when there is no plan you want to keep.</div>
+</section>
+
+<section class="step" id="screen">
+  <div class="head"><span class="tag">Orientation</span><h2>The screen</h2></div>
+  <p>The terrain fills the screen. The panel on the left holds the plan and the settings in folding sections; only <i>Plan</i> is open at the start. The colour of the route tells the way: cyan going out, pink coming back.</p>
+  <figure class="shot" data-shot="overview" data-shown="1,2,3,4,5,6,7,8"><div class="frame"><img src="img/overview.jpg" width="1440" height="900" alt="Screenshot: overview" loading="lazy"><svg viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="arrow-overview" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs><g class="mark" data-n="1"><rect class="hl" x="13" y="13" width="256" height="619" rx="7"/><line class="lead" x1="286" y1="349" x2="266" y2="349" marker-end="url(#arrow-overview)"/><circle class="badge" cx="304" cy="349" r="17"/><text class="badge-n" x="304" y="355">1</text></g><g class="mark" data-n="2"><rect class="hl" x="28" y="78" width="226" height="22" rx="7"/><line class="lead" x1="286" y1="89" x2="251" y2="89" marker-end="url(#arrow-overview)"/><circle class="badge" cx="304" cy="89" r="17"/><text class="badge-n" x="304" y="95">2</text></g><g class="mark" data-n="3"><rect class="hl" x="28" y="115" width="226" height="389" rx="7"/><line class="lead" x1="286" y1="309" x2="251" y2="309" marker-end="url(#arrow-overview)"/><circle class="badge" cx="304" cy="309" r="17"/><text class="badge-n" x="304" y="315">3</text></g><g class="mark" data-n="4"><rect class="hl" x="195" y="115" width="59" height="23" rx="7"/><line class="lead" x1="286" y1="129" x2="251" y2="129" marker-end="url(#arrow-overview)"/><circle class="badge" cx="304" cy="129" r="17"/><text class="badge-n" x="304" y="135">4</text></g><g class="mark" data-n="5"><rect class="hl" x="1363" y="13" width="64" height="64" rx="7"/><line class="lead" x1="1338" y1="45" x2="1366" y2="45" marker-end="url(#arrow-overview)"/><circle class="badge" cx="1320" cy="45" r="17"/><text class="badge-n" x="1320" y="51">5</text></g><g class="mark" data-n="6"><rect class="hl" x="1363" y="81" width="64" height="64" rx="7"/><line class="lead" x1="1395" y1="170" x2="1395" y2="142" marker-end="url(#arrow-overview)"/><circle class="badge" cx="1395" cy="188" r="17"/><text class="badge-n" x="1395" y="194">6</text></g><g class="mark" data-n="7"><rect class="hl" x="687" y="395" width="66" height="62" rx="7"/><line class="lead" x1="778" y1="426" x2="750" y2="426" marker-end="url(#arrow-overview)"/><circle class="badge" cx="796" cy="426" r="17"/><text class="badge-n" x="796" y="432">7</text></g><g class="mark" data-n="8"><rect class="hl" x="13" y="838" width="284" height="49" rx="7"/><line class="lead" x1="322" y1="863" x2="294" y2="863" marker-end="url(#arrow-overview)"/><circle class="badge" cx="340" cy="863" r="17"/><text class="badge-n" x="340" y="869">8</text></g></svg></div><a class="zoom" href="img/overview.jpg" target="_blank" rel="noopener">Open the full-size screenshot</a></figure>
+  <ol class="keys" data-shot="overview">
+    <li data-n="1"><span class="n">1</span><div><b>Panel</b><p>Sections: Plan, Sun, Map layer, Rover photos, About this view. Click a title to open or fold it.</p></div></li>
+    <li data-n="2"><span class="n">2</span><div><b>Local relief</b><p>×1 is the real terrain model; ×1.5 to ×5 exaggerate only the local relief, so knolls and scarps stand out. Default ×2. Rehearsing and walking lock it at ×1.</p></div></li>
+    <li data-n="3"><span class="n">3</span><div><b>Plan</b><p>The plan from the planner: length, time, energy, visiting order and what was left out.</p></div></li>
+    <li data-n="4"><span class="n">4</span><div><b>← Planner</b><p>Back to the 2D planner, to change the plan.</p></div></li>
+    <li data-n="5"><span class="n">5</span><div><b>Compass</b><p>The needle points north. Click it to face north.</p></div></li>
+    <li data-n="6"><span class="n">6</span><div><b>Frame</b><p>Back to the opening view of the whole box.</p></div></li>
+    <li data-n="7"><span class="n">7</span><div><b>Habitat and stations</b><p>Pins on the ground. Stations the plan does not visit are dimmed. Click a pin for its card.</p></div></li>
+    <li data-n="8"><span class="n">8</span><div><b>Readout</b><p>Position and elevation of the point under the cursor, in metres of the Mars map projection.</p></div></li>
+  </ol>
+</section>
+
+<section class="step" id="move">
+  <div class="head"><span class="tag">Navigation</span><h2>Moving around</h2></div>
+  <p>The camera turns around the point under the cursor, so what you point at stays in place.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th></th><th>Mouse</th><th>Touch</th></tr></thead>
+    <tbody>
+      <tr><td>Rotate around the point under the cursor</td><td>drag</td><td>one finger</td></tr>
+      <tr><td>Move</td><td>right-drag or <kbd>Shift</kbd> + drag</td><td>two fingers</td></tr>
+      <tr><td>Zoom towards the point under the cursor</td><td>wheel</td><td>pinch (twist turns)</td></tr>
+      <tr><td>Face north · back to the start</td><td colspan="2">Compass · Frame (top right)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="muted">Map-style mouse (drag moves, right-drag rotates): add <code>?drag=pan</code> to the address.</p>
+</section>
+
+<section class="step" id="plan">
+  <div class="head"><span class="tag">The plan</span><h2>What the plan says, station by station</h2></div>
+  <p>The <i>Plan</i> section repeats the planner's result in plain words, and gives the three ways to see it: from above, rehearsed at eye height, or walked freely.</p>
+  <figure class="shot" data-shot="plan" data-shown="1,2,3,4,5,6,7,8,9"><div class="frame"><img src="img/plan.jpg" width="1440" height="900" alt="Screenshot: plan" loading="lazy"><svg viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="arrow-plan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs><g class="mark" data-n="1"><rect class="hl" x="28" y="140" width="211" height="23" rx="7"/><line class="lead" x1="286" y1="151" x2="236" y2="151" marker-end="url(#arrow-plan)"/><circle class="badge" cx="304" cy="151" r="17"/><text class="badge-n" x="304" y="157">1</text></g><g class="mark" data-n="2"><rect class="hl" x="28" y="160" width="211" height="42" rx="7"/><line class="lead" x1="286" y1="191" x2="236" y2="191" marker-end="url(#arrow-plan)"/><circle class="badge" cx="304" cy="191" r="17"/><text class="badge-n" x="304" y="197">2</text></g><g class="mark" data-n="3"><rect class="hl" x="28" y="201" width="211" height="23" rx="7"/><line class="lead" x1="286" y1="228" x2="236" y2="221" marker-end="url(#arrow-plan)"/><circle class="badge" cx="304" cy="231" r="17"/><text class="badge-n" x="304" y="237">3</text></g><g class="mark" data-n="4"><rect class="hl" x="28" y="224" width="211" height="136" rx="7"/><line class="lead" x1="286" y1="291" x2="236" y2="291" marker-end="url(#arrow-plan)"/><circle class="badge" cx="304" cy="291" r="17"/><text class="badge-n" x="304" y="297">4</text></g><g class="mark" data-n="5"><rect class="hl" x="28" y="359" width="211" height="23" rx="7"/><line class="lead" x1="286" y1="371" x2="236" y2="371" marker-end="url(#arrow-plan)"/><circle class="badge" cx="304" cy="371" r="17"/><text class="badge-n" x="304" y="377">5</text></g><g class="mark" data-n="6"><rect class="hl" x="28" y="424" width="211" height="192" rx="7"/><line class="lead" x1="286" y1="520" x2="236" y2="520" marker-end="url(#arrow-plan)"/><circle class="badge" cx="304" cy="520" r="17"/><text class="badge-n" x="304" y="526">6</text></g><g class="mark" data-n="7"><rect class="hl" x="28" y="624" width="96" height="36" rx="7"/><line class="lead" x1="286" y1="642" x2="121" y2="642" marker-end="url(#arrow-plan)"/><circle class="badge" cx="304" cy="642" r="17"/><text class="badge-n" x="304" y="648">7</text></g><g class="mark" data-n="8"><rect class="hl" x="121" y="624" width="80" height="36" rx="7"/><line class="lead" x1="286" y1="677" x2="198" y2="657" marker-end="url(#arrow-plan)"/><circle class="badge" cx="304" cy="682" r="17"/><text class="badge-n" x="304" y="688">8</text></g><g class="mark" data-n="9"><rect class="hl" x="28" y="699" width="91" height="36" rx="7"/><line class="lead" x1="286" y1="722" x2="116" y2="722" marker-end="url(#arrow-plan)"/><circle class="badge" cx="304" cy="722" r="17"/><text class="badge-n" x="304" y="728">9</text></g></svg></div><a class="zoom" href="img/plan.jpg" target="_blank" rel="noopener">Open the full-size screenshot</a></figure>
+  <ol class="keys" data-shot="plan">
+    <li data-n="1"><span class="n">1</span><div><b>Where it comes from</b><p>"Last plan from the planner".</p></div></li>
+    <li data-n="2"><span class="n">2</span><div><b>Length, time, energy</b><p>"1392 m · 111 min · 448 Wh of 900 usable".</p></div></li>
+    <li data-n="3"><span class="n">3</span><div><b>Colours of the route</b><p>Cyan outbound, pink return.</p></div></li>
+    <li data-n="4"><span class="n">4</span><div><b>The plan's messages</b><p>Stations visited and science value, the order (R3 → R2 → …), the stations left out, the power used at the stations. ⚠ in amber only for what needs a look, such as a habitat the planner moved.</p></div></li>
+    <li data-n="5"><span class="n">5</span><div><b>Stations (13)</b><p>Folded list of every station, in visiting order, then the ones not visited.</p></div></li>
+    <li data-n="6"><span class="n">6</span><div><b>A station in the list</b><p>"1 · R3 · Boxwork ridge": flies there and opens its card. Works with the keyboard.</p></div></li>
+    <li data-n="7"><span class="n">7</span><div><b>Reload plan</b><p>Reads the planner's last plan again, after you plan in the 2D tab.</p></div></li>
+    <li data-n="8"><span class="n">8</span><div><b>Rehearse</b><p>Walks the plan at eye height with its clock and the tablet's meters. <a href="#rehearse">See below</a>.</p></div></li>
+    <li data-n="9"><span class="n">9</span><div><b>Walk freely</b><p>Walk anywhere in the box, like a game. Works without a plan. <a href="#walk">See below</a>.</p></div></li>
+  </ol>
+
+  <h3>A station's card</h3>
+  <figure class="shot" data-shot="station" data-shown="1,2,3,4"><div class="frame"><img src="img/station.jpg" width="1440" height="900" alt="Screenshot: station" loading="lazy"><svg viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="arrow-station" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs><g class="mark" data-n="1"><rect class="hl" x="31" y="427" width="190" height="36" rx="7"/><line class="lead" x1="286" y1="445" x2="218" y2="445" marker-end="url(#arrow-station)"/><circle class="badge" cx="304" cy="445" r="17"/><text class="badge-n" x="304" y="451">1</text></g><g class="mark" data-n="2"><rect class="hl" x="1191" y="155" width="236" height="177" rx="7"/><line class="lead" x1="1166" y1="243" x2="1194" y2="243" marker-end="url(#arrow-station)"/><circle class="badge" cx="1148" cy="243" r="17"/><text class="badge-n" x="1148" y="249">2</text></g><g class="mark" data-n="3"><rect class="hl" x="1206" y="282" width="73" height="36" rx="7"/><line class="lead" x1="1304" y1="300" x2="1276" y2="300" marker-end="url(#arrow-station)"/><circle class="badge" cx="1322" cy="300" r="17"/><text class="badge-n" x="1322" y="306">3</text></g><g class="mark" data-n="4"><rect class="hl" x="1388" y="160" width="32" height="32" rx="7"/><line class="lead" x1="1363" y1="176" x2="1391" y2="176" marker-end="url(#arrow-station)"/><circle class="badge" cx="1345" cy="176" r="17"/><text class="badge-n" x="1345" y="182">4</text></g></svg></div><a class="zoom" href="img/station.jpg" target="_blank" rel="noopener">Open the full-size screenshot</a></figure>
+  <ol class="keys" data-shot="station">
+    <li data-n="1"><span class="n">1</span><div><b>Choose a station</b><p>In the list, or click its pin on the terrain.</p></div></li>
+    <li data-n="2"><span class="n">2</span><div><b>The card</b><p>Type, science score, service time and visit order (for R3: Boxwork ridge, 5, 10 min, 1). With the photo catalogue, also the nearest rover photo within 150 m.</p></div></li>
+    <li data-n="3"><span class="n">3</span><div><b>Fly here</b><p>Views the station from 60 m.</p></div></li>
+    <li data-n="4"><span class="n">4</span><div><b>Close</b><p>Or <kbd>Esc</kbd>.</p></div></li>
+  </ol>
+</section>
+
+<section class="step" id="sun">
+  <div class="head"><span class="tag">Light</span><h2>Sun and shadows</h2></div>
+  <p>The scene is lit by the Sun of Mars at a Curiosity sol and a local solar time. Once a plan is drawn the Sun moves to that plan's best time to leave (11:00 for the 120 min tour on sol 4711), the same time the 2D planner shows. Late in the afternoon, long shadows show which slopes the walk will cross in shade.</p>
+  <figure class="shot" data-shot="sun" data-shown="1,2,3,4,5,6"><div class="frame"><img src="img/sun.jpg" width="1440" height="900" alt="Screenshot: sun" loading="lazy"><svg viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="arrow-sun" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs><g class="mark" data-n="1"><rect class="hl" x="101" y="168" width="84" height="32" rx="7"/><line class="lead" x1="286" y1="184" x2="182" y2="184" marker-end="url(#arrow-sun)"/><circle class="badge" cx="304" cy="184" r="17"/><text class="badge-n" x="304" y="190">1</text></g><g class="mark" data-n="2"><rect class="hl" x="28" y="225" width="226" height="22" rx="7"/><line class="lead" x1="286" y1="236" x2="251" y2="236" marker-end="url(#arrow-sun)"/><circle class="badge" cx="304" cy="236" r="17"/><text class="badge-n" x="304" y="242">2</text></g><g class="mark" data-n="3"><rect class="hl" x="28" y="247" width="226" height="24" rx="7"/><line class="lead" x1="286" y1="273" x2="251" y2="268" marker-end="url(#arrow-sun)"/><circle class="badge" cx="304" cy="276" r="17"/><text class="badge-n" x="304" y="282">3</text></g><g class="mark" data-n="4"><rect class="hl" x="28" y="267" width="226" height="23" rx="7"/><line class="lead" x1="288" y1="307" x2="251" y2="287" marker-end="url(#arrow-sun)"/><circle class="badge" cx="304" cy="316" r="17"/><text class="badge-n" x="304" y="322">4</text></g><g class="mark" data-n="5"><rect class="hl" x="28" y="292" width="226" height="23" rx="7"/><line class="lead" x1="290" y1="344" x2="251" y2="312" marker-end="url(#arrow-sun)"/><circle class="badge" cx="304" cy="356" r="17"/><text class="badge-n" x="304" y="362">5</text></g><g class="mark" data-n="6"><rect class="hl" x="28" y="317" width="226" height="23" rx="7"/><line class="lead" x1="292" y1="382" x2="251" y2="336" marker-end="url(#arrow-sun)"/><circle class="badge" cx="304" cy="396" r="17"/><text class="badge-n" x="304" y="402">6</text></g></svg></div><a class="zoom" href="img/sun.jpg" target="_blank" rel="noopener">Open the full-size screenshot</a></figure>
+  <ol class="keys" data-shot="sun">
+    <li data-n="1"><span class="n">1</span><div><b>Curiosity sol</b><p>The Mars day (default 4711).</p></div></li>
+    <li data-n="2"><span class="n">2</span><div><b>Local solar time</b><p>Drag to move the Sun through the sol. Here 17:30.</p></div></li>
+    <li data-n="3"><span class="n">3</span><div><b>Where the light comes from</b><p>"Sun 7° high, light from the west", with the date on Earth. The tooltip gives the exact height, bearing and season.</p></div></li>
+    <li data-n="4"><span class="n">4</span><div><b>Note</b><p>Says when the Sun was set to the best time to leave.</p></div></li>
+    <li data-n="5"><span class="n">5</span><div><b>Relief only</b><p>Hides the photo: the relief alone, lit by this Sun.</p></div></li>
+    <li data-n="6"><span class="n">6</span><div><b>Shadows</b><p>Cast shadows of the relief. True to scale only at relief ×1.</p></div></li>
+  </ol>
+  <div class="note"><b>The photo has its own shadows.</b> HiRISE took it in mid-afternoon; the 3D Sun is added on top. Turn on <i>Relief only</i> to see the light of the chosen time alone.</div>
+</section>
+
+<section class="step" id="layer">
+  <div class="head"><span class="tag">Data on the relief</span><h2>Map layer</h2></div>
+  <p>One layer of the 2D planner draped on the terrain, with the 2D's colours and legend: <b>Radio coverage</b>, <b>Slope</b>, <b>Too steep to cross</b>, <b>Sand detected</b>, <b>Walking cost</b> or <b>Boulders</b>. Off by default.</p>
+  <figure class="shot" data-shot="layer" data-shown="1,2,3"><div class="frame"><img src="img/layer.jpg" width="1440" height="900" alt="Screenshot: layer" loading="lazy"><svg viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="arrow-layer" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs><g class="mark" data-n="1"><rect class="hl" x="28" y="197" width="226" height="33" rx="7"/><line class="lead" x1="286" y1="214" x2="251" y2="214" marker-end="url(#arrow-layer)"/><circle class="badge" cx="304" cy="214" r="17"/><text class="badge-n" x="304" y="220">1</text></g><g class="mark" data-n="2"><rect class="hl" x="28" y="253" width="226" height="22" rx="7"/><line class="lead" x1="286" y1="264" x2="251" y2="264" marker-end="url(#arrow-layer)"/><circle class="badge" cx="304" cy="264" r="17"/><text class="badge-n" x="304" y="270">2</text></g><g class="mark" data-n="3"><rect class="hl" x="28" y="277" width="226" height="35" rx="7"/><line class="lead" x1="286" y1="304" x2="251" y2="304" marker-end="url(#arrow-layer)"/><circle class="badge" cx="304" cy="304" r="17"/><text class="badge-n" x="304" y="310">3</text></g></svg></div><a class="zoom" href="img/layer.jpg" target="_blank" rel="noopener">Open the full-size screenshot</a></figure>
+  <ol class="keys" data-shot="layer">
+    <li data-n="1"><span class="n">1</span><div><b>Layer</b><p>Pick one; Off removes it. Radio is seen from the plan's habitat; the steep cells use the plan's own slope limit.</p></div></li>
+    <li data-n="2"><span class="n">2</span><div><b>Opacity</b><p>How much of the photo shows through.</p></div></li>
+    <li data-n="3"><span class="n">3</span><div><b>Legend</b><p>The same scale as in the 2D (slope: 0°, 15°, 30°, 45° and more).</p></div></li>
+  </ol>
+  <p class="muted">The layer stays on while rehearsing and with <i>Relief only</i>. A layer the server cannot give says "Unavailable: …".</p>
+</section>
+
+<section class="step" id="rehearse">
+  <div class="head"><span class="tag">The main use</span><h2>Rehearse the walk</h2></div>
+  <p><b>Rehearse</b> walks the plan at eye height, on the EVA's own clock, with the same guide and meters as the arm tablet. The panel hides so the scene shows; the relief locks at ×1 and the Sun follows the EVA clock.</p>
+  <figure class="shot" data-shot="rehearse" data-shown="1,2,3,4,5,6,7,8,9,10,11,12,13,14"><div class="frame"><img src="img/rehearse.jpg" width="1440" height="900" alt="Screenshot: rehearse" loading="lazy"><svg viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="arrow-rehearse" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs><g class="mark" data-n="1"><rect class="hl" x="450" y="487" width="540" height="54" rx="7"/><line class="lead" x1="424" y1="514" x2="453" y2="514" marker-end="url(#arrow-rehearse)"/><circle class="badge" cx="406" cy="514" r="17"/><text class="badge-n" x="406" y="520">1</text></g><g class="mark" data-n="2"><rect class="hl" x="450" y="543" width="62" height="34" rx="7"/><line class="lead" x1="424" y1="561" x2="453" y2="561" marker-end="url(#arrow-rehearse)"/><circle class="badge" cx="406" cy="561" r="17"/><text class="badge-n" x="406" y="567">2</text></g><g class="mark" data-n="3"><rect class="hl" x="512" y="543" width="120" height="34" rx="7"/><line class="lead" x1="424" y1="593" x2="515" y2="575" marker-end="url(#arrow-rehearse)"/><circle class="badge" cx="406" cy="597" r="17"/><text class="badge-n" x="406" y="603">3</text></g><g class="mark" data-n="4"><rect class="hl" x="632" y="543" width="91" height="34" rx="7"/><line class="lead" x1="423" y1="628" x2="635" y2="575" marker-end="url(#arrow-rehearse)"/><circle class="badge" cx="406" cy="633" r="17"/><text class="badge-n" x="406" y="639">4</text></g><g class="mark" data-n="5"><rect class="hl" x="723" y="543" width="104" height="34" rx="7"/><line class="lead" x1="1016" y1="561" x2="824" y2="561" marker-end="url(#arrow-rehearse)"/><circle class="badge" cx="1034" cy="561" r="17"/><text class="badge-n" x="1034" y="567">5</text></g><g class="mark" data-n="6"><rect class="hl" x="816" y="580" width="69" height="34" rx="7"/><line class="lead" x1="1016" y1="597" x2="882" y2="597" marker-end="url(#arrow-rehearse)"/><circle class="badge" cx="1034" cy="597" r="17"/><text class="badge-n" x="1034" y="603">6</text></g><g class="mark" data-n="7"><rect class="hl" x="885" y="580" width="55" height="34" rx="7"/><line class="lead" x1="1016" y1="629" x2="937" y2="611" marker-end="url(#arrow-rehearse)"/><circle class="badge" cx="1034" cy="633" r="17"/><text class="badge-n" x="1034" y="639">7</text></g><g class="mark" data-n="8"><rect class="hl" x="946" y="580" width="44" height="34" rx="7"/><line class="lead" x1="1023" y1="655" x2="987" y2="611" marker-end="url(#arrow-rehearse)"/><circle class="badge" cx="1034" cy="669" r="17"/><text class="badge-n" x="1034" y="675">8</text></g><g class="mark" data-n="9"><rect class="hl" x="450" y="616" width="540" height="22" rx="7"/><line class="lead" x1="421" y1="658" x2="453" y2="635" marker-end="url(#arrow-rehearse)"/><circle class="badge" cx="406" cy="669" r="17"/><text class="badge-n" x="406" y="675">9</text></g><g class="mark" data-n="10"><rect class="hl" x="450" y="636" width="540" height="24" rx="7"/><line class="lead" x1="1021" y1="692" x2="987" y2="657" marker-end="url(#arrow-rehearse)"/><circle class="badge" cx="1034" cy="705" r="17"/><text class="badge-n" x="1034" y="711">10</text></g><g class="mark" data-n="11"><rect class="hl" x="450" y="656" width="540" height="40" rx="7"/><line class="lead" x1="423" y1="700" x2="453" y2="693" marker-end="url(#arrow-rehearse)"/><circle class="badge" cx="406" cy="705" r="17"/><text class="badge-n" x="406" y="711">11</text></g><g class="mark" data-n="12"><rect class="hl" x="450" y="696" width="540" height="41" rx="7"/><line class="lead" x1="1016" y1="738" x2="987" y2="733" marker-end="url(#arrow-rehearse)"/><circle class="badge" cx="1034" cy="741" r="17"/><text class="badge-n" x="1034" y="747">12</text></g><g class="mark" data-n="13"><rect class="hl" x="450" y="736" width="540" height="102" rx="7"/><line class="lead" x1="424" y1="787" x2="453" y2="787" marker-end="url(#arrow-rehearse)"/><circle class="badge" cx="406" cy="787" r="17"/><text class="badge-n" x="406" y="793">13</text></g><g class="mark" data-n="14"><rect class="hl" x="450" y="836" width="540" height="40" rx="7"/><line class="lead" x1="1016" y1="856" x2="987" y2="856" marker-end="url(#arrow-rehearse)"/><circle class="badge" cx="1034" cy="856" r="17"/><text class="badge-n" x="1034" y="862">14</text></g></svg></div><a class="zoom" href="img/rehearse.jpg" target="_blank" rel="noopener">Open the full-size screenshot</a></figure>
+  <ol class="keys" data-shot="rehearse">
+    <li data-n="1"><span class="n">1</span><div><b>Next maneuver</b><p>As the tablet shows it: the arrow, the distance big ("220 m") and the instruction ("Arrive at station R3"). With voice on, it is spoken.</p></div></li>
+    <li data-n="2"><span class="n">2</span><div><b>Play / Pause</b><p>Or <kbd>Space</kbd> when no control has focus.</p></div></li>
+    <li data-n="3"><span class="n">3</span><div><b>Return home</b><p>Abort: the fastest way home from here, drawn red.</p></div></li>
+    <li data-n="4"><span class="n">4</span><div><b>Off route</b><p>Demo: the walker leaves the route by 25 m, then the guide brings it back.</p></div></li>
+    <li data-n="5"><span class="n">5</span><div><b>Solar storm</b><p>Demo: the storm alert and the automatic way home, with the dose.</p></div></li>
+    <li data-n="6"><span class="n">6</span><div><b>More</b><p>Chase view, recentre, speed, voice and the energy-use demo.</p></div></li>
+    <li data-n="7"><span class="n">7</span><div><b>Panel</b><p>Shows or hides the side panel without leaving.</p></div></li>
+    <li data-n="8"><span class="n">8</span><div><b>Exit</b><p>Leaves the rehearsal. <kbd>Esc</kbd> only closes a card and pauses.</p></div></li>
+    <li data-n="9"><span class="n">9</span><div><b>Scrubber</b><p>Drag to jump to any moment of the walk.</p></div></li>
+    <li data-n="10"><span class="n">10</span><div><b>EVA clock</b><p>"EVA 6:01 of 111:27 · outbound · 262 of 1392 m".</p></div></li>
+    <li data-n="11"><span class="n">11</span><div><b>Sun line</b><p>Local solar time and the Sun's height at this moment of the EVA, and the time it started (11:00, the best time to leave).</p></div></li>
+    <li data-n="12"><span class="n">12</span><div><b>Energy bar</b><p>Used, needed to return and spare, as in the 2D planner.</p></div></li>
+    <li data-n="13"><span class="n">13</span><div><b>The tablet's meters</b><p>Spare energy, Home in · limit 30, Radio, Spare energy at your pace, EVA time left. Each with its state word, <span class="pill ok">OK</span> <span class="pill warn">LOW</span> <span class="pill bad">TURN BACK</span>, and a bar in that colour.</p></div></li>
+    <li data-n="14"><span class="n">14</span><div><b>Return home from here</b><p>On pause: time and energy to walk home from this point. Red line on the terrain: 30 min from home; cyan: the area safe with the energy left.</p></div></li>
+  </ol>
+
+  <h3>More</h3>
+  <figure class="shot" data-shot="rehearse-more" data-shown="1,2,3,4,5,6"><div class="frame"><img src="img/rehearse-more.jpg" width="1440" height="900" alt="Screenshot: rehearse-more" loading="lazy"><svg viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="arrow-rehearse-more" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs><g class="mark" data-n="1"><rect class="hl" x="450" y="507" width="87" height="34" rx="7"/><line class="lead" x1="424" y1="525" x2="453" y2="525" marker-end="url(#arrow-rehearse-more)"/><circle class="badge" cx="406" cy="525" r="17"/><text class="badge-n" x="406" y="531">1</text></g><g class="mark" data-n="2"><rect class="hl" x="537" y="507" width="74" height="34" rx="7"/><line class="lead" x1="424" y1="558" x2="540" y2="539" marker-end="url(#arrow-rehearse-more)"/><circle class="badge" cx="406" cy="561" r="17"/><text class="badge-n" x="406" y="567">2</text></g><g class="mark" data-n="3"><rect class="hl" x="612" y="507" width="74" height="35" rx="7"/><line class="lead" x1="423" y1="592" x2="615" y2="539" marker-end="url(#arrow-rehearse-more)"/><circle class="badge" cx="406" cy="597" r="17"/><text class="badge-n" x="406" y="603">3</text></g><g class="mark" data-n="4"><rect class="hl" x="686" y="507" width="95" height="34" rx="7"/><line class="lead" x1="1016" y1="525" x2="777" y2="525" marker-end="url(#arrow-rehearse-more)"/><circle class="badge" cx="1034" cy="525" r="17"/><text class="badge-n" x="1034" y="531">4</text></g><g class="mark" data-n="5"><rect class="hl" x="491" y="542" width="75" height="34" rx="7"/><line class="lead" x1="421" y1="622" x2="494" y2="573" marker-end="url(#arrow-rehearse-more)"/><circle class="badge" cx="406" cy="633" r="17"/><text class="badge-n" x="406" y="639">5</text></g><g class="mark" data-n="6"><rect class="hl" x="450" y="574" width="540" height="40" rx="7"/><line class="lead" x1="1016" y1="594" x2="987" y2="594" marker-end="url(#arrow-rehearse-more)"/><circle class="badge" cx="1034" cy="594" r="17"/><text class="badge-n" x="1034" y="600">6</text></g></svg></div><a class="zoom" href="img/rehearse-more.jpg" target="_blank" rel="noopener">Open the full-size screenshot</a></figure>
+  <ol class="keys" data-shot="rehearse-more">
+    <li data-n="1"><span class="n">1</span><div><b>Chase view</b><p>The astronaut seen from behind.</p></div></li>
+    <li data-n="2"><span class="n">2</span><div><b>Recentre</b><p>Looks forward again after you drag to look around (double-click does the same).</p></div></li>
+    <li data-n="3"><span class="n">3</span><div><b>Speed</b><p>×1, ×30, ×60 or ×180.</p></div></li>
+    <li data-n="4"><span class="n">4</span><div><b>Voice</b><p>Speaks the maneuvers.</p></div></li>
+    <li data-n="5"><span class="n">5</span><div><b>Use ×k</b><p>Demo: makes the astronaut use more (or less) energy than the model, 1.0 → 1.2 → 1.5 → 0.8.</p></div></li>
+    <li data-n="6"><span class="n">6</span><div><b>Energy numbers</b><p>Used, needed to return, spare; oxygen used (metabolic equivalent).</p></div></li>
+  </ol>
+
+  <h3>At each station</h3>
+  <p>The walk stops at every station with its card. The clock keeps the station's service time.</p>
+  <figure class="shot" data-shot="stop" data-shown="1,2,3,4"><div class="frame"><img src="img/stop.jpg" width="1440" height="900" alt="Screenshot: stop" loading="lazy"><svg viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="arrow-stop" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs><g class="mark" data-n="1"><rect class="hl" x="1191" y="81" width="236" height="590" rx="7"/><line class="lead" x1="1166" y1="376" x2="1194" y2="376" marker-end="url(#arrow-stop)"/><circle class="badge" cx="1148" cy="376" r="17"/><text class="badge-n" x="1148" y="382">1</text></g><g class="mark" data-n="2"><rect class="hl" x="1206" y="622" width="115" height="36" rx="7"/><line class="lead" x1="1346" y1="640" x2="1318" y2="640" marker-end="url(#arrow-stop)"/><circle class="badge" cx="1364" cy="640" r="17"/><text class="badge-n" x="1364" y="646">2</text></g><g class="mark" data-n="3"><rect class="hl" x="450" y="836" width="540" height="40" rx="7"/><line class="lead" x1="1015" y1="856" x2="987" y2="856" marker-end="url(#arrow-stop)"/><circle class="badge" cx="1033" cy="856" r="17"/><text class="badge-n" x="1033" y="862">3</text></g><g class="mark" data-n="4"><rect class="hl" x="450" y="487" width="540" height="54" rx="7"/><line class="lead" x1="1015" y1="514" x2="987" y2="514" marker-end="url(#arrow-stop)"/><circle class="badge" cx="1033" cy="514" r="17"/><text class="badge-n" x="1033" y="520">4</text></g></svg></div><a class="zoom" href="img/stop.jpg" target="_blank" rel="noopener">Open the full-size screenshot</a></figure>
+  <ol class="keys" data-shot="stop">
+    <li data-n="1"><span class="n">1</span><div><b>Station card</b><p>Arrival ("11 min into the EVA"), time standing here, why the station matters and its tasks.</p></div></li>
+    <li data-n="2"><span class="n">2</span><div><b>Done, continue</b><p>Resumes the walk.</p></div></li>
+    <li data-n="3"><span class="n">3</span><div><b>Return home from here</b><p>"✓ 10 min (limit 30) · ✓ 53 Wh, 783 Wh spare after it".</p></div></li>
+    <li data-n="4"><span class="n">4</span><div><b>The next leg</b><p>"50 m · Arrive at station R2".</p></div></li>
+  </ol>
+
+  <h3>When the astronaut uses more energy than planned</h3>
+  <p>The tablet learns, as the walk goes, how much energy this astronaut really uses against the model (the factor <i>k</i>), and recomputes the spare energy at that pace. Try it with <b>Use ×1.5</b> under More.</p>
+  <figure class="shot" data-shot="adaptive" data-shown="1,2,3,4"><div class="frame"><img src="img/adaptive.jpg" width="1440" height="900" alt="Screenshot: adaptive" loading="lazy"><svg viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="arrow-adaptive" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs><g class="mark" data-n="1"><rect class="hl" x="491" y="542" width="75" height="34" rx="7"/><line class="lead" x1="424" y1="559" x2="494" y2="559" marker-end="url(#arrow-adaptive)"/><circle class="badge" cx="406" cy="559" r="17"/><text class="badge-n" x="406" y="565">1</text></g><g class="mark" data-n="2"><rect class="hl" x="450" y="796" width="144" height="23" rx="7"/><line class="lead" x1="424" y1="807" x2="453" y2="807" marker-end="url(#arrow-adaptive)"/><circle class="badge" cx="406" cy="807" r="17"/><text class="badge-n" x="406" y="813">2</text></g><g class="mark" data-n="3"><rect class="hl" x="813" y="796" width="177" height="22" rx="7"/><line class="lead" x1="1016" y1="807" x2="987" y2="807" marker-end="url(#arrow-adaptive)"/><circle class="badge" cx="1034" cy="807" r="17"/><text class="badge-n" x="1034" y="813">3</text></g><g class="mark" data-n="4"><rect class="hl" x="450" y="574" width="540" height="40" rx="7"/><line class="lead" x1="1016" y1="594" x2="987" y2="594" marker-end="url(#arrow-adaptive)"/><circle class="badge" cx="1034" cy="594" r="17"/><text class="badge-n" x="1034" y="600">4</text></g></svg></div><a class="zoom" href="img/adaptive.jpg" target="_blank" rel="noopener">Open the full-size screenshot</a></figure>
+  <ol class="keys" data-shot="adaptive">
+    <li data-n="1"><span class="n">1</span><div><b>Use ×1.5</b><p>The simulated astronaut now uses 50 % more than the model.</p></div></li>
+    <li data-n="2"><span class="n">2</span><div><b>Spare energy at your pace</b><p>The meter that uses the learned factor.</p></div></li>
+    <li data-n="3"><span class="n">3</span><div><b>The learned factor</b><p>"k 1.06 (90 % 1.00–1.12) · 634 Wh": the estimate, its 90 % range, and the energy spare at that pace. It moves towards 1.5 as more of the walk is seen.</p></div></li>
+    <li data-n="4"><span class="n">4</span><div><b>Energy numbers</b><p>What has really been used so far.</p></div></li>
+  </ol>
+  <div class="note warn"><b>RETURN NOW.</b> When the way home no longer fits at the learned pace, a RETURN NOW alert appears in the player (screen readers announce it). With this plan's 900 Wh it does not happen even at ×1.5; with a tight budget it does.</div>
+</section>
+
+<section class="step" id="events">
+  <div class="head"><span class="tag">Contingencies</span><h2>Return home, off route and solar storm</h2></div>
+  <p>Three buttons rehearse what can go wrong. The way home is drawn red and a rejoin orange; it replaces the walked route until <b>Exit</b>, and the EVA clock goes on through it.</p>
+  <figure class="shot" data-shot="storm" data-shown="1,2,3,4"><div class="frame"><img src="img/storm.jpg" width="1440" height="900" alt="Screenshot: storm" loading="lazy"><svg viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="arrow-storm" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs><g class="mark" data-n="1"><rect class="hl" x="-3" y="-3" width="1446" height="46" rx="7"/><circle class="badge" cx="406" cy="20" r="17"/><text class="badge-n" x="406" y="26">1</text></g><g class="mark" data-n="2"><rect class="hl" x="723" y="475" width="104" height="34" rx="7"/><line class="lead" x1="1016" y1="492" x2="824" y2="492" marker-end="url(#arrow-storm)"/><circle class="badge" cx="1034" cy="492" r="17"/><text class="badge-n" x="1034" y="498">2</text></g><g class="mark" data-n="3"><rect class="hl" x="450" y="419" width="540" height="54" rx="7"/><line class="lead" x1="424" y1="446" x2="453" y2="446" marker-end="url(#arrow-storm)"/><circle class="badge" cx="406" cy="446" r="17"/><text class="badge-n" x="406" y="452">3</text></g><g class="mark" data-n="4"><rect class="hl" x="450" y="567" width="540" height="24" rx="7"/><line class="lead" x1="1016" y1="580" x2="987" y2="580" marker-end="url(#arrow-storm)"/><circle class="badge" cx="1034" cy="580" r="17"/><text class="badge-n" x="1034" y="586">4</text></g></svg></div><a class="zoom" href="img/storm.jpg" target="_blank" rel="noopener">Open the full-size screenshot</a></figure>
+  <ol class="keys" data-shot="storm">
+    <li data-n="1"><span class="n">1</span><div><b>Storm banner</b><p>"SOLAR STORM · return home now", the tablet's banner, with a red vignette over the view.</p></div></li>
+    <li data-n="2"><span class="n">2</span><div><b>Solar storm</b><p>The button that starts the demo.</p></div></li>
+    <li data-n="3"><span class="n">3</span><div><b>Heading home</b><p>The maneuver now leads to the habitat.</p></div></li>
+    <li data-n="4"><span class="n">4</span><div><b>Clock of the way home</b><p>"EVA 11:32 · return home 2:30 of 8:23 · 112 of 380 m". <i>Why and how much</i> gives the dose.</p></div></li>
+  </ol>
+  <figure class="shot" data-shot="detour" data-shown="1,2,3"><div class="frame"><img src="img/detour.jpg" width="1440" height="900" alt="Screenshot: detour" loading="lazy"><svg viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="arrow-detour" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs><g class="mark" data-n="1"><rect class="hl" x="632" y="560" width="91" height="34" rx="7"/><line class="lead" x1="424" y1="577" x2="635" y2="577" marker-end="url(#arrow-detour)"/><circle class="badge" cx="406" cy="577" r="17"/><text class="badge-n" x="406" y="583">1</text></g><g class="mark" data-n="2"><rect class="hl" x="450" y="504" width="540" height="54" rx="7"/><line class="lead" x1="1016" y1="531" x2="987" y2="531" marker-end="url(#arrow-detour)"/><circle class="badge" cx="1034" cy="531" r="17"/><text class="badge-n" x="1034" y="537">2</text></g><g class="mark" data-n="3"><rect class="hl" x="450" y="653" width="540" height="24" rx="7"/><line class="lead" x1="424" y1="665" x2="453" y2="665" marker-end="url(#arrow-detour)"/><circle class="badge" cx="406" cy="665" r="17"/><text class="badge-n" x="406" y="671">3</text></g></svg></div><a class="zoom" href="img/detour.jpg" target="_blank" rel="noopener">Open the full-size screenshot</a></figure>
+  <ol class="keys" data-shot="detour">
+    <li data-n="1"><span class="n">1</span><div><b>Off route</b><p>The walker steps 25 m off the route.</p></div></li>
+    <li data-n="2"><span class="n">2</span><div><b>Back to the route</b><p>"Bear left": the guide brings the walker back.</p></div></li>
+    <li data-n="3"><span class="n">3</span><div><b>New end of the EVA</b><p>The clock counts the rejoin; the orange line shows it.</p></div></li>
+  </ol>
+
+  <h3>Back at the habitat</h3>
+  <figure class="shot" data-shot="end" data-shown="1,2,3,4"><div class="frame"><img src="img/end.jpg" width="1440" height="900" alt="Screenshot: end" loading="lazy"><svg viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="arrow-end" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs><g class="mark" data-n="1"><rect class="hl" x="1191" y="81" width="236" height="596" rx="7"/><line class="lead" x1="1166" y1="379" x2="1194" y2="379" marker-end="url(#arrow-end)"/><circle class="badge" cx="1148" cy="379" r="17"/><text class="badge-n" x="1148" y="385">1</text></g><g class="mark" data-n="2"><rect class="hl" x="525" y="759" width="78" height="34" rx="7"/><line class="lead" x1="629" y1="777" x2="601" y2="777" marker-end="url(#arrow-end)"/><circle class="badge" cx="647" cy="777" r="17"/><text class="badge-n" x="647" y="783">2</text></g><g class="mark" data-n="3"><rect class="hl" x="450" y="759" width="75" height="34" rx="7"/><line class="lead" x1="425" y1="777" x2="453" y2="777" marker-end="url(#arrow-end)"/><circle class="badge" cx="407" cy="777" r="17"/><text class="badge-n" x="407" y="783">3</text></g><g class="mark" data-n="4"><rect class="hl" x="946" y="796" width="44" height="34" rx="7"/><line class="lead" x1="1015" y1="813" x2="987" y2="813" marker-end="url(#arrow-end)"/><circle class="badge" cx="1033" cy="813" r="17"/><text class="badge-n" x="1033" y="819">4</text></g></svg></div><a class="zoom" href="img/end.jpg" target="_blank" rel="noopener">Open the full-size screenshot</a></figure>
+  <ol class="keys" data-shot="end">
+    <li data-n="1"><span class="n">1</span><div><b>Plan against the walk</b><p>What the rehearsal did next to what the plan said: time 111 min (plan 111), energy 447 Wh (448), distance 1363 m (1392), stations 8 (8), metres without direct radio, how far it strayed, and the learned factor k.</p></div></li>
+    <li data-n="2"><span class="n">2</span><div><b>Summary</b><p>Shows the card again after you close it.</p></div></li>
+    <li data-n="3"><span class="n">3</span><div><b>Replay</b><p>From the start, as a new walk with its own summary (also at the bottom of the card, and <kbd>Space</kbd>).</p></div></li>
+    <li data-n="4"><span class="n">4</span><div><b>Exit</b><p>Back to the free view.</p></div></li>
+  </ol>
+</section>
+
+<section class="step" id="walk">
+  <div class="head"><span class="tag">Explore</span><h2>Walk freely</h2></div>
+  <p>Walk anywhere in the box in first person. It starts next to the habitat, facing the way the route leaves. The route becomes a path on the ground in the colours of its legs, and each station a ring with a flag.</p>
+  <figure class="shot" data-shot="walk" data-shown="1,2,3,4,5,6,7"><div class="frame"><img src="img/walk.jpg" width="1440" height="900" alt="Screenshot: walk" loading="lazy"><svg viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="arrow-walk" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs><g class="mark" data-n="1"><rect class="hl" x="487" y="768" width="466" height="119" rx="7"/><line class="lead" x1="978" y1="828" x2="950" y2="828" marker-end="url(#arrow-walk)"/><circle class="badge" cx="996" cy="828" r="17"/><text class="badge-n" x="996" y="834">1</text></g><g class="mark" data-n="2"><rect class="hl" x="500" y="779" width="46" height="34" rx="7"/><line class="lead" x1="572" y1="797" x2="544" y2="797" marker-end="url(#arrow-walk)"/><circle class="badge" cx="590" cy="797" r="17"/><text class="badge-n" x="590" y="803">2</text></g><g class="mark" data-n="3"><rect class="hl" x="546" y="779" width="46" height="34" rx="7"/><line class="lead" x1="522" y1="811" x2="550" y2="811" marker-end="url(#arrow-walk)"/><circle class="badge" cx="504" cy="811" r="17"/><text class="badge-n" x="504" y="817">3</text></g><g class="mark" data-n="4"><rect class="hl" x="593" y="779" width="87" height="34" rx="7"/><line class="lead" x1="705" y1="797" x2="677" y2="797" marker-end="url(#arrow-walk)"/><circle class="badge" cx="723" cy="797" r="17"/><text class="badge-n" x="723" y="803">4</text></g><g class="mark" data-n="5"><rect class="hl" x="896" y="779" width="44" height="34" rx="7"/><line class="lead" x1="871" y1="797" x2="899" y2="797" marker-end="url(#arrow-walk)"/><circle class="badge" cx="853" cy="797" r="17"/><text class="badge-n" x="853" y="803">5</text></g><g class="mark" data-n="6"><rect class="hl" x="500" y="814" width="440" height="40" rx="7"/><line class="lead" x1="475" y1="850" x2="503" y2="850" marker-end="url(#arrow-walk)"/><circle class="badge" cx="457" cy="850" r="17"/><text class="badge-n" x="457" y="856">6</text></g><g class="mark" data-n="7"><rect class="hl" x="622" y="13" width="196" height="49" rx="7"/><line class="lead" x1="843" y1="37" x2="815" y2="37" marker-end="url(#arrow-walk)"/><circle class="badge" cx="861" cy="37" r="17"/><text class="badge-n" x="861" y="43">7</text></g></svg></div><a class="zoom" href="img/walk.jpg" target="_blank" rel="noopener">Open the full-size screenshot</a></figure>
+  <ol class="keys" data-shot="walk">
+    <li data-n="1"><span class="n">1</span><div><b>Walk bar</b><p>The buttons and the keys.</p></div></li>
+    <li data-n="2"><span class="n">2</span><div><b>Run</b><p>3 m/s, or hold <kbd>Shift</kbd>.</p></div></li>
+    <li data-n="3"><span class="n">3</span><div><b>Fast</b><p>Fast travel at 20 m/s, or <kbd>F</kbd>.</p></div></li>
+    <li data-n="4"><span class="n">4</span><div><b>Chase view</b><p>The astronaut seen from behind, or <kbd>C</kbd>.</p></div></li>
+    <li data-n="5"><span class="n">5</span><div><b>Exit</b><p>Or <kbd>Esc</kbd> (the first Esc frees a captured mouse).</p></div></li>
+    <li data-n="6"><span class="n">6</span><div><b>Keys</b><p>W/S or ↑/↓ forward and back, A/D sideways, ←/→ turn.</p></div></li>
+    <li data-n="7"><span class="n">7</span><div><b>Speed and route</b><p>"Walking 1.0 m/s · on the route", or how far the route is.</p></div></li>
+  </ol>
+  <div class="tablewrap"><table>
+    <thead><tr><th></th><th>Keyboard and mouse</th><th>Touch screen</th></tr></thead>
+    <tbody>
+      <tr><td>Walk forward / back</td><td><kbd>W</kbd> <kbd>S</kbd> or <kbd>↑</kbd> <kbd>↓</kbd></td><td>up/down arrow pad (hold)</td></tr>
+      <tr><td>Step sideways</td><td><kbd>A</kbd> <kbd>D</kbd></td><td>left/right arrow pad (hold)</td></tr>
+      <tr><td>Turn</td><td><kbd>←</kbd> <kbd>→</kbd>, 90° per second, also while walking</td><td>drag</td></tr>
+      <tr><td>Look</td><td>click the view, then move the mouse</td><td>drag</td></tr>
+      <tr><td>Run · fast travel · chase view</td><td><kbd>Shift</kbd> · <kbd>F</kbd> · <kbd>C</kbd></td><td>Run · Fast · Chase view</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note warn"><b>A game, not the EVA.</b> Walking freely goes through rocks and up any slope at the same speed: the planner's slope limit and energy cost do not apply. Use <i>Rehearse</i> to check the plan.</div>
+</section>
+
+<section class="step" id="photos">
+  <div class="head"><span class="tag">Ground truth</span><h2>Rover photos</h2></div>
+  <p>Curiosity's Navcam photos placed where the camera stood. <b>Show photo stops</b> in the <i>Rover photos</i> section puts orange camera pins on the terrain (they are off at the start, and hidden while rehearsing). A pin opens the stop's card: the photo, one button per view, date, sol, local time, direction and credit.</p>
+  <p><b>View from here</b> puts the camera where the Navcam was, at relief ×1 with the Sun of the photo's sol and time, and lays the photo over the view: the slider fades it, <b>Previous</b> and <b>Next</b> change view, <b>Realign</b> flies back after a drag, and <b>Exit</b> (or <kbd>Esc</kbd>) puts camera, relief and Sun back. A station's card shows the nearest photo within 150 m, with <b>View the rover photo</b>.</p>
+  <div class="note"><b>Needs the photo catalogue</b> (<code>data/tiles/3d/photos/</code>). Without it the section says "No rover photos: the server has no photo catalogue" and the rest of the map works.</div>
+</section>
+
+<section class="step" id="about">
+  <div class="head"><span class="tag">Share</span><h2>Share a view</h2></div>
+  <figure class="shot" data-shot="about" data-shown="1,2"><div class="frame"><img src="img/about.jpg" width="1440" height="900" alt="Screenshot: about" loading="lazy"><svg viewBox="0 0 1440 900" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="arrow-about" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs><g class="mark" data-n="1"><rect class="hl" x="28" y="767" width="150" height="36" rx="7"/><line class="lead" x1="286" y1="785" x2="175" y2="785" marker-end="url(#arrow-about)"/><circle class="badge" cx="304" cy="785" r="17"/><text class="badge-n" x="304" y="791">1</text></g><g class="mark" data-n="2"><rect class="hl" x="28" y="805" width="94" height="36" rx="7"/><line class="lead" x1="286" y1="825" x2="119" y2="825" marker-end="url(#arrow-about)"/><circle class="badge" cx="304" cy="825" r="17"/><text class="badge-n" x="304" y="831">2</text></g></svg></div><a class="zoom" href="img/about.jpg" target="_blank" rel="noopener">Open the full-size screenshot</a></figure>
+  <ol class="keys" data-shot="about">
+    <li data-n="1"><span class="n">1</span><div><b>Copy link to this view</b><p>An address that opens the same camera, relief, sol, time and shadows. On another machine of the network the link is shown to copy by hand.</p></div></li>
+    <li data-n="2"><span class="n">2</span><div><b>Save image</b><p>The terrain, route and pins as a PNG, without the panels.</p></div></li>
+  </ol>
+  <p>At the bottom of the section, <b>Quality</b> says the preset in use ("Quality: high · mesh every 2 m"). Add <code>?q=low</code> on slow machines (4 m mesh); touch and small screens start low.</p>
+  <h3>Address options</h3>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Add</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>?q=low</code> · <code>?q=high</code></td><td>Quality preset</td></tr>
+      <tr><td><code>?k=3</code></td><td>Relief exaggeration at the start, 1 to 5</td></tr>
+      <tr><td><code>?sol=4711&amp;lt=15:00</code></td><td>The sol and local solar time of the Sun</td></tr>
+      <tr><td><code>?shadows=0</code></td><td>Start without cast shadows</td></tr>
+      <tr><td><code>?drag=pan</code></td><td>Map-style mouse: drag moves, right-drag rotates</td></tr>
+      <tr><td><code>?photo=&lt;id&gt;</code></td><td>Open a rover photo in the photo view</td></tr>
+      <tr><td><code>?plan=default</code></td><td>Plan with the default settings on load. <b>Replaces the saved plan.</b></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="step" id="keys">
+  <div class="head"><span class="tag">Reference</span><h2>Keyboard</h2></div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Keys</th><th>Where</th><th>What happens</th></tr></thead>
+    <tbody>
+      <tr><td><kbd>Tab</kbd>, <kbd>Enter</kbd> or <kbd>Space</kbd></td><td>Panel</td><td>Open a section or a list; choose a station or a photo stop</td></tr>
+      <tr><td><kbd>Space</kbd></td><td>Rehearsal, focus outside a control</td><td>Play or pause (on a button or a field it keeps that control's own action)</td></tr>
+      <tr><td><kbd>Tab</kbd> · <kbd>Shift</kbd>+<kbd>Tab</kbd></td><td>Rehearsal</td><td>Main buttons, More, Panel, Exit, then the other controls</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Rehearsal</td><td>Close the card or message on top and pause; it never leaves</td></tr>
+      <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, arrows, <kbd>Shift</kbd>, <kbd>F</kbd>, <kbd>C</kbd>, <kbd>Esc</kbd></td><td>Walk freely</td><td>Walk, turn, run, fast travel, chase view, leave</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Photo view</td><td>Leave the photo view</td></tr>
+    </tbody>
+  </table></div>
+  <p class="muted">On touch screens every control is at least 44 px; pinch a panel to zoom the page, pinch the view to zoom the 3D.</p>
+</section>
+
+<section class="step" id="routes">
+  <div class="head"><span class="tag">Practice</span><h2>Learning routes</h2></div>
+  <p>Start with a plan from the 2D planner (for example 120 min and 1,000 Wh with the 13 saved stations).</p>
+  <div class="routes">
+    <div class="route"><span class="time">3 MIN</span><h3>Read the ground</h3><ol>
+      <li>Move the relief slider to ×4 and turn the view.</li>
+      <li>Map layer: Slope, then Too steep to cross.</li></ol>
+      <p class="see">You see: the knolls and scarps the route goes around.</p></div>
+    <div class="route"><span class="time">5 MIN</span><h3>Rehearse the plan</h3><ol>
+      <li>Rehearse, then Play at ×60.</li>
+      <li>At R3 read the card, then Done, continue.</li>
+      <li>Pause anywhere and read Return home from here.</li></ol>
+      <p class="see">You see: the red 30 min line and the cyan safe area around the walker.</p></div>
+    <div class="route"><span class="time">3 MIN</span><h3>Light at departure</h3><ol>
+      <li>Sun: drag the time from 07:00 to 17:30 with Shadows on.</li>
+      <li>Return to the best time to leave.</li></ol>
+      <p class="see">You see: which slopes are in shade at each hour.</p></div>
+    <div class="route"><span class="time">3 MIN</span><h3>Something goes wrong</h3><ol>
+      <li>Rehearse; after a few minutes press Solar storm.</li>
+      <li>Replay and try Off route, then Return home.</li></ol>
+      <p class="see">You see: the red way home and the orange rejoin, and the EVA clock that goes on.</p></div>
+    <div class="route"><span class="time">4 MIN</span><h3>A tired astronaut</h3><ol>
+      <li>Rehearse; More → Use ×1.5.</li>
+      <li>Play and watch Spare energy at your pace.</li></ol>
+      <p class="see">You see: k moving from 1 towards 1.5 and the spare energy falling.</p></div>
+    <div class="route"><span class="time">3 MIN</span><h3>Walk the ridges</h3><ol>
+      <li>Walk freely, press C for the chase view.</li>
+      <li>Follow the path to R3, then F to travel fast.</li></ol>
+      <p class="see">You see: the scale of the terrain from the astronaut's eyes.</p></div>
+  </div>
+</section>
+
+<section class="step" id="numbers">
+  <div class="head"><span class="tag">Read with care</span><h2>What it shows, and what it does not</h2></div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>On screen</th><th>It is</th><th>It is not</th></tr></thead>
+    <tbody>
+      <tr><td>Relief</td><td>The 1 m terrain model: hillside, knolls and scarps</td><td>The 1–2 m boxwork ridges: those are in the photo only. Above ×1 it is exaggerated</td></tr>
+      <tr><td>Shadows</td><td>Shadows of the relief as drawn, from the Sun of Mars (Mars24)</td><td>True at relief above ×1; light levels are a look, with no dust or atmosphere</td></tr>
+      <tr><td>The rehearsal</td><td>The plan played back on its own clock, with the tablet's logic</td><td>A new plan: it never changes the route</td></tr>
+      <tr><td>Meters</td><td>The arm tablet's: energy, time home, radio, energy at your pace, EVA time</td><td>Measurements: the energy is a model and k is simulated by <i>Use ×k</i></td></tr>
+      <tr><td>Walk freely</td><td>A way to see the terrain at eye height</td><td>The EVA: no slope limit or energy cost</td></tr>
+      <tr><td>Rover photos</td><td>Where the Navcam stood and where it looked</td><td>A promise that a station is in view: terrain may hide it</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="step" id="trouble">
+  <div class="head"><span class="tag">Help</span><h2>When something looks wrong</h2></div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>You see</th><th>Why</th><th>What to do</th></tr></thead>
+    <tbody>
+      <tr><td>A message with a command instead of the terrain</td><td>The 3D terrain has not been built</td><td><code>python src/viz3d/build_terrain_assets.py</code></td></tr>
+      <tr><td>Terrain but no route</td><td>No plan saved yet</td><td>Plan in the 2D planner, then <b>Reload plan</b></td></tr>
+      <tr><td>An old route</td><td>The page read the plan when it opened</td><td><b>Reload plan</b></td></tr>
+      <tr><td>"No rover photos: the server has no photo catalogue"</td><td>The photo catalogue is not on this machine</td><td>The rest works; see <code>web/3d/README.md</code></td></tr>
+      <tr><td>Slow or choppy</td><td>High quality on a slow machine</td><td>Add <code>?q=low</code></td></tr>
+      <tr><td>Copy link does nothing</td><td>The clipboard works only on localhost or https</td><td>Copy the link from the box under the button</td></tr>
+      <tr><td>Esc does not leave the rehearsal</td><td>By design: Esc only pauses, so the end summary is not lost</td><td>Press <b>Exit</b></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<footer>
+  Mars EVA Planner, NASA Space Apps 2026. Screenshots from the running 3D map (<code>docs/user_guide_3d/capture.mjs</code>); page built with <code>python docs/user_guide/build.py docs/user_guide_3d</code>. The 2D planner has its own guide: <a href="../user_guide/index.html">docs/user_guide/index.html</a>.
+</footer>
+</main>
+
+</div>
+
+<script>
+// Hover or focus an item of a key to light up its control on the screenshot above it.
+document.querySelectorAll('ol.keys').forEach(list => {
+  const fig = document.querySelector(`figure.shot[data-shot="${list.dataset.shot}"]`);
+  if (!fig) return;
+  const shown = new Set((fig.dataset.shown || '').split(',').filter(Boolean));
+  list.querySelectorAll('li[data-n]').forEach(li => {
+    li.tabIndex = 0;
+    const n = li.dataset.n, mark = fig.querySelector(`.mark[data-n="${n}"]`);
+    if (!shown.has(n)) li.querySelector('.n').style.opacity = '.45';
+    const on = () => { if (!mark) return; fig.classList.add('focus'); mark.classList.add('on'); li.classList.add('on'); };
+    const off = () => { fig.classList.remove('focus'); if (mark) mark.classList.remove('on'); li.classList.remove('on'); };
+    li.addEventListener('mouseenter', on); li.addEventListener('mouseleave', off);
+    li.addEventListener('focus', on); li.addEventListener('blur', off);
+  });
+});
+// Highlight the section being read in the contents.
+const links = [...document.querySelectorAll('#toc a')];
+const io = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return;
+  links.forEach(a => a.classList.toggle('on', a.getAttribute('href') === `#${e.target.id}`));
+}), {rootMargin: '-30% 0px -60% 0px'});
+document.querySelectorAll('section.step').forEach(s => io.observe(s));
+</script>
+</body>
+</html>
