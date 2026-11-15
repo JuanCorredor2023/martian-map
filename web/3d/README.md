@@ -49,6 +49,14 @@ or press "Reload plan". With no saved plan the terrain still works.
   the station's card; on pause it draws the walkback lines from there (red: 30 min return,
   cyan: energy-safe area). The relief is locked at ×1 and the Sun follows the EVA clock.
 - **Sun**: Curiosity sol, local true solar time, "Relief only" (hide the photo), "Shadows".
+- **Rover photos**: orange camera pins where Curiosity's Navcam took photos ("Show photo stops"
+  hides them; they are hidden while rehearsing). A pin opens the stop's card: the photo, one
+  button per view, date, sol, local time, direction and credit. Pins on top of each other
+  offer a list of stops. "View from here" puts the camera where the Navcam was (relief ×1, the
+  Sun of the photo's sol and time) and lays the corrected photo over the view: the slider
+  fades it, "Previous"/"Next" change view, "Realign" flies back after a drag, "Exit" (or
+  Escape) puts camera, relief and Sun back as they were. A camera pose that does not fit the
+  ground (under it, or more than 4 m above it) is said in the bar, not corrected.
 - **About this view**: "Copy link to this view" (the address of the free-flight view, with
   relief, sol, time and the shadows switch) and "Save image" (the picture without the
   panels, as a PNG, through the browser's download).
@@ -70,6 +78,7 @@ All optional; they combine with `&`.
 | `plan=default` | on load, ask the server for a plan with the default settings. **It replaces the saved plan**, like the button |
 | `fps=1` | draw every frame and show frames per second in the readout |
 | `spin=1` | slowly orbit the camera (to measure speed without touching anything) |
+| `photo=<id>` | open a rover photo (its Navcam image id) in the photo view |
 | `check=<name>` | run a check (below) and show its result as JSON |
 
 ## Checks in the page
@@ -86,6 +95,7 @@ from the server and leave the page as they found it.
 | `sun` | is the light where the Sun of Mars is at five times of the sol; morning against afternoon; does the Sun follow the rehearsal? |
 | `guide` | does the rehearsal carry the arm-tablet guide? banner and meters at start, middle and end; Return home, detour and solar storm (asks the server); the plan is back after exit |
 | `shadows` | rendered shadows against a ray march over the mesh, 07:00, 15:00 and 17:00 at ×1 and ×5 (about 12 s; 7 s in the low preset) |
+| `photos` | for three photos of different sols (`&ids=a,b,c` to choose): camera position, eye height, heading, pitch and field against the catalogue, relief ×1, the photo's Sun, the photo on the centred square; does Exit put everything back? Whether photo and terrain agree: `src/viz3d/photo_skyline.py` |
 
 From the console, `viz3d` gives the page's objects, and `viz3d.showPlan({fc})` draws any
 plan answer without touching the server (how the test fixtures were looked at).
@@ -103,7 +113,10 @@ plan answer without touching the server (how the test fixtures were looked at).
 | `plan_model.js` | plan answer → routes, points, profile, markers |
 | `overlays.js` | route and walkback lines draped on the mesh |
 | `markers.js` | pins and the habitat dome; picking |
-| `card.js` | the side card of a station |
+| `card.js` | the side card of a station (and of a photo stop) |
+| `photos_model.js` | the photo catalogue → stops, views, card facts, camera pose, the photo's Sun, the square of the view |
+| `photos.js` | rover photos: pins, the stop's card, the photo view and its bar, the photo laid over the view |
+| `photos.css` | styles of the photo card, the bar and the laid photo |
 | `rehearse_model.js` | where the walker is at a time of the plan: clock, stops, camera path |
 | `rehearse.js` | the rehearsal mode: camera, player, stops, walkback on pause |
 | `mars_sun.js` | Mars24: where the Sun is for a UTC instant; sols and local times |
@@ -123,7 +136,7 @@ import nothing from three.js and are tested in Node.
 From the repo root (Node 26, nothing to install):
 
 ```
-node --test tests/viz3d/            # camera, plan, rehearsal, Sun, shadow camera, view link
+node --test tests/viz3d/            # camera, plan, rehearsal, Sun, shadow camera, view link, photos
 python -m pytest tests/viz3d -q     # the terrain assets against the DEM
 ```
 
@@ -131,10 +144,10 @@ Fixtures in `tests/viz3d/fixtures/` are real answers of the API: an E4 round tri
 fixed route with no profile, and a multi-station E5 tour
 (`src/viz3d/make_tour_fixture.py` says how it was made).
 
-## Rover photos (P3, data only so far)
+## Rover photos (P3)
 
-Curiosity Navcam photos placed where the camera was, for a later version of the page
-(issue #46). This step only prepares the data; the page does not show them yet. Method,
+Curiosity Navcam photos placed where the camera was (issue #46): the pins, cards and photo
+view above read what this step builds. Without it the page works and says how to build it. Method,
 numbers and limits: `paper/notes/P3_rover_photos.md`.
 
 `<raw>` below is the full data folder outside the repo (`data/README.md`). From the repo
