@@ -57,7 +57,8 @@ function sunDirection(azDeg, elDeg) {
 }
 
 // Centred message box. It can always be closed: the cross, the Escape key or a
-// click outside it.
+// click outside it. An Escape that closes it is marked as used (defaultPrevented), so
+// that the rehearsal, which also listens to Escape, only pauses (rehearse.js).
 function showMessage(html) {
   const box = ui('message');
   box.innerHTML = `<button id="message-close" title="Close (Esc)" aria-label="Close">×</button>${html}`;
@@ -67,7 +68,11 @@ function showMessage(html) {
 
 function hideMessage() { ui('message').hidden = true; }
 
-window.addEventListener('keydown', e => { if (e.key === 'Escape') hideMessage(); });
+window.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || ui('message').hidden) return;
+  hideMessage();
+  e.preventDefault();
+});
 window.addEventListener('pointerdown', e => {
   if (!ui('message').hidden && !ui('message').contains(e.target)) hideMessage();
 });

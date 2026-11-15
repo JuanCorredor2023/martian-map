@@ -31,7 +31,8 @@ or press "Reload plan". With no saved plan the terrain still works.
 | Move | right-drag or Shift + drag | two fingers |
 | Zoom towards the point under the cursor | wheel | pinch (twist turns) |
 
-- Compass (top right): face north. House: back to the opening view.
+- Compass (top right, a button that the keyboard reaches too): face north. Under it, the frame
+  (four corners): back to the opening view. The house icon is only the rehearsal's "Return home".
 - **Relief slider**: ×1 is the DEM; ×1.5 to ×5 exaggerate only the local relief.
 - **Plan**: where the plan comes from, length, time and energy; the plan's own messages in
   plain words, with their numbers ("8 of 13 stations visited · science value 37 · order
@@ -50,16 +51,21 @@ or press "Reload plan". With no saved plan the terrain still works.
   near, the card says so. At a rehearsal stop the card shows the same photo, without the button
   and without moving the walker or the clock.
 - **Guide** (the arm tablet's logic, shared in `web/guide_core.js`): the next maneuver
-  with its distance, voice on/off, the meters (energy left after returning, time back
-  against the 30 min line, radio, EVA time left against the plan's maximum duration, and,
-  once the walk has learned it, "Spare energy at your pace" with this astronaut's own
-  energy use, X2), a RETURN NOW alert when the way home no longer fits at that use,
+  with its distance, voice on/off, the tablet's meters with its labels ("Spare energy" after
+  walking home, "Time home (limit 30 min)", "Radio", "EVA time left" against the plan's
+  maximum duration and, once the walk has learned it, "Spare energy at your pace" with this
+  astronaut's own energy use, X2), each value with the tablet's state word before it (OK, LOW
+  or TURN BACK; OK, TURN SOON or OVER 30 MIN for the time home) and its bar in that state's
+  colour, a RETURN NOW alert when the way home no longer fits at that use (screen readers
+  announce it, as the storm alert),
   station tasks with "Done, continue", "Return home", "Detour" (demo: 25 m off the route,
   then rejoin), "Solar storm" (demo: automatic way home with the dose) and "Use ×k" (demo:
   the simulated energy use against the model, 1.0 / 1.2 / 1.5 / 0.8). A way home is
   drawn red and a rejoin orange; it replaces the walked route until "Exit".
 - **Rehearsal**: play / pause (space bar), ×1 to ×180, scrubber, "Chase view" (the astronaut
   seen from behind), drag to look around, double-click or "Recentre" to look forward, "Exit".
+  Esc closes what is on top (the card, or a message) and pauses; it never leaves the rehearsal,
+  which would lose the end summary: only "Exit" does.
   It pauses at every stop with the station's card; on pause it draws the walkback lines from
   there (red: 30 min return, cyan: energy-safe area). The relief is locked at ×1 and the Sun
   follows the EVA clock.

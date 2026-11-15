@@ -10,6 +10,9 @@
 //   - relief: forced to true scale. At eye height an exaggerated knoll would be a wall
 //     that is not there, and slopes are what the rehearsal is for.
 //   - player bar: play / pause, speed, scrubber, and the 2D planner's energy bar.
+//   - keys: space plays or pauses; Esc closes what is on top (the card, or the message
+//     box of main.js) and pauses. Esc never leaves the mode, which would lose the end
+//     summary and the place reached: only "Exit" does (#124).
 //   - stops: arriving at one while playing pauses and shows its card; play again lets
 //     the service time run with the walker standing.
 //   - on pause: the walkback lines from that point (30 min return in red, energy-safe
@@ -32,9 +35,10 @@ import * as THREE from 'three';
 import { requestWalkback, walkbackRequest } from './api.js';
 import { createAstronaut, disposeAstronaut, poseAstronaut } from './astronaut.js';
 import * as M from './camera_math.js';
-import { hideCard, showCard, stationCard } from './card.js';
+import { cardShown, hideCard, showCard, stationCard } from './card.js';
 import { TYPE_COLORS, mainRoute } from './plan_model.js';
-import { EYE_HEIGHT, adaptiveCardRows, buildRehearsal, clock, energyReadout, eyeAltitude, kAlarmAction, progressText } from './rehearse_model.js';
+import { EYE_HEIGHT, adaptiveCardRows, buildRehearsal, clock, energyReadout, eyeAltitude, homeInText, kAlarmAction,
+         progressText } from './rehearse_model.js';
 import * as G from '../guide_core.js';
 
 const DEG = Math.PI / 180;
@@ -53,7 +57,9 @@ const MAX_FRAME = 0.1;             // s: a frame never counts for more (tab in t
 const STRIDE = {period: 1, swing: 0.3};    // the astronaut's legs: one stride per second of screen time
 const RED_LINE = [255, 59, 48], SAFE_LINE = [54, 209, 255];       // the 2D planner's walkback colours
 const HOME_LINE = [255, 69, 58], REJOIN_LINE = [255, 140, 58];     // guide: way home, rejoining path
-const METER = {good: '#3ddc84', warn: '#ffcc00', bad: '#ff453a'};  // guide.html's meter colours
+// The bars of the meters by their state (guide_core's ok / low / out), in guide.html's
+// colours; the state words beside them are coloured by index.html (.rh-word).
+const METER = {good: '#3ddc84', warn: '#ffb020', bad: '#ff5147'};
 const RELIEF_REASON = 'Relief at true scale while rehearsing (eye height is real)';
 
 const el = id => document.getElementById(id);
@@ -453,7 +459,16 @@ export class Rehearsal {
   }
 
   _key(e) {
-    if (e.code !== 'Space' || e.repeat) return;
+    if (e.repeat) return;
+    // Esc closes what is on top and pauses; it never leaves the rehearsal (top of this
+    // file). main.js closes the message box on the same key and marks the key as used
+    // (defaultPrevented): the card then stays, so that one press closes one thing.
+    if (e.key === 'Escape') {
+      if (!e.defaultPrevented && cardShown()) hideCard();
+      this.pause();
+      return;
+    }
+    if (e.code !== 'Space') return;
     // On a list, a link or a slider the space bar already does something.
     if (e.target.closest && e.target.closest('select, a, summary, input')) return;
     // A button keeps the focus after a click, and a space would press it again (on
@@ -508,22 +523,32 @@ export class Rehearsal {
       if (this.walkLog) G.logStep(this.walkLog, g, i, [this.state.x, this.state.y]);
       this._adaptiveStep(g, i);
     }
+    // The meters as on the tablet: each bar coloured by its state, and the state word
+    // (OK / LOW / TURN BACK; OK / TURN SOON / OVER 30 MIN for the time home) beside the
+    // value, so that the meaning never rests on colour alone. The values keep their own
+    // elements, which ?check=guide reads.
     const m = G.meters(g, i, this._limitS());
-    const fill = (id, frac, good) => {
+    const fill = (id, frac, state) => {
       const f = el(id);
       f.style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
-      f.style.background = good ? METER.good : frac > 0 ? METER.warn : METER.bad;
+      f.style.background = state === 'ok' ? METER.good : state === 'low' ? METER.warn : METER.bad;
     };
-    fill('rh-m-energy', m.energy.frac, m.energy.good); el('rh-v-energy').textContent = m.energy.text;
-    fill('rh-m-back', m.back.frac, m.back.good); el('rh-v-back').textContent = m.back.text;
+    const word = (id, meter) => Object.assign(el(id), {textContent: meter.word, className: `rh-word ${meter.state}`});
+    fill('rh-m-energy', m.energy.frac, m.energy.state); word('rh-w-energy', m.energy);
+    el('rh-v-energy').textContent = m.energy.text;
+    fill('rh-m-back', m.back.frac, m.back.state); word('rh-w-back', m.back);
+    el('rh-v-back').textContent = homeInText(m.back.s);              // never "home in -0.0 min"
     const radio = G.radioState(g, i);
     for (const id of ['rh-radio-label', 'rh-radio-track', 'rh-v-radio']) el(id).hidden = !radio;
-    if (radio) {
-      fill('rh-m-radio', radio.state === 'direct' ? 1 : radio.state === 'relay' ? 0.5 : 0, radio.good);
+    if (radio) {                     // as the tablet's radio line: green, amber with no link
+      fill('rh-m-radio', radio.state === 'direct' ? 1 : radio.state === 'relay' ? 0.5 : 0, radio.good ? 'ok' : 'low');
       el('rh-v-radio').textContent = radio.text;
     }
-    for (const id of ['rh-eva-label', 'rh-eva-track', 'rh-v-eva']) el(id).hidden = !m.eva;
-    if (m.eva) { fill('rh-m-eva', m.eva.frac, m.eva.good); el('rh-v-eva').textContent = m.eva.text; }
+    for (const id of ['rh-eva-label', 'rh-eva-track', 'rh-eva-value']) el(id).hidden = !m.eva;
+    if (m.eva) {
+      fill('rh-m-eva', m.eva.frac, m.eva.state); word('rh-w-eva', m.eva);
+      el('rh-v-eva').textContent = m.eva.text;
+    }
   }
 
   // Walk a new guide route from here on (a way home or a rejoin), drawn on the ground.
