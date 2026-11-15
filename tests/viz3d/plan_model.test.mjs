@@ -20,6 +20,55 @@ const fixture = name => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, im
 const E4 = fixture('plan_e4.json'), FIXED = fixture('plan_fixed_route.json'), TOUR = fixture('plan_tour_e5.json');
 const close = (a, b, tol = 1e-6) => assert.ok(Math.abs(a - b) <= tol, `${a} vs ${b}`);
 
+test('station list: real tour order, rubric names and the unvisited pins, without changing the plan', () => {
+  const plan = P.parsePlan(TOUR), before = structuredClone(plan);
+  const rubric = {ridge: {label: 'Boxwork ridge'}, hollow: {label: 'Hollow'}};
+  const entries = P.stationList(plan, {}, rubric);
+  assert.deepEqual(entries.slice(0, 8).map(e => e.id), ['R3', 'R2', 'H2', 'H4', 'H0', 'R0', 'R4', 'R1']);
+  assert.equal(entries[0].label, '1 · R3 · Boxwork ridge');
+  assert.equal(entries[2].label, '3 · H2 · Hollow');
+  assert.equal(entries.length, 13);
+  assert.ok(entries.slice(8).every(e => e.order === null && e.label.startsWith('Not visited · ')));
+  const pins = new Map(P.planMarkers(plan).map(m => [m.id, m]));
+  for (const entry of entries) {
+    assert.deepEqual(entry.marker, pins.get(entry.id), 'same marker data as a pin click');
+    assert.doesNotMatch(entry.label, /\bE(?:[1-9]|1[0-2])\b/);
+  }
+  assert.deepEqual(plan, before);
+});
+
+test('station list: single goal first; no stations, no plan and no route are supported', () => {
+  const entries = P.stationList(P.parsePlan(E4));
+  assert.equal(entries[0].label, '1 · R0');
+  assert.equal(entries[0].marker.kind, 'goal');
+  assert.ok(entries.slice(1).every(e => e.label.startsWith('Not visited · ')));
+  assert.deepEqual(P.stationList(null), []);
+  assert.deepEqual(P.stationList(P.parsePlan(FIXED)), []);
+  const plan = P.parsePlan(tourPlan());
+  plan.routes = [];
+  for (const p of plan.points) { delete p.properties.order; delete p.properties.visited; }
+  const unordered = P.stationList(plan);
+  assert.deepEqual(unordered.map(e => e.label), ['H0', 'R0', 'C1']);
+  assert.ok(unordered.every(e => e.order === null), 'no made-up visit numbers');
+});
+
+test('station list: route order wins over feature order, saved types and late rubric names work', () => {
+  const plan = P.parsePlan(tourPlan());
+  plan.points.reverse();
+  for (const p of plan.points) delete p.properties.type;
+  const types = {R0: 'ridge', H0: 'hollow'}, rubric = {ridge: {label: 'Boxwork ridge'}};
+  const bare = P.stationList(plan, types);
+  const named = P.stationList(plan, types, rubric);
+  assert.deepEqual(named.map(e => e.id), ['H0', 'R0', 'C1']);
+  assert.equal(bare[1].label, '2 · R0');
+  assert.equal(named[1].label, '2 · R0 · Boxwork ridge');
+  assert.equal(named[1].marker.data.type, 'ridge');
+  delete plan.routes[0].properties.visit_order;
+  assert.deepEqual(P.stationList(plan).map(e => e.id), named.map(e => e.id), 'station order is the fallback');
+  plan.points.find(p => p.properties.id === 'C1').properties.name = '<b>Contact</b>';
+  assert.equal(P.stationList(plan)[2].label, 'Not visited · C1 · <b>Contact</b>', 'plain text for textContent');
+});
+
 // A tour as api/tour.py writes it (E5 on E4): no 'goal' point, no crs, stations with
 // visited / order, and the stops along the route. Coordinates are made up.
 function tourPlan() {

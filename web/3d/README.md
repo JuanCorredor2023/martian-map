@@ -56,6 +56,16 @@ or press "Reload plan". With no saved plan the terrain still works.
   the terrain may still hide it); "View the rover photo" opens its photo view. With none that
   near, the card says so. At a rehearsal stop the card shows the same photo, without the button
   and without moving the walker or the clock.
+- **Keyboard stop lists**: *Plan → Stations (count)* and *Rover photos → Photo stops (count)*
+  start folded and scroll when opened. Tab reaches their titles and buttons; Enter or Space
+  opens a list or chooses a stop. Stations appear in visit order (for example,
+  "1 · R3 · Boxwork ridge"), then the stations marked "Not visited"; without visit information,
+  they keep the plan's order without invented visit numbers. A station button flies there
+  and opens the same card as its pin. Photo buttons show a stop number, sol and view count;
+  they turn on "Show photo stops" and open the existing card, whose "View from here" starts
+  the photo view. Focus moves to the card's Close button and returns to the list on Close.
+  Both lists are disabled, with an explanation, during Rehearse (including pause), photo
+  view and Walk freely. Leaving the mode restores them. Empty or unavailable lists say why.
 - **Guide** (the arm tablet's logic, shared in `web/guide_core.js`): the next maneuver as
   the tablet shows it (the arrow, the distance big, "350 m" or "Now", the instruction under
   it), voice on/off, the tablet's meters with its labels ("Spare energy" after
@@ -79,9 +89,9 @@ or press "Reload plan". With no saved plan the terrain still works.
   name per idea ("Return home", "Off route", "Rehearse", "Planner"), whole minutes and Wh
   everywhere, m:ss only on the player's clock line.
 - **Rehearsal**: the side panel is hidden while rehearsing, so the scene shows; "Panel" in the
-  player opens it (and closes it) without leaving. The player has the maneuver on top, with
-  "More", "Panel" and "Exit" beside it; one row of main buttons: play / pause (space bar),
-  "Return home", "Off route", "Solar storm"; under "More": "Chase view" (the astronaut seen from
+  player opens it (and closes it) without leaving. The player has the maneuver on top, then
+  one row of main buttons: play / pause, "Return home", "Off route", "Solar storm"; then
+  "More", "Panel" and "Exit". Under "More": "Chase view" (the astronaut seen from
   behind), "Recentre", the speed (×1 to ×180), voice, "Use ×k" and the energy numbers. Then
   the scrubber, the clock line, the panel's Sun line (local solar time, the Sun's height and
   light, "Following the EVA clock: …") and the 2D planner's energy bar. The clock line is the
@@ -89,6 +99,13 @@ or press "Reload plan". With no saved plan the terrain still works.
   storm it goes on and the way home is a stretch of it, "EVA 102:04 · return home 2:02 of 2:51 ·
   120 of 160 m" (after a rejoin, the EVA's new end), while the scrubber covers the new route.
   Drag to look around; double-click or "Recentre" looks forward.
+  Entering focuses Play with a visible ring. Tab follows the visible order: main buttons,
+  More, Panel, Exit, then the other visible controls; Shift + Tab goes back. More and Panel
+  keep focus on their toggle when opened or closed. Exit returns focus to Rehearse, opening
+  Plan if it was folded. Space plays or pauses only outside controls: buttons (including
+  Play), links, fields, section titles, editable text and custom buttons, checkboxes or
+  sliders keep their own Space action and their focus. Holding Space does not repeat the
+  rehearsal shortcut, and a key already handled by another control is left alone.
   Esc closes what is on top (the card, or a message) and pauses; it never leaves the rehearsal,
   which would lose the end summary: only "Exit" does.
   It pauses at every stop with the station's card; on pause it draws the walkback lines from
@@ -96,7 +113,7 @@ or press "Reload plan". With no saved plan the terrain still works.
   Wh, 869 Wh spare after it", red line: 30 min from home, cyan: energy-safe area). At the
   habitat it stays in the rehearsal: the storm alert ends, the player shrinks (the maneuver
   says "Home"), and the card "Plan against the walk" has "Replay" (from the start, as a new
-  walk with its own summary) and "Exit"; Play (now "↺ Replay") and the space bar replay too,
+  walk with its own summary) and "Exit"; Play (now "↺ Replay") and Space outside controls replay too,
   "Summary" shows the card again after closing it, and the scrubber goes back. On touch
   screens the player's buttons are at least 44 px tall. The relief is locked at ×1 and the Sun
   follows the EVA clock.
@@ -106,12 +123,17 @@ or press "Reload plan". With no saved plan the terrain still works.
 
   | | Keyboard and mouse | Touch screen |
   |---|---|---|
-  | Move | W A S D or the arrow keys | the arrow pad (hold) |
+  | Walk forward/back | W/S or Up/Down arrows | the up/down arrow pad (hold) |
+  | Step sideways | A/D | the left/right arrow pad (hold) |
+  | Turn | Left/Right arrows (also while walking) | drag |
   | Look | click the view, then move the mouse (where the browser will not capture it: drag) | drag |
   | Run (3 m/s) | hold Shift, or "Run" | "Run" |
   | Fast travel (20 m/s) | F, or "Fast" | "Fast" |
   | View from behind (the astronaut) | C, or "Chase view" | "Chase view" |
   | Leave | Esc (the first Esc frees a captured mouse), or "Exit" | "Exit" |
+
+  Left/Right turn at 90°/s (a quarter turn in one second), using elapsed frame time.
+  Release the arrow to stop turning. Turning also works while walking and adds to mouse look.
 
   Walking is 1 m/s, the eye 1.7 m above the ground, the relief locked at ×1. The walker stays
   1 m inside the box edge and out of the habitat dome. The route is a path on the ground,
@@ -244,6 +266,10 @@ python -m pytest tests/viz3d -q     # the terrain assets against the DEM
 `web/index.html`, if a layer's name or hover text is no longer the 2D's words (less its
 codes), or if the slope tile colours of `src/gis/tiles.py` change. `plan_model.test.mjs`
 checks the plain words of the plan's messages on the three real answers.
+The exported pure helpers `stationList` (`plan_model.js`) and `photoStopList` (`photos.js`)
+are covered by `plan_model.test.mjs` and `photos_model.test.mjs`; `ui_controls.test.mjs`
+checks both lists' native controls, existing card/flight wiring and mode restrictions.
+Run `node --test tests/viz3d/ tests/web/` for the combined regression suite.
 
 Fixtures in `tests/viz3d/fixtures/` are real answers of the API: an E4 round trip, the
 fixed route with no profile, and a multi-station E5 tour

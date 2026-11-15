@@ -30,7 +30,7 @@ import { hideCard, showCard, stationCard } from './card.js';
 import { TerrainControls } from './controls.js';
 import { MarkerLayer } from './markers.js';
 import { GroundLines, RouteOverlay } from './overlays.js';
-import { mainRoute, parsePlan, planMarkers, planMessages } from './plan_model.js';
+import { mainRoute, parsePlan, planMarkers, planMessages, stationList } from './plan_model.js';
 import { Rehearsal } from './rehearse.js';
 import { Shadows } from './shadows.js';
 import { SunView } from './sun.js';
@@ -109,6 +109,7 @@ async function main() {
     console.error(err);
     ui('readout').textContent = 'Terrain not loaded';
     ui('plan-source').textContent = 'No terrain to draw the plan on.';
+    ui('station-list-note').textContent = ui('photo-list-note').textContent = 'Terrain not loaded: stops are unavailable.';
     showMessage(`${esc(err.message.replace(BUILD_HINT, ''))}<code>${BUILD_HINT}</code>`);
     return;
   }
@@ -239,7 +240,7 @@ async function main() {
   // of the card come from the server's rubric, asked once; until it answers (or if it
   // does not) the card shows the type as the plan writes it.
   let rubric = {};
-  loadRubric().then(r => { rubric = r; });
+  loadRubric().then(r => { rubric = r; refreshStationList(); });
   const rehearsal = new Rehearsal({terrain, scene, camera, canvas, controls, relief, lines: walkbackLines,
                                    rubric: () => rubric,
                                    onTime: elapsed => sunView.follow(elapsed),       // the Sun follows the EVA clock
@@ -254,7 +255,7 @@ async function main() {
   // Fly to where a marker is seen from about 60 m, coming from where the camera is now.
   function flyToMarker(marker) {
     const point = markers.positionOf(marker.id);
-    if (!point || busy()) return;
+    if (!point || busy() || photos?.active) return;
     const dx = point[0] - controls.position[0], dz = point[2] - controls.position[2];
     const yaw = Math.hypot(dx, dz) > 1 ? Math.atan2(dx, -dz) : controls.yaw;       // north is -Z
     controls.flyToLook(point, 60, {yaw, pitch: THREE.MathUtils.degToRad(20)});
@@ -299,13 +300,72 @@ async function main() {
   // Loaded on their own: a missing catalogue, missing images or an error in this part
   // leaves the rest of the map as it is.
   let photos = null;
+  let photoListNote = 'Waiting for the photo catalogue…';
   const photosNote = text => { ui('photos-note').textContent = text; };
   const showPhotoPins = () => photos && photos.setVisible(ui('photos-show').checked && !busy());
+
+  // Native buttons keep Tab, Enter and Space. Their fieldsets disable every entry while
+  // another mode owns the camera; the reason stays readable outside the disabled group.
+  function updateStopControls() {
+    const reason = busy()
+      ? (rehearsal.active ? 'Exit the rehearsal to choose a stop.' : 'Exit Walk freely to choose a stop.')
+      : photos?.active ? 'Exit the photo view to choose a stop.' : '';
+    for (const kind of ['station', 'photo']) {
+      const empty = ui(`${kind}-list`).children.length === 0;
+      ui(`${kind}-controls`).disabled = Boolean(reason) || empty;
+      const note = reason || (empty
+        ? (kind === 'photo' ? photoListNote : 'No stations in this plan.')
+        : kind === 'photo' ? 'Choose a stop to show its photos.' : 'Choose a station to fly there and open its card.');
+      const node = ui(`${kind}-list-note`);
+      if (node.textContent !== note) node.textContent = note;
+    }
+  }
+
+  function fillStopList(kind, entries, choose) {
+    const list = ui(`${kind}-list`);
+    const focused = list.contains(document.activeElement) ? document.activeElement.dataset.stopId : null;
+    list.replaceChildren();
+    ui(`${kind}-list-title`).textContent = `${kind === 'station' ? 'Stations' : 'Photo stops'} (${entries.length})`;
+    for (const entry of entries) {
+      const item = document.createElement('li'), button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = entry.label;        // plan and catalogue text: never HTML
+      button.dataset.stopId = entry.id;
+      button.setAttribute('aria-describedby', `${kind}-list-note`);
+      button.addEventListener('click', () => {
+        if (busy() || photos?.active) return;
+        choose(entry);
+        // The card follows the panel in tab order. Start at Close, so a long list does
+        // not stand between the chosen stop and its card's actions; Close returns here.
+        const close = ui('card').querySelector('.card-close');
+        close?.focus();
+        close?.addEventListener('click', () => {
+          if (button.isConnected && !ui(`${kind}-controls`).disabled) button.focus();
+        }, {once: true});
+      });
+      item.append(button);
+      list.append(item);
+    }
+    updateStopControls();
+    // A late rubric answer only changes the names; keep the keyboard's place in the list.
+    if (focused && !ui(`${kind}-controls`).disabled) {
+      [...list.querySelectorAll('button')].find(b => b.dataset.stopId === focused)?.focus();
+    }
+  }
+
+  function refreshStationList() {
+    const plan = window.viz3d?.plan;
+    fillStopList('station', stationList(plan?.model, plan?.stationTypes, rubric), ({marker}) => {
+      flyToMarker(marker);
+      markers.select(marker);
+    });
+  }
+
   async function loadPhotos() {
     try {
-      const {PhotoLayer} = await import('./photos.js');
+      const {PhotoLayer, photoStopList} = await import('./photos.js');
       const layer = new PhotoLayer({terrain, controls, camera, canvas, relief, sunView, markers: photoMarkers,
-                                    showCard, hideCard, onChange: () => { dirty = true; },
+                                    showCard, hideCard, onChange: () => { dirty = true; updateStopControls(); },
                                     isBusy: busy,
                                     // Opening a photo turned the stops on (photos.js): the box says so.
                                     onShowPins: () => { ui('photos-show').checked = true; }});
@@ -313,19 +373,29 @@ async function main() {
       if (!got.ok) {
         // How to build them: web/3d/README.md, "Rover photos" (for the team, not on screen).
         photosNote(`No rover photos: ${got.error}. The rest of the map works without them.`);
+        photoListNote = 'No photo stops available. See the catalogue message above.';
+        updateStopControls();
         return;
       }
       photos = layer;
       window.viz3d.photos = layer;
       ui('photos-show').disabled = false;
+      photoListNote = 'No photo stops in this catalogue.';
+      fillStopList('photo', photoStopList(layer.model), ({id}) => {
+        ui('photos-show').checked = true;
+        showPhotoPins();
+        photos.openGroup(id);
+      });
       photosNote(`${got.count} Navcam photos (black and white, 2025–2026) at the stops where they were ` +
-                 'taken. Show the stops, then click a camera pin for its photo; "View from here" lays it ' +
+                 'taken. Choose a photo stop below or show the pins and click one; "View from here" lays its photo ' +
                  'over the terrain.');
       showPhotoPins();
       dirty = true;
     } catch (err) {
       console.error(err);
       photosNote(`Rover photos not available (${err.message}). The rest of the map works without them.`);
+      photoListNote = 'No photo stops available. See the catalogue message above.';
+      updateStopControls();
     }
   }
   ui('photos-show').addEventListener('change', showPhotoPins);
@@ -346,6 +416,7 @@ async function main() {
       mode[name] = (...args) => {
         const result = original(...args);
         showPhotoPins();
+        updateStopControls();
         dirty = true;
         return result;
       };
@@ -371,6 +442,7 @@ async function main() {
     markers.set(model ? planMarkers(model, got.stationTypes || {}) : []);
     shadows.invalidate();                      // the habitat dome casts one
     window.viz3d.plan = {...got, model};
+    refreshStationList();
     window.viz3d.mapLayers?.setPlan(model);    // the radio antenna and the steep limit follow the plan
 
     // Which planner made it (model.properties.source, e.g. "E5 tour (live, ...)") is for

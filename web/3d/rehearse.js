@@ -16,14 +16,15 @@
 //     the way home is a stretch of it), the panel's Sun line and the 2D planner's energy bar.
 //   - side panel: hidden while rehearsing, so the scene shows; "Panel" opens and closes it
 //     without leaving. Its own body class (the photo view's would hide the map layer too).
-//   - keys: space plays or pauses; Esc closes what is on top (the card, or the message
+//   - keys: Space plays or pauses unless a focused control owns the key. Entering focuses
+//     Play; leaving focuses Rehearse. Esc closes what is on top (the card, or the message
 //     box of main.js) and pauses. Esc never leaves the mode, which would lose the end
 //     summary and the place reached: only "Exit" does (#124).
 //   - stops: arriving at one while playing pauses and shows its card; play again lets
 //     the service time run with the walker standing.
 //   - at the habitat the rehearsal stays on (#124): the storm alert ends, the player
 //     shrinks and the end summary card offers "Replay" (from the start, as a new walk) and
-//     "Exit". Play (now "Replay") and the space bar replay too; the scrubber goes back.
+//     "Exit". Play (now "Replay") and Space outside controls replay too; the scrubber goes back.
 //   - on pause: the walkback lines from that point (30 min return in red, energy-safe
 //     boundary in cyan), as the 2D planner draws them; cleared on play and on exit.
 //   - EVA clock: onTime(seconds since the start of the EVA) at every move, and
@@ -82,6 +83,16 @@ const RELIEF_REASON = 'Relief at true scale while rehearsing (eye height is real
 
 const el = id => document.getElementById(id);
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+// Leave Space to controls and editable text, including children of a custom control.
+// No page state: plain element-shaped objects work in the Node tests too.
+export function spaceBelongsTo(target) {
+  for (let node = target; node; node = node.parentElement) {
+    if (node.isContentEditable || /^(button|a|input|select|textarea|summary)$/i.test(node.tagName) ||
+        /(^|\s)(button|link|checkbox|slider)(\s|$)/.test(node.getAttribute?.('role') || '')) return true;
+  }
+  return false;
+}
 
 export class Rehearsal {
   // relief: {lock(reason), unlock(k)} from main.js; lines: a GroundLines layer for the
@@ -218,6 +229,7 @@ export class Rehearsal {
     this._snap = true;
     this._place(0);
     this._dirty = true;
+    el('rh-play').focus({preventScroll: true});
     return true;
   }
 
@@ -288,6 +300,8 @@ export class Rehearsal {
     controls.enabled = true;
     controls.restore(saved.pose);              // also puts the field of view back
     this.onTime(null);
+    el('plan-box').open = true;                // Rehearse must be reachable even if Plan was folded
+    el('rehearse').focus();
     return true;
   }
 
@@ -543,10 +557,12 @@ export class Rehearsal {
 
   // ---- what the player shows around the scene (#124, block 2) -------------------
 
+  // Disclosures keep focus on their toggle, also when closing hides the focused control.
   // "More": the controls that are not in the main row (and the energy numbers).
   _setMore(open) {
     el('rh-more-box').hidden = !open;
     el('rh-more').setAttribute('aria-expanded', String(Boolean(open)));
+    el('rh-more').focus({preventScroll: true});
   }
 
   // "Panel": the side panel (#info) while rehearsing. Hidden on entering, so the scene
@@ -556,6 +572,7 @@ export class Rehearsal {
     this._panelOpen = Boolean(open);
     document.body.classList.toggle('rh-panel-hidden', this.active && !this._panelOpen);
     el('rh-panel').setAttribute('aria-expanded', String(this._panelOpen));
+    if (!el('player').hidden) el('rh-panel').focus({preventScroll: true});
   }
 
   // The solar storm beyond the player: the red band across the top and the red vignette
@@ -616,14 +633,7 @@ export class Rehearsal {
       this.pause();
       return;
     }
-    if (e.code !== 'Space') return;
-    // On a list, a link or a slider the space bar already does something.
-    if (e.target.closest && e.target.closest('select, a, summary, input')) return;
-    // A button keeps the focus after a click, and a space would press it again (on
-    // "Exit rehearsal" that leaves the mode). While rehearsing, space is always
-    // play/pause: drop the focus so the key-up does not click the button.
-    const button = e.target.closest && e.target.closest('button');
-    if (button) button.blur();
+    if (e.code !== 'Space' || e.defaultPrevented || spaceBelongsTo(e.target)) return;
     e.preventDefault();
     this.togglePlay();
   }

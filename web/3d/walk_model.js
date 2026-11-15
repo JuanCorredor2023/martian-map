@@ -1,7 +1,7 @@
 // Walk-freely model of the 3D map, with no dependencies (tested with `node --test`).
 //
 // The first-person mode of issue #109: which keys move the walker and how fast, where it
-// may stand (inside the 2 x 2 km box, never inside the habitat dome), how the mouse turns
+// may stand (inside the 2 x 2 km box, never inside the habitat dome), how keys and mouse turn
 // the view, how far the walker is from the planned route, where it starts, the ground
 // strip that shows the route and the line of text under the view. walk.js does the
 // three.js and page side; everything here is plain numbers.
@@ -15,14 +15,17 @@ export const SPEEDS = Object.freeze({walk: 1, run: 3, fast: 20});   // m/s
 export const EDGE_MARGIN = 1;          // m kept inside the box edge (there is no ground past it)
 export const BODY_RADIUS = 0.3;        // m: the walker is a disc this wide, not a point
 export const LOOK_RAD_PER_PX = 0.0025; // radians of turn per pixel of mouse or finger
+export const TURN_SPEED = Math.PI / 2; // rad/s: a quarter turn in one second with the arrow keys
 export const PITCH_LIMIT = 85 * Math.PI / 180;   // never quite straight up or down
 export const MAX_SUBSTEP = 0.5;        // m: longest move between two collision checks
 // KeyboardEvent.code values, so the keys stay in place on any keyboard layout.
 export const KEYS = Object.freeze({
   forward: Object.freeze(['KeyW', 'ArrowUp']),
   back: Object.freeze(['KeyS', 'ArrowDown']),
-  left: Object.freeze(['KeyA', 'ArrowLeft']),
-  right: Object.freeze(['KeyD', 'ArrowRight']),
+  left: Object.freeze(['KeyA']),
+  right: Object.freeze(['KeyD']),
+  turnLeft: Object.freeze(['ArrowLeft']),
+  turnRight: Object.freeze(['ArrowRight']),
 });
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -94,6 +97,15 @@ function wrapAngle(a) {
   let w = Math.PI - ((Math.PI - a) % turn + turn) % turn;
   if (w <= -Math.PI) w += turn;
   return w;
+}
+
+// Held arrow keys turn the current heading at TURN_SPEED rad/s; opposite arrows cancel.
+// Uses the latest yaw (including mouse look), with no change to pitch or pad movement.
+export function turn(yaw, pressed, dt) {
+  const down = new Set(pressed ?? []);
+  const direction = KEYS.turnRight.some(code => down.has(code)) - KEYS.turnLeft.some(code => down.has(code));
+  if (!direction || !(dt > 0)) return yaw;
+  return wrapAngle(yaw + direction * TURN_SPEED * dt);
 }
 
 // Mouse or finger drag of (dx, dy) pixels: right turns right, down looks down.

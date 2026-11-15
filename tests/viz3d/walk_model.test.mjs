@@ -23,17 +23,20 @@ test('constants: the eye is the rehearsal eye, speeds and limits as agreed', () 
   assert.equal(W.EDGE_MARGIN, 1);
   assert.equal(W.BODY_RADIUS, 0.3);
   assert.equal(W.LOOK_RAD_PER_PX, 0.0025);
+  close(W.TURN_SPEED, 90 * DEG);
   close(W.PITCH_LIMIT, 85 * DEG);
   assert.equal(W.MAX_SUBSTEP, 0.5);
   assert.deepEqual(W.KEYS.forward, ['KeyW', 'ArrowUp']);
   assert.deepEqual(W.KEYS.back, ['KeyS', 'ArrowDown']);
-  assert.deepEqual(W.KEYS.left, ['KeyA', 'ArrowLeft']);
-  assert.deepEqual(W.KEYS.right, ['KeyD', 'ArrowRight']);
+  assert.deepEqual(W.KEYS.left, ['KeyA']);
+  assert.deepEqual(W.KEYS.right, ['KeyD']);
+  assert.deepEqual(W.KEYS.turnLeft, ['ArrowLeft']);
+  assert.deepEqual(W.KEYS.turnRight, ['ArrowRight']);
 });
 
 // ---- moveAxes, speedOf, heading -----------------------------------------------------
 
-test('moveAxes: WASD and arrows, opposite keys cancel, other keys are ignored', () => {
+test('moveAxes: WASD and Up/Down move, Left/Right do not strafe, opposite keys cancel', () => {
   assert.deepEqual(W.moveAxes([]), {forward: 0, right: 0});
   assert.deepEqual(W.moveAxes(undefined), {forward: 0, right: 0});
   assert.deepEqual(W.moveAxes(['KeyW']), {forward: 1, right: 0});
@@ -41,7 +44,13 @@ test('moveAxes: WASD and arrows, opposite keys cancel, other keys are ignored', 
   assert.deepEqual(W.moveAxes(['ArrowUp', 'KeyD']), {forward: 1, right: 1});
   assert.deepEqual(W.moveAxes(['KeyA', 'KeyS']), {forward: -1, right: -1});
   assert.deepEqual(W.moveAxes(['KeyW', 'KeyS']), {forward: 0, right: 0});
-  assert.deepEqual(W.moveAxes(['ArrowLeft', 'KeyD', 'KeyW']), {forward: 1, right: 0});
+  assert.deepEqual(W.moveAxes(['KeyA']), {forward: 0, right: -1});
+  assert.deepEqual(W.moveAxes(['KeyD']), {forward: 0, right: 1});
+  assert.deepEqual(W.moveAxes(['KeyA', 'KeyD']), {forward: 0, right: 0});
+  for (const code of ['ArrowLeft', 'ArrowRight']) {
+    assert.deepEqual(W.moveAxes([code]), {forward: 0, right: 0});
+  }
+  assert.deepEqual(W.moveAxes(['ArrowLeft', 'KeyD', 'KeyW']), {forward: 1, right: 1});
   assert.deepEqual(W.moveAxes(['KeyW', 'ArrowUp']), {forward: 1, right: 0});   // both forward keys: still 1
   assert.deepEqual(W.moveAxes(['ShiftLeft', 'KeyF', 'Space']), {forward: 0, right: 0});
 });
@@ -178,6 +187,86 @@ test('step: fast travel (20 m/s, dt 0.1) at a dome never ends inside r + bodyRad
 });
 
 // ---- look ---------------------------------------------------------------------------
+
+test('turn: Left/Right turn, opposite arrows cancel, movement keys and the pad do not turn', () => {
+  close(W.turn(0.3, ['ArrowLeft'], 0.1), 0.3 - W.TURN_SPEED * 0.1);
+  close(W.turn(0.3, new Set(['ArrowRight']), 0.1), 0.3 + W.TURN_SPEED * 0.1);
+  for (const pressed of [undefined, [], ['ArrowLeft', 'ArrowRight'],
+                         ['KeyW', 'KeyS', 'ArrowUp', 'ArrowDown'], ['ShiftLeft', 'KeyF', 'KeyC'],
+                         ['KeyA'], ['KeyD'], ['left'], ['right'], ['forward', 'back']]) {
+    assert.equal(W.turn(0.3, pressed, 1), 0.3);
+  }
+  close(W.turn(0.3, ['KeyD', 'ArrowLeft'], 0.1), 0.3 - W.TURN_SPEED * 0.1);
+});
+
+test('turn: radians per second scale with dt, independent of frame rate', () => {
+  for (const code of ['ArrowLeft', 'ArrowRight']) {
+    const sign = code === 'ArrowLeft' ? -1 : 1;
+    for (const dt of [0, 1 / 144, 1 / 60, 0.1, 1]) {
+      close(W.turn(0, [code], dt), sign * W.TURN_SPEED * dt);
+    }
+    for (const fps of [30, 60, 144]) {
+      let yaw = 0;
+      for (let i = 0; i < fps; i++) yaw = W.turn(yaw, [code], 1 / fps);
+      close(yaw, sign * W.TURN_SPEED);
+    }
+    const frames = [0.01, 0.04, 0.02, 0.08, 0.05];
+    const yaw = frames.reduce((at, dt) => W.turn(at, [code], dt), 0);
+    close(yaw, sign * W.TURN_SPEED * 0.2);
+    assert.equal(W.turn(0.3, [code], -1), 0.3);
+  }
+});
+
+test('turn: wraps the heading at +-pi while preserving the turn direction', () => {
+  close(W.turn(175 * DEG, ['ArrowRight'], 1 / 9), -175 * DEG);
+  close(W.turn(-175 * DEG, ['ArrowLeft'], 1 / 9), 175 * DEG);
+  close(W.turn(0, ['ArrowRight'], 2), Math.PI);
+  close(W.turn(0, ['ArrowLeft'], 2), Math.PI);
+});
+
+test('turn: releasing a held arrow stops turning immediately', () => {
+  for (const code of ['ArrowLeft', 'ArrowRight']) {
+    const pressed = new Set(['ArrowUp', code]);
+    const yaw = W.turn(0.3, pressed, 0.1);
+    assert.notEqual(yaw, 0.3);
+    pressed.delete(code);
+    for (let i = 0; i < 60; i++) assert.equal(W.turn(yaw, pressed, 1 / 60), yaw);
+    assert.deepEqual(W.moveAxes(pressed), {forward: 1, right: 0}); // forward stays held
+  }
+});
+
+test('turn and step: Up with Left/Right walks a curve at the selected speed', () => {
+  for (const code of ['ArrowLeft', 'ArrowRight']) {
+    const sign = code === 'ArrowLeft' ? -1 : 1, pressed = new Set(['ArrowUp', code]);
+    for (const speed of Object.values(W.SPEEDS)) for (const fps of [30, 60, 144]) {
+      let position = [0, 0], yaw = 0, distance = 0;
+      for (let i = 0; i < fps; i++) {
+        yaw = W.turn(yaw, pressed, 1 / fps);
+        const got = W.step(position, yaw, W.moveAxes(pressed), speed, 1 / fps, BOX);
+        assert.ok(sign * (got.position[0] - position[0]) > 0);
+        assert.ok(got.position[1] <= position[1] + 1e-9);
+        position = got.position;
+        distance += got.moved;
+      }
+      close(yaw, sign * Math.PI / 2);
+      close(distance, speed);                           // one second, no strafe speed boost
+      const radius = speed / W.TURN_SPEED;
+      closeVec(position, [sign * radius, -radius], speed / fps); // within one step of the arc
+    }
+  }
+});
+
+test('turn and look: keyboard and mouse deltas add to the current yaw without changing pitch', () => {
+  for (const code of ['ArrowLeft', 'ArrowRight']) {
+    const mouse = W.look(3, 0.2, 100, -40);
+    const yaw = W.turn(mouse.yaw, [code], 0.1);
+    const reverse = W.look(W.turn(3, [code], 0.1), 0.2, 100, -40);
+    close(yaw, reverse.yaw);
+    close(mouse.pitch, 0.1);
+    close(mouse.pitch, reverse.pitch);
+    assert.equal(W.turn(mouse.yaw, [], 0.1), mouse.yaw);
+  }
+});
 
 test('look: right turns right, down looks down, by radPerPx per pixel', () => {
   const a = W.look(0, 0, 100, 40);

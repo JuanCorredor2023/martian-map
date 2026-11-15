@@ -70,6 +70,16 @@
   #plan-box button:disabled { opacity: 0.5; cursor: default; }
   #rehearse-note { margin-top: 4px; }
   #plan-default-note { margin-top: 4px; }
+  /* Keyboard alternatives to the pins: folded first, and short even when opened. */
+  #info .stop-controls { border: 0; padding: 0; margin: 6px 0; min-width: 0; }
+  #info .stop-list { list-style: none; padding: 3px; margin: 0; max-height: 180px; overflow-y: auto; }
+  #info .stop-list button { display: block; width: 100%; box-sizing: border-box; margin: 0 0 4px;
+    padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: #1c222b;
+    color: var(--text); font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+  #info .stop-list button:hover:not(:disabled) { background: #262e3a; }
+  #info .stop-list button:disabled { opacity: 0.5; cursor: default; }
+  #info .stop-list button:focus-visible, #info .stop-picker > summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px; }
   /* Touch screens (#124): every control of the panel is at least 44 px tall (Apple's 44 pt,
      WCAG 2.5.5): section titles, buttons, ticks with their words, fields, and the sliders'
      thumbs (a 28 px dot in a clear ring of 44 px). Fields get 16 px text: smaller text makes
@@ -112,18 +122,21 @@
                   background: #1c222b; color: var(--text); user-select: all; }
   /* Rehearsal: player bar at the bottom centre, as wide as a phone allows (#124, block 2).
      On top the next maneuver as the arm tablet shows it (web/guide.html #maneuver: the
-     arrow, the distance big, the instruction under it), beside "More", "Panel" and "Exit";
-     then one row of main buttons; the other controls wait under "More". The energy bar has
+     arrow, the distance big, the instruction under it), then one row of main buttons,
+     then "More", "Panel" and "Exit"; the other controls wait under "More". The energy bar has
      the 2D planner's segments and colours (web/index.html). */
   #player { bottom: 16px; left: 50%; transform: translateX(-50%); box-sizing: border-box;
             width: min(560px, calc(100% - 16px)); padding: 10px 12px; }
   .player-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   #player button, #player select { padding: 4px 8px; }
   #player button:disabled { opacity: 0.5; cursor: default; }
+  #player :focus-visible, #rh-play:focus, #rehearse:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 3px;
+  }
   #player button[aria-pressed="true"], #player button[aria-expanded="true"] { border-color: var(--accent);
                                                                               color: var(--accent); }
   .rh-head { display: flex; gap: 8px; align-items: flex-start; }
-  .rh-corner { flex: none; display: flex; gap: 6px; margin-left: auto; }
+  .rh-corner { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
   #rh-exit { margin-left: 6px; }       /* a little apart: it ends the rehearsal */
   #rh-more[aria-expanded="true"] .rh-chev { display: inline-block; transform: rotate(180deg); }
   #rh-main { margin-top: 8px; }
@@ -290,12 +303,19 @@
     <div id="plan-facts"></div>
     <div class="muted" id="plan-key"></div>
     <div id="plan-warnings"></div>
+    <details class="stop-picker">
+      <summary id="station-list-title" class="muted">Stations (0)</summary>
+      <div id="station-list-note" class="muted" role="status">Waiting for the plan…</div>
+      <fieldset id="station-controls" class="stop-controls" aria-labelledby="station-list-title" aria-describedby="station-list-note" disabled>
+        <ul id="station-list" class="stop-list"></ul>
+      </fieldset>
+    </details>
     <button id="plan-reload" disabled>Reload plan</button>
     <!-- Walk the route at eye height (rehearse.js). Disabled, with the reason, when there is no route. -->
     <button id="rehearse" disabled>Rehearse</button>
     <div class="muted" id="rehearse-note">No route to rehearse yet.</div>
     <!-- Walk anywhere at eye height, with the keys (walk.js). Works without a plan too. -->
-    <button id="walk" title="First person anywhere in the box: W A S D or arrows, mouse to look">Walk freely</button>
+    <button id="walk" title="First person anywhere in the box: W/S or Up/Down to walk, A/D to step sideways, Left/Right arrows to turn, mouse to look">Walk freely</button>
     <!-- Shown only while there is no plan. The page never plans by itself (api.js). -->
     <div id="plan-default-box" hidden>
       <button id="plan-default">Plan with default settings</button>
@@ -337,6 +357,13 @@
     <label class="check muted" title="Pins at the stops where Curiosity's Navcam took photos (2025–2026)">
       <input type="checkbox" id="photos-show" disabled>Show photo stops</label>
     <div class="muted" id="photos-note">Loading the photo catalogue…</div>
+    <details class="stop-picker">
+      <summary id="photo-list-title" class="muted">Photo stops (0)</summary>
+      <div id="photo-list-note" class="muted" role="status">Waiting for the photo catalogue…</div>
+      <fieldset id="photo-controls" class="stop-controls" aria-labelledby="photo-list-title" aria-describedby="photo-list-note" disabled>
+        <ul id="photo-list" class="stop-list"></ul>
+      </fieldset>
+    </details>
   </details>
   <details id="about">
     <summary class="muted">About this view</summary>
@@ -345,9 +372,14 @@
       to move, wheel to zoom.<br>
       <b>Touch:</b> one finger rotates, two fingers move, pinch to zoom, twist to turn.<br>
       Compass: face north. Frame (four corners): reset the view.<br>
-      <b>Rehearsing the route:</b> drag to look around, double-click to look forward again, space bar
-      to play or pause, Esc to close the card and pause (only "Exit" leaves). Click a pin for its card.<br>
-      <b>Walking freely:</b> W A S D or arrows to move, click the view and move the mouse to look,
+      <b>Rehearsing the route:</b> Play gets keyboard focus when you enter. Tab moves through
+      the main buttons, More, Panel, Exit, then the other visible controls; Shift + Tab goes back.
+      Space plays or pauses when focus is outside a control; on a button or field it keeps that
+      control's usual action. More and Panel keep focus on their button when opened or closed.
+      Esc closes the top card or message and pauses. Exit leaves and returns focus to Rehearse.<br>
+      Drag to look around, double-click to look forward again. Click a pin for its card.<br>
+      <b>Walking freely:</b> W/S or Up/Down to walk forward/back, A/D to step sideways,
+      Left/Right arrows to turn (also while walking), click the view and move the mouse to look,
       Shift to run, F for fast travel, C for the view from behind, Esc to leave.</div>
     <!-- The free-flight view as an address (view_link.js) and the picture as a PNG file. -->
     <div id="share">
@@ -390,21 +422,14 @@
 <!-- Station card (card.js); a later block puts rover photos in it. -->
 <aside id="card" class="panel" hidden></aside>
 
-<!-- Player of the route rehearsal (rehearse.js, #124 block 2). On top, the next maneuver as
-     the arm tablet shows it, beside "More", "Panel" (the side panel, hidden while rehearsing)
-     and "Exit"; then one row of main buttons; the other controls under "More". The same
+<!-- Player of the route rehearsal (rehearse.js, #124). Reading and Tab order match:
+     maneuver, main buttons, "More", "Panel" (the side panel, hidden while rehearsing),
+     "Exit", then the other controls under "More". The same
      speeds, energy bar and wording as the route profile of the 2D planner. -->
 <div id="player" class="panel" hidden>
   <div class="rh-head">
     <div id="rh-man" aria-live="polite"><div id="rh-man-arrow" aria-hidden="true">↑</div>
       <div><div id="rh-man-dist"></div><div id="rh-man-text"></div></div></div>
-    <div class="rh-corner">
-      <button id="rh-more" aria-expanded="false" aria-controls="rh-more-box"
-              title="Chase view, Recentre, speed, voice, the energy numbers and the energy-use demo">More <span class="rh-chev" aria-hidden="true">▾</span></button>
-      <button id="rh-panel" aria-expanded="false" aria-controls="info"
-              title="Show or hide the side panel (plan, Sun, map layer, rover photos) without leaving the rehearsal">Panel</button>
-      <button id="rh-exit" title="Back to free flight, as it was">Exit</button>
-    </div>
   </div>
   <div id="rh-main" class="player-row">
     <button id="rh-play">▶ Play</button>
@@ -413,6 +438,13 @@
     <button id="rh-storm" title="Demo: solar storm alert, automatic way home with the dose">☢ Solar storm</button>
     <!-- Only at the habitat: the end summary card again, after closing it. -->
     <button id="rh-summary" title="The plan against the walk, again" hidden>Summary</button>
+  </div>
+  <div class="rh-corner">
+    <button id="rh-more" aria-expanded="false" aria-controls="rh-more-box"
+            title="Chase view, Recentre, speed, voice, the energy numbers and the energy-use demo">More <span class="rh-chev" aria-hidden="true">▾</span></button>
+    <button id="rh-panel" aria-expanded="false" aria-controls="info"
+            title="Show or hide the side panel (plan, Sun, map layer, rover photos) without leaving the rehearsal">Panel</button>
+    <button id="rh-exit" title="Back to free flight, as it was">Exit</button>
   </div>
   <div id="rh-more-box" hidden>
     <div class="player-row">
@@ -460,7 +492,7 @@
     <button id="wk-chase" aria-pressed="false" title="See the astronaut from behind (C)">Chase view</button>
     <button id="wk-exit" title="Back to free flight, as it was (Esc)">Exit</button>
   </div>
-  <div id="wk-keys" class="muted">W A S D or arrows: move · Shift: run · F: fast · C: chase view · Esc: exit</div>
+  <div id="wk-keys" class="muted">W/S or ↑/↓: forward/back · A/D: step sideways · ←/→: turn · Shift: run · F: fast · C: chase view · Esc: exit</div>
   <div id="wk-hint" class="muted"></div>
   <div id="walk-pad">
     <button data-walk="forward" aria-label="Walk forward">▲</button>
