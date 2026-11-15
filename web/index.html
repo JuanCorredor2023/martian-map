@@ -114,6 +114,12 @@
     <div class="ticks"><span>0</span><span>sand fraction per 1 m cell</span><span>1</span></div>
     Conservative U-Net: when it marks sand it is right ~91 % of the time, but it misses a lot of sand.
   </div>
+  <label><input type="checkbox" id="show-thermal"> Night thermal (THEMIS, 81 m)</label>
+  <div id="thermal-legend" class="muted" hidden style="font-size:11px">
+    <div class="legend" style="background: linear-gradient(90deg, #000, #fff)"></div>
+    <div class="ticks"><span>cooler at night</span><span>holds heat (rock)</span></div>
+    <span id="thermal-note">Mars Odyssey, 81 m pixels: context, not a cost term.</span>
+  </div>
   <hr>
   <label><input type="checkbox" id="show-cost"> E3 walking cost</label>
   <div id="cost-legend" hidden>
@@ -254,6 +260,10 @@ function overlayLayers() {
   const out = [];
   if (ui("show-sand").checked) {
     out.push(new BitmapLayer({id: "sand", image: "/layers/sand.png", bounds: boxBounds()}));
+  }
+  if (ui("show-thermal").checked) {
+    out.push(new BitmapLayer({id: "thermal", image: "/layers/thermal.png", bounds: boxBounds(),
+                              opacity: Math.pow(0.8, 2.2)}));
   }
   if (ui("show-cost").checked) {
     out.push(new BitmapLayer({id: "cost", image: "/layers/cost.png", bounds: boxBounds(),
@@ -878,11 +888,22 @@ async function main() {
 }
 
 for (const id of ["show-ortho", "show-hillshade", "show-slope", "slope-opacity",
-                  "show-cost", "show-sand", "block-on", "block-slope", "show-radius"]) {
+                  "show-cost", "show-sand", "show-thermal", "block-on", "block-slope", "show-radius"]) {
   ui(id).addEventListener("input", () => deckgl && deckgl.setProps({layers: layers()}));
 }
 ui("show-cost").addEventListener("input", showCostLegend);
 ui("show-sand").addEventListener("input", () => { ui("sand-legend").hidden = !ui("show-sand").checked; });
+ui("show-thermal").addEventListener("input", async () => {
+  ui("thermal-legend").hidden = !ui("show-thermal").checked;
+  if (!ui("show-thermal").checked || ui("thermal-note").dataset.done) return;
+  const res = await fetch("/thermal");
+  if (!res.ok) { ui("thermal-note").textContent = (await res.json()).detail; return; }
+  const t = await res.json(), c = t.check_vs_e8_sand;
+  ui("thermal-note").dataset.done = "1";
+  ui("thermal-note").textContent = `${t.mission}, ${t.m_per_px.toFixed(0)} m pixels: context, not a cost term.` +
+    (c ? ` Does it confirm E8's sand? No at this scale (rank correlation ${c.spearman_brightness_vs_sand.toFixed(2)} ` +
+         `over ${c.pixels} pixels): sand patches are smaller than one pixel.` : "");
+});
 ui("block-on").addEventListener("input", refreshBlockInfo);
 ui("block-slope").addEventListener("input", refreshBlockInfo);
 

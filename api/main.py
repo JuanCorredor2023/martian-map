@@ -24,6 +24,7 @@ from . import tour
 from . import radiation as rad
 from . import data_sources
 from . import minerals
+from . import thermal
 from . import weather
 from . import walkback as wb
 from .plan import (PlanRequest, RejoinRequest, ReturnHomeRequest, WalkbackRequest, feature,
@@ -172,6 +173,26 @@ def weather_summary(sol: int = Query(weather.DEFAULT_SOL, ge=1),
     if path is None:
         raise HTTPException(status_code=404, detail="REMS feed missing: data/rems/ (release rems-v1)")
     return weather.summary(path, sol, eva_min)
+
+
+@app.get("/layers/thermal.png")
+def thermal_png():
+    """THEMIS night IR over the box (Mars Odyssey, ~81 m pixels), gray."""
+    path = thermal.find(DATA)
+    if path is None:
+        raise HTTPException(status_code=404, detail="THEMIS tile missing: data/thermal/ (release themis-v1)")
+    bbox = json.loads((BASE / "grid.json").read_text(encoding="utf-8"))["bbox"]
+    return Response(thermal.layer_png(path, (bbox["xmin"], bbox["ymin"], bbox["xmax"], bbox["ymax"])),
+                    media_type="image/png")
+
+
+@app.get("/thermal")
+def thermal_summary():
+    """What the THEMIS layer is, and how it compares with E8's sand (context only)."""
+    path = thermal.find(DATA)
+    if path is None:
+        raise HTTPException(status_code=404, detail="THEMIS tile missing: data/thermal/ (release themis-v1)")
+    return thermal.summary(path, E8 / "sand.tif", BASE / "slope_deg.tif")
 
 
 @app.get("/minerals")

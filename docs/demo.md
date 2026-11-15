@@ -25,6 +25,7 @@ The demo is a FastAPI backend (`api/`) that serves the HUD (`web/index.html`) an
    | `data/e1/` | `e1-sand-v1` | human cost: E3 × E1 sand price (optional; without it E3 alone) |
    | `data/rems/` | `rems-v1` | surface weather panel (REMS) (optional) |
    | `data/minerals/` | `minerals-v1` | regional minerals panel (CRISM/OMEGA) (optional) |
+   | `data/thermal/` | `themis-v1` | night thermal layer (THEMIS) (optional) |
    | `data/tiles/3d/` | generated | 3D view: run once `python src/viz3d/build_terrain_assets.py` (optional) |
 
    PowerShell example: `gh release download base-grid-v2 --dir data; Expand-Archive data\base_grid_v2.zip data\base -Force; Remove-Item data\base_grid_v2.zip`. The stations release has no zip: `gh release download stations-v1 --dir data\stations`.
@@ -46,7 +47,7 @@ No internet is needed at demo time: deck.gl is vendored in `web/vendor/` and all
 
 This follows the guide's demo script (zero-to-hero REV3, section 51).
 
-1. **Terrain (30 s).** HiRISE ortho with the slope layer on top; switch on *Sand detected (E8)*. Say that the 1 m DEM does not resolve the boxwork ridges, but the 0.25 m image does. Open the line under the title: *6 data types from 3 missions* (HiRISE image and DEM, and CRISM minerals, from MRO; OMEGA from Mars Express; Curiosity's traverse, RAD and REMS from MSL), counted only when used.
+1. **Terrain (30 s).** HiRISE ortho with the slope layer on top; switch on *Sand detected (E8)*. Say that the 1 m DEM does not resolve the boxwork ridges, but the 0.25 m image does. Open the line under the title: *7 data types from 4 missions* (HiRISE image and DEM, and CRISM minerals, from MRO; OMEGA from Mars Express; THEMIS night thermal from Mars Odyssey; Curiosity's traverse, RAD and REMS from MSL), counted only when used. Optionally switch on *Night thermal (THEMIS)*: at 81 m it does not see E8's sand patches (rank correlation 0.00), an honest negative.
 2. **What a step costs (45 s).** Turn on *E3 walking cost*. *Human cost* (EVA limits) multiplies E3's energy by E1's sand price (up to +11.5 % on sand), the one terrain term learned from Curiosity's route that held up on unseen data. The cost is Santee 2001 with Mars gravity only in the slope term. Whole-power scaling fails the lunar check (52 W against 292 W on flat ground). The cheapest metre is a gentle descent (338.75 J/m), not flat ground.
 3. **Steep cells (20 s).** Move *Block cells steeper than N°* (30° by default; 20° blocks 30 % of the box). This is the decision that changes routes the most (E3 sensitivity).
 4. **Science stations (45 s).** The right panel lists 13 stations. Three are Curiosity's real drill sites (Nevado Sajama ridge, Valle de la Luna hollow, Altadena); the rest are candidates. The rubric (ridge 5, hollow 4, contact 4, Curiosity site 3) is editable live; its literature review is in `docs/research/`.

@@ -29,6 +29,8 @@ RELEASES = [
      "the surface weather panel (REMS); the downloaded kit's 03_curiosity/clima_rems also works"),
     ("minerals", ["gale_minerals.geojson"], "minerals-v1", False,
      "the regional minerals panel (CRISM/OMEGA); or build it: python -m api.minerals build"),
+    ("thermal", ["THEMIS_NightIR_ControlledMosaics_100m_v2_oct2018__z9_row269_col902.png"], "themis-v1", False,
+     "the THEMIS night thermal layer; the Mars Trek kit's test tile also works"),
     ("tiles/3d", ["."], "generated", False,
      "the 3D view (run once: python src/viz3d/build_terrain_assets.py)"),
 ]
