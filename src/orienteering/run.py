@@ -49,6 +49,13 @@ def main(argv=None):
     ap.add_argument("--time-limit-s", type=float, default=None,
                     help=f"search limit of the OR-Tools solvers (default {cpsat.TIME_LIMIT_S:g} s for "
                          f"cpsat, which stops earlier once optimal; {routing.TIME_LIMIT_S:g} s for routing)")
+    ap.add_argument("--light-sol", type=int, default=None,
+                    help="time windows from the light on this Curiosity sol (#111): each station is "
+                         "served only while it is in sunlight; sweeps the departure time and plans "
+                         "the best one (replaces windows read from the stations file)")
+    ap.add_argument("--depart-from", type=float, default=5.0, help="earliest departure, local true solar time")
+    ap.add_argument("--depart-to", type=float, default=19.0, help="latest departure")
+    ap.add_argument("--depart-step-min", type=float, default=15.0)
     ap.add_argument("--out", default=ROUTE_PATH, help="GeoPackage for the route (layers route and stops)")
     args = ap.parse_args(argv)
     t0 = time.time()
@@ -91,6 +98,8 @@ def main(argv=None):
                       service_s=stations.service_s, service_j=service_j,
                       windows=stations.windows, max_duration_s=max_duration_s,
                       wait_power_w=args.wait_power_w)
+    if args.light_sol is not None:
+        stations, problem, dis = light_windows_plan(graph, stations, problem, args)
     rv_j = return_costs(graph, graph.node(hr, hc))
     checked = {}
 
@@ -143,6 +152,42 @@ def main(argv=None):
                            args.service_power_w, timeline, walkback, args.wait_power_w)
     print(f"route written to {out} ({len(path)} cells, {time.time() - t0:.1f} s total)")
     return solution
+
+
+"""
+--light-sol: sweeps the departures, prints one line per departure, and returns the
+stations and the problem of the best one (windows from the light, stations without
+light for their service dropped), so the rest of run.py plans, checks the walkback and
+writes the route as usual.
+"""
+def light_windows_plan(graph, stations, problem, args):
+    from orienteering import departure as dep
+    from orienteering import light_windows as lw
+
+    dem, transform = dep.load_dem()
+    starts = np.arange(args.depart_from, args.depart_to + 1e-9, args.depart_step_min / 60.0)
+    t_s = time.time()
+    rows, best = lw.sweep(graph, stations, problem, args.light_sol, starts, dem, transform,
+                          solver=None if args.solver == "auto" else args.solver)
+    print(f"time windows from the light, sol {args.light_sol}: {len(rows)} departures in "
+          f"{time.time() - t_s:.1f} s (prize, stations served, dropped for lack of light)")
+    for r in rows:
+        mark = "  <- best" if r is best else ""
+        print(f"  {dep.clock(r['start_ltst_h'])}  prize {r['prize']:g}  {len(set(r['route'])) - 1} stations"
+              + (f"  dropped {r['dropped']}" if r["dropped"] else "") + mark)
+    share = best["walk_sunlit_share"]
+    print(f"best departure {dep.clock(best['start_ltst_h'])} local true solar time"
+          + (f" ({100 * share:.1f} % of the walk in sunlight)" if share is not None else ""))
+    keep = np.flatnonzero(~np.isin(stations.id, best["dropped"]))
+    windows = np.asarray(best["windows_s"])[keep]
+    stations = stations.subset(keep)
+    stations.windows = windows
+    dis = problem.energy[np.ix_(keep, keep)]
+    problem = Problem(energy=dis, prize=problem.prize[keep], budget=problem.budget,
+                      time=problem.time[np.ix_(keep, keep)], service_s=problem.service_s[keep],
+                      service_j=problem.service_j[keep], windows=windows,
+                      max_duration_s=problem.max_duration_s, wait_power_w=problem.wait_power_w)
+    return stations, problem, dis
 
 
 if __name__ == "__main__":
