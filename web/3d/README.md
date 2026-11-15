@@ -247,8 +247,8 @@ already present and logs size and SHA-256 in `navcam_p3/_download_log.json`. Tes
   on a very slow machine the walker is slower, not jumpier. The arrow pad shows only on
   screens whose main pointer is a finger.
 - Map layer: one at a time (the 2D stacks several), with the plan's steep limit (not the 2D's
-  slider) and no radio from a base set in the 2D. The slope legend is the 2D's, whose colours
-  are not those of the slope tiles (`src/gis/tiles.py`); the fix belongs in the 2D. The hatch
+  slider) and no radio from a base set in the 2D. The slope legend is the 2D's, which since #149
+  shows the colours of the slope tiles (`src/gis/tiles.py`). The hatch
   swatch of the steep cells is dark on the dark panel, as in the 2D. Night temperature (81 m
   pixels), climate, minerals and dose are not draped. A few route pixels at depth ties with the
   ground are still tinted.
