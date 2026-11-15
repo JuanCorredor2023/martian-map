@@ -1,10 +1,10 @@
-# P3 · Curiosity ground photographs in the 3D map
+# P3 · Curiosity ground photographs in the 3D map and the 2D HUD
 
-Owner: Juan (`@JuanCorredor2023`) · Issue: #46 · PRs: #80 (block 1), #95 (block 2), block 3 pending · Status: done (catalogue and poses, photos in the 3D page with a visual check of three sols, station previews) · Last update: 2026-11-15
+Owner: Juan (`@JuanCorredor2023`) · Issues: #46 (P3), #103 (P3b) · PRs: #80 (block 1), #95 (block 2), #98 (block 3); #130 (P3b, 2D HUD, #103) · Status: P3 done (catalogue and poses, photos in the 3D page with a visual check of three sols, station previews); P3b done on its branch (photo layer, photo card and station photo lines in the 2D HUD), in review · Last update: 2026-11-15
 
 ## Question
 
-Can a real Curiosity photograph be placed at its measured camera position and direction in the P1 terrain, and help an astronaut understand the surroundings of a planned station? Block 1 prepared the catalogue, the camera geometry and the local images. Block 2 puts the photographs in the 3D page and checks, for photographs of different sols, whether the terrain model agrees with them. Block 3 adds, to each station's card and to each rehearsal stop, the nearest photograph and whether the station lies in its field.
+Can a real Curiosity photograph be placed at its measured camera position and direction in the P1 terrain, and help an astronaut understand the surroundings of a planned station? Block 1 prepared the catalogue, the camera geometry and the local images. Block 2 puts the photographs in the 3D page and checks, for photographs of different sols, whether the terrain model agrees with them. Block 3 adds, to each station's card and to each rehearsal stop, the nearest photograph and whether the station lies in its field. P3b (#103) shows the same photographs in the 2D HUD, where the stations are chosen and the walk is planned.
 
 ## Data
 
@@ -14,6 +14,7 @@ Can a real Curiosity photograph be placed at its measured camera position and di
 - The team's `data/base/dem_1m.tif` [Parker2016] and the box in `docs/contracts/grid.json`. P1's terrain assets are not changed.
 - Filtered out: thumbnails, subframes and downsampled frames, other cameras, and one "full" Navcam frame whose metadata say it is cropped (`NRB_803470978EDR_F1162562ACS_00000M_`). All 6,504 remaining full Navcam frames lie inside the box.
 - Source files and generated media stay outside git. Only small metadata fixtures used by the tests are committed.
+- P3b uses no new data: the HUD reads the same catalogue and images as the 3D page.
 
 ## Method
 
@@ -43,6 +44,26 @@ Stops are grouped by the rover position: each group's representative is the firs
 `src/viz3d/photo_skyline.py` ray-casts the 1 m DEM from each camera for every column of the 768 px comparison frame (same pinhole, heading and pitch, zero roll, curvature drop included) and finds the DEM skyline, marking whether it is a terrain feature inside the box or only the box edge. It detects the photograph's sky/ground boundary per column (bright smooth sky at the top; transparent pixels ignored) and compares the two only where the DEM skyline is an in-box feature. The test is one-sided: a DEM skyline above the photograph's means the model puts ground where the photograph shows sky, an in-box disagreement; a photograph skyline above the DEM can be farther terrain beyond the box (or rover hardware) and is not counted as an error. Where farther terrain rises behind an in-box crest, it checks that the crest still shows as a brightness step within ±3 px.
 
 The build never downloads. It lists the selected photos without a local file in `download_manifest.json`, with an estimated size from the local sample. Products go to `data/tiles/3d/photos/` under an immutable generation folder; the root `catalog.json` points to it.
+
+### Photos in the 2D HUD (P3b, #103)
+
+The HUD (`web/index.html`) reads the same catalogue (`/tiles/3d/photos/catalog.json`) with the same logic as the 3D page. `web/hud_photos.js` (no DOM, tested in Node) reuses `parseCatalog`, `photoMarkers`, `viewsOf`, `photoFacts`, `nearestPhoto` and `previewText` from `web/3d/photos_model.js`, so both maps say the same thing. The HUD only draws. There is no new endpoint and no contract change. Sebas and JB handed over the HUD parts this needed (#103).
+
+- **Layer.** *Rover photos* in *1 Terrain*, off by default so it does not hide the stations. It draws one orange dot per stop with a photo, under the stations, and its note gives the counts.
+- **Photo card.** A click on a dot opens the stop's card. It has one button per view (by heading, from north clockwise), the photo, and the rows of the 3D card: UTC date, sol, local time (LMST), camera, where it looks and its tilt, and credit. *Open in 3D* opens `/3d/?photo=<id>`, the 3D photo view. The card ends with "Photos show the view, not a promise that a station is visible." If the card would cover its stop, or come within 40 px of it, the map pans with the zoom unchanged. The stop then sits in the largest strip of map the card leaves free (`keepStopInView`).
+- **View wedges.** While a card is open, each of its views has a wedge on the map, from the camera along the photo's own field (`fov` in the catalogue, 40° for all 383). The selected view is drawn stronger. The wedge is drawn out to 150 m (`WEDGE_RADIUS_M`, equal to `PREVIEW_MAX_M`, the reach of a station's photo line). That is a drawing length, not a visibility range.
+- **Station photo lines.** In *2 Stations*, each station of the list has a line under it (`stationPhotoLine`). It gives the nearest photo within 150 m (the block 3 rule), with its distance, the side of the station it was taken from and where it looks, for example "Photo 87 m south-west, looking south-west". It adds "· station in its field" when that holds. With no photo that near it reads "No photo nearby (nearest N m)". The 3D card's full sentence is the line's tooltip. A click on the line opens that stop's card on that photo and moves the focus into the card; closing it (Esc or the close button) brings the focus back to the line. The photo chosen is the one the 3D card names, because the choice uses only horizontal distance and direction.
+- **Side to side only.** The 2D map has no ground elevation, so the station's field check is side to side only, and the sentence says so: "inside its field from side to side (not checked up and down; the terrain may still hide it)".
+- **Without the catalogue.** The module and the catalogue load in the background, so the map does not wait for them, and `loadCatalog` never throws. If either fails, the box is disabled and its note says "Unavailable: <reason>. The rest of the map works without them." Nothing else changes.
+- **Placing modes keep the click.** While a map-click mode is on (for example adding a station), a click on a dot does what the mode says, here placing the station, instead of opening the card.
+
+**What stays in the 3D page only, and why** (from #103):
+- The photo laid over the terrain: it needs the 3D camera at the photo's pose.
+- The Sun and shadows: the HiRISE image already has its own, and P6's departure time covers the useful part.
+- The exaggerated relief.
+- The first-person rehearsal.
+
+The same preview on the arm tablet's station cards (`web/guide_core.js`) was optional and is left out of this PR.
 
 ## Results
 
@@ -88,6 +109,8 @@ Over all 23 selected photographs with |pitch| ≤ 12° (17 sols, 12,524 compared
 
 **Station previews** (`/3d/?check=stations`, 2026-11-15, low preset). The saved plan (E4 round trip, 13 stations drawn), the E4 fixture and the E5 tour fixture (`tests/viz3d/fixtures/plan_e4.json`, `plan_tour_e5.json`) each draw the same 13 stations: all 13 have a published photograph within 150 m (the farthest 103.7 m, station R3), and 7 of them lie inside its field. At the 8 stops of the E5 tour and the single stop of the E4 round trip, the stop card shows the preview, the rehearsal clock and the walker do not move while it is shown, the tasks and "Done, continue" stay, there is no photo-view button, and the photo pins are hidden. A point near the box's south-west corner gets "No rover photo within 150 m of this station (the nearest is 734 m away)".
 
+**Photos in the 2D HUD** (P3b). With the real catalogue (`data/tiles/3d/photos/catalog.json`, generation `9d2e6fb0bc52df508447d619`), the HUD shows 100 stops and 383 photos, and the layer note reads "100 stops, 383 photos taken from the ground by Curiosity. Click a dot to see them." The counts come from `loadCatalog` in `web/hud_photos.js`. `photoCount` counts the photos with images (all 383). `stopCount` counts the stops with at least one photo, which are the 3D page's pins (all 100). The count was repeated for this note by running `loadCatalog` in Node on that file. Station lines name the same photo, at the same distance, as the 3D station cards of block 3. Only "in its field" can differ, because the 2D check is side to side only.
+
 ## Checks
 
 - `tests/viz3d/test_rover_photo_geometry.py`: known rotations, camera-centre translation, pitch sign, distortion forward and inverse, roll removal by ray mapping, transparent corners, rejection of unsupported metadata, and real metadata from six sols (frame agreement with mast angles and PLACES).
@@ -99,6 +122,24 @@ Over all 23 selected photographs with |pitch| ≤ 12° (17 sols, 12,524 compared
 - Block 2, `?check=photos` (photos of sols 4450, 4596 and 4848; 2026-11-15, high preset): camera position error 0 m, eye height equal to the catalogue's height above the DEM (1.778, 2.007, 1.924 m), heading, pitch and field errors 0°, relief ×1, the Sun at each photo's sol and solar time, the laid photo on the centred square to 0 px; after Exit, position, heading, pitch, field, relief and Sun as before. P1's `?check=shading`, `route` and `rehearse` give the same numbers as on main; the only change is one more marker layer in the scene list.
 - Block 3: `?check=stations` as in Results. P1's `?check=route`, `shading` and `rehearse` give the same JSON on this branch as on main, and `?check=photos` the same as in block 2 (all errors 0). `?check=photos` and `?check=stations` step the camera flight themselves and pause on timers, so they also run in a hidden browser tab.
 - Block 2 visual check: the three figures above, inspected by eye, and the aggregate over 23 photographs. Node tests: 86 passed (`node --test tests/viz3d/`), including 15 for `photos_model.js` (catalogue parsing, pose limits, the square view, and the photographs' own LMST reproduced from their UTC time within 4 s).
+- P3b, Node: `tests/web/hud_photos.test.mjs`, 14 tests on the 3D page's photo fixture (`tests/viz3d/fixtures/photos_catalog.json`: 3 stops of the real catalogue, 7 photos). They check:
+  - the catalogue address, and that the wedge radius equals `PREVIEW_MAX_M`;
+  - the counts, and that a missing, unreadable or wrong catalogue gives one plain clause and never a throw;
+  - that the dots are the 3D page's pins;
+  - the wedge geometry (north = +y, edges one field apart, real photos);
+  - the 3D link, which accepts only valid photo ids;
+  - the stop card against `viewsOf` and `photoFacts`;
+  - the station lines, against `previewText(nearestPhoto(...))`, including "no photo nearby" and both sides of the 150 m limit (149.7 m is a hit; 150.3 m reads "nearest just over 150 m");
+  - that a short line never says a station is seen.
+- P3b, full runs on 2026-11-15, on `main` at 61dc98d plus this change: `node --test tests/web/ tests/viz3d/` 135 passed. `python -m pytest tests -q` 1005 passed, 4 skipped and 1 failed. The failure is unrelated to this change: `test_curiosity_drill_targets_match_places` needs a raw-data file that is not on this machine (`03_curiosity/places_pds/.../mech_drill.csv`). No file under `web/3d/` changed, so the 3D page and its checks are as in block 3.
+- P3b, in the browser on 2026-11-15, at 1024 × 768, 1440 × 900 and 375 × 812, all of these worked:
+  - the layer, the card and the wedges;
+  - the station lines, and opening the card from one;
+  - Esc, which brings the focus back to the line;
+  - add-station mode, where a click on a dot places a station instead of opening the card;
+  - the page without a catalogue;
+  - a plan computed with the layer on;
+  - the card panning the map off its stop.
 
 ## Limitations
 
@@ -115,7 +156,10 @@ Over all 23 selected photographs with |pitch| ≤ 12° (17 sols, 12,524 compared
 - Most selected photographs look 10–35° down at the near ground, which the 1 m DEM and the 0.25 m orthophoto cannot resolve at 2–20 m: their laid photo shows rocks the 3D ground does not have. The comparison is meaningful for crests and knolls, not for near rocks.
 - At the overview, the 100 photo pins form a dense row along the traverse; station pins stay on top, and "Show photo stops" hides them.
 - A station preview is the nearest photograph, not a view of the station: "inside its field" is a direction, and the terrain, the rover or the photograph's own crop can hide the station. The 150 m limit is a choice: farther, a station is a few pixels of a Navcam frame. The photographs date from 2025–2026, not from the simulated EVA.
-- Out of scope: the PIA26559 panorama, video, and a tablet test.
+- 2D HUD (P3b): the photo dots are mouse-only. Keyboard and screen-reader users reach the photos through the station lines, which are buttons.
+- 2D HUD (P3b): the field check is side to side only. A line can say "station in its field" where the 3D card, which also checks up and down, says it is outside.
+- 2D HUD (P3b): the wedge is always drawn at 150 m. It shows a direction and a field, not how far the photo sees; the terrain, the rover or the photo's crop can end the view much sooner.
+- Out of scope: the PIA26559 panorama, video, a tablet test, and (P3b) the photo preview on the arm tablet's station cards.
 
 ## What other pieces can use
 
@@ -124,7 +168,14 @@ Over all 23 selected photographs with |pitch| ≤ 12° (17 sols, 12,524 compared
 - Station previews (block 3): selected positions and directions with an explicit missing-image state. A nearest-photo result must show the distance and whether the station is inside the photographed field.
 - E2 (Juan): the join rule for repeated PLACES poses (attitude, then the highest co-located pose) applies to any use of image metadata with PLACES.
 - Station previews: `nearestPhoto(model, {x, y}, {groundElevation})` and `previewText(result)` in `web/3d/photos_model.js` are pure and could serve the guide's station cards (`web/guide_core.js`, Sebas) if wanted; the rehearsal takes any element through its `stationMedia` option.
-- No API contract, planner output or P1 asset changes. In `web/3d/rehearse.js` only the `stationMedia` option and the stop card's media slot were added.
+- 2D HUD (P3b): `web/hud_photos.js` is pure and tested, and every function takes the parsed model:
+  - `loadCatalog(fetch, url)` never throws, and gives the model and the counts, or one plain error clause;
+  - `photoStops(model)` gives the stops to pin;
+  - `wedgeRing(photo, radiusM, steps)` gives a view's field as a closed ring in Mars CRS metres;
+  - `open3dUrl(id)` gives the 3D photo view's address;
+  - `stopCard(model, groupId)` gives the card of a stop;
+  - `stationPhotoLine(model, {x, y})` gives the short line and the full sentence for a station; it could serve the tablet's station cards (`web/guide_core.js`, Sebas) if wanted.
+- No API contract, planner output or P1 asset changes. In `web/3d/rehearse.js` only the `stationMedia` option and the stop card's media slot were added. P3b adds no endpoint and changes no file under `web/3d/`.
 
 ## Reproduce
 
@@ -143,6 +194,8 @@ python -m src.viz3d.photo_skyline --catalog data/tiles/3d/photos/catalog.json --
 
 In the page: `/3d/?check=photos` and `/3d/?photo=<id>`. The download is needed only for missing images. The same inputs give the same generation id.
 
+The 2D HUD (P3b): run `node --test tests/web/hud_photos.test.mjs`. Then start the server (`python -m uvicorn api.main:app --port 8000`) and open `/`. In *1 Terrain*, switch on *Rover photos* and click a dot. In *2 Stations*, each station has its photo line.
+
 ## Outputs
 
 - `data/tiles/3d/photos/catalog.json`: versioned catalogue (groups, photos, poses, units, provenance), pointing to its generation folder.
@@ -153,3 +206,4 @@ In the page: `/3d/?check=photos` and `/3d/?photo=<id>`. The download is needed o
 - `data/tiles/3d/photos/skyline_check.json`: per-photo and aggregate photograph-against-terrain numbers.
 - `paper/figures/p3_fig1_skyline_4813.jpg`, `_4473.jpg`, `_4611.jpg`: DEM skyline over the comparison image, with the per-column difference.
 - `web/3d/photos_model.js`, `photos.js`, `photos.css`: the photos in the 3D page.
+- `web/hud_photos.js` and the "Rover photos (P3b" part of `web/index.html`: the photos in the 2D HUD.
