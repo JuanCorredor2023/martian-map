@@ -341,11 +341,15 @@ export function stormMessage(homeRoute, radInfo) {
 }
 
 // The alert both views show once the way home is known (HTML), and while it is computed.
+// The banner says only what to do (#124): the live time home is on the maneuver card,
+// so no frozen minutes here. Dose and the alarm rule stay, folded.
 export function stormHtml(s) {
-  return `<b>SOLAR STORM · return to the habitat now</b> · ${s.minutes.toFixed(1)} min home.` +
-    (s.realUgy != null ? ` Radiation on the way back: <b>${s.realUgy.toFixed(1)} µGy</b>` +
-      (s.x50Ugy != null ? ` (${s.x50Ugy.toFixed(0)} µGy if the storm were 50× stronger).` : ".") : "") +
-    ` <span class="muted">Alarm when the radiation rate on Curiosity exceeds 1.5× its recent median twice in a row.</span>`;
+  const dose = s.realUgy != null
+    ? `Dose on the way back: ${s.realUgy.toFixed(1)} µGy` +
+      (s.x50Ugy != null ? ` (${s.x50Ugy.toFixed(0)} µGy if it were 50× stronger).` : ".") : "";
+  return `<b>SOLAR STORM · go home now</b>` +
+    `<details class="more"><summary>Why and how much</summary>${dose}` +
+    ` <span class="muted">Alarm when the radiation rate on Curiosity exceeds 1.5× its recent median twice in a row.</span></details>`;
 }
 export const STORM_PENDING = "<b>SOLAR STORM · return to the habitat now</b> · finding the fastest way…";
 export const stormFailedHtml = why =>
