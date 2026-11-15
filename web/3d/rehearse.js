@@ -23,8 +23,8 @@
 //     way home or a rejoin replaces the walked route (drawn on the ground) until exit.
 //   - adaptive walkback (X2, #101, #129), as on the arm tablet (#116): every 30 m played,
 //     guide_core simulates this astronaut's real energy use (k_true x the plan, the "Use
-//     xk" demo button) and POST /walkback/update learns k. The meter "Spare energy,
-//     learned use (k p90)", the RETURN NOW alert and 4 rows of the final card come from
+//     xk" demo button) and POST /walkback/update learns k. The meter "Spare energy at
+//     your pace" (the tablet's name since #124), the RETURN NOW alert and 4 rows of the final card come from
 //     the same guide_core functions as the tablet. It asks the server only while playing,
 //     and not when walkbackOnPause is off (checks.js), so the checks are unchanged.
 // Nothing is rendered here: update(dt) says whether the view changed, and main.js draws.
