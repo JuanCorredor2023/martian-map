@@ -64,6 +64,19 @@ class Stations:
                         np.r_[col, self.col], np.r_[prize, self.prize],
                         np.r_[service_s, self.service_s], windows)
 
+    """
+    Stations of self followed by those of other. If only one side has windows, the
+    other side's stations are always open.
+    """
+    def concat(self, other):
+        windows = None
+        if self.windows is not None or other.windows is not None:
+            always = lambda st: np.tile([0.0, np.inf], (len(st), 1))  # noqa: E731
+            windows = np.vstack([self.windows if self.windows is not None else always(self),
+                                 other.windows if other.windows is not None else always(other)])
+        return Stations(*(np.r_[getattr(self, f), getattr(other, f)] for f in
+                          ("id", "type", "x", "y", "row", "col", "prize", "service_s")), windows)
+
 
 """
 Reads a point layer from a GeoPackage and places every point on the grid of `graph`
@@ -104,6 +117,22 @@ def read_stations(graph, path=STATIONS_PATH, layer=STATIONS_LAYER, prize_col="sc
     inside = (row >= 0) & (row < graph.height) & (col >= 0) & (col < graph.width)
     stations = Stations(ids, types, x, y, row, col, prize, service_s, windows).subset(inside)
 
+    _, first = np.unique(graph.node(stations.row, stations.col), return_index=True)
+    return stations.subset(np.sort(first))
+
+
+"""
+Reads several station files (same columns as read_stations, for example the manual
+stations and E8's stations_e8.gpkg) into one set, in file order. A station whose id or
+cell was already used by an earlier one is dropped.
+"""
+def read_station_files(graph, paths, layer=STATIONS_LAYER, prize_col="score"):
+    stations = None
+    for path in paths:
+        part = read_stations(graph, path, layer=layer, prize_col=prize_col)
+        stations = part if stations is None else stations.concat(part)
+    _, first = np.unique(stations.id, return_index=True)
+    stations = stations.subset(np.sort(first))
     _, first = np.unique(graph.node(stations.row, stations.col), return_index=True)
     return stations.subset(np.sort(first))
 

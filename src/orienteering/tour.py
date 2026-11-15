@@ -31,7 +31,7 @@ from orienteering.network import route_path, station_matrices  # noqa: E402
 from orienteering.problem import Problem, evaluate_route  # noqa: E402
 from orienteering.safety import (return_costs, solve_with_walkback, stop_energy,  # noqa: E402
                                  tour_walkback)
-from orienteering.solvers import MAX_STATIONS, SOLVERS  # noqa: E402
+from orienteering.solvers import EXACT, MAX_STATIONS, SOLVERS, pick  # noqa: E402
 
 J_PER_LITER_O2 = KJ_PER_LITER_O2 * 1000.0
 
@@ -42,16 +42,19 @@ Limits: usable energy (budget minus margin), max_duration_min and o2_budget_l. W
 O2 leak (the /plan contract has none) O2 is energy / 20.1 kJ/L, so the O2 limit is
 applied as a second energy limit and the tighter one is used.
 Habitat and stations are placed with graph.place, like the E4 goal in /plan.
+solver: "auto" uses the DP up to 19 stations and OR-Tools CP-SAT above (exact model,
+search capped at 30 s); or a name of solvers.SOLVERS.
 Returns (FeatureCollection, info):
     route feature (kind "route", approach "E5_tour"): E4's per-vertex profile (used_wh,
         rv_wh, slack_wh, t_s, rv_time_s, o2_used_l, same order as the coordinates; used
         and t include service and waits), totals, prize, order (station ids), stop_index
-        (position of each stop in the coordinates), feasible (walkback), exact
+        (position of each stop in the coordinates), feasible (walkback), exact (optimum
+        proven and no walkback re-plan)
     start point (kind "start") and one point per stop (kind "stop") in visiting order
     info: habitat_moved_m, goal_moved_m (0), goal_station (None), service_power_w,
         prize, order, skipped (station ids not visited), walkback_retries, warnings
 """
-def plan_tour(req, graph, solver="dp"):
+def plan_tour(req, graph, solver="auto"):
     usable_j = req.energy_budget_wh * (1 - req.margin) * J_PER_WH
     energy_limit_j = usable_j
     if req.o2_budget_l is not None:
@@ -61,6 +64,8 @@ def plan_tour(req, graph, solver="dp"):
     max_duration_s = req.max_duration_min * 60.0 if req.max_duration_min is not None else None
     if not req.stations:
         raise ValueError("add a station to plan an E5 tour")
+    if solver == "auto":
+        solver = pick(len(req.stations) + 1)
     if len(req.stations) + 1 > MAX_STATIONS[solver]:
         raise ValueError(f"{len(req.stations)} stations: the E5 {solver} supports up to "
                          f"{MAX_STATIONS[solver] - 1} plus the habitat")
@@ -128,7 +133,10 @@ def plan_tour(req, graph, solver="dp"):
                 "time_s": round(float(t_s[-1]), 1),
                 "length_m": round(float(walkback["length_m"][-1]), 1),
                 "o2_l": round(float(o2_l[-1]), 2),
-                "method": solution.solver, "exact": retries == 0, "gap": None,
+                "method": solution.solver,
+                "exact": retries == 0 and (solver in EXACT or bool(solution.optimal)),
+                "gap": (round((solution.bound - solution.prize) / solution.bound, 4)
+                        if solution.bound else None),
                 "usable_wh": round(energy_limit_j / J_PER_WH, 3),
                 "prize": float(solution.prize), "order": order,
                 "stop_index": [int(v) for v in stop_index],

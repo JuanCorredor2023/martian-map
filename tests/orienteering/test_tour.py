@@ -118,5 +118,17 @@ def test_input_errors():
     with pytest.raises(ValueError):
         plan_tour(request(graph, [], 100.0), graph)
     many = [station(graph, f"S{k}", k % 3, 1 + k % 7, 1) for k in range(20)]
-    with pytest.raises(ValueError):
-        plan_tour(request(graph, many, 100.0), graph)
+    with pytest.raises(ValueError):                    # too many for the DP when asked for it
+        plan_tour(request(graph, many, 100.0), graph, solver="dp")
+
+
+def test_more_stations_than_the_dp_use_cpsat():
+    graph = grid_graph(5, 6)
+    cells = [(r, c) for r in range(5) for c in range(6) if (r, c) != (1, 0)][:21]
+    sts = [station(graph, f"S{k}", r, c, 1) for k, (r, c) in enumerate(cells)]
+
+    fc, info = plan_tour(request(graph, sts, 1000.0), graph)
+
+    p = features(fc, "route")[0]["properties"]
+    assert p["method"] == "cpsat" and p["exact"] and p["gap"] == 0.0 and p["feasible"]
+    assert p["prize"] == 21.0 and sorted(p["order"][1:-1]) == sorted(s["id"] for s in sts)

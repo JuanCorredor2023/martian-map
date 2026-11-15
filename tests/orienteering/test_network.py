@@ -212,3 +212,22 @@ def test_route_gpkg_round_trip(tmp_path):
     assert stops["wait_s"].tolist() == pytest.approx([0.0, 0.0, 1380.0, 0.0])
     assert stops["departure_time_s"].tolist() == pytest.approx([0.0, 610.0, 2300.0, 2310.0])
     assert line["duration_s"] == pytest.approx(2310.0) and line["wait_s"] == pytest.approx(1380.0)
+
+
+def test_read_station_files_merges_without_repeats(tmp_path):
+    from orienteering.data_io import read_station_files
+
+    graph = grid_graph(3, 4)
+    manual, e8 = tmp_path / "manual.gpkg", tmp_path / "e8.gpkg"
+    stations_at(graph, [(0, 0), (1, 2)], id=["R0", "H0"], score=[5.0, 4.0],
+                service_time_min=[10.0, 10.0]).to_file(manual, layer="stations")
+    stations_at(graph, [(2, 3), (1, 2), (0, 3), (2, 0)], id=["E8-01", "E8-02", "R0", "E8-03"],
+                score=[2.5, 1.0, 3.0, 1.5], service_time_min=[20.0] * 4,
+                window_close_min=[30.0, None, None, None]).to_file(e8, layer="stations")
+
+    s = read_station_files(graph, [manual, e8])
+
+    assert s.id.tolist() == ["R0", "H0", "E8-01", "E8-03"]       # same cell as H0, same id as R0
+    assert s.prize.tolist() == [5.0, 4.0, 2.5, 1.5]
+    assert s.service_s.tolist() == [600.0, 600.0, 1200.0, 1200.0]
+    assert s.windows.tolist() == [[0.0, np.inf], [0.0, np.inf], [0.0, 1800.0], [0.0, np.inf]]

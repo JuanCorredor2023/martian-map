@@ -1,7 +1,8 @@
 """
 E5 entry point: stations + E4 grid graph (E3 costs) -> station-to-station matrix -> solver.
 
-    python src/orienteering/run.py --habitat X Y [--solver dp] [--budget-wh 1000] [--margin 0.1]
+    python src/orienteering/run.py --habitat X Y [--stations A.gpkg B.gpkg] [--solver auto]
+                                   [--budget-wh 1000] [--margin 0.1]
 """
 import argparse
 import sys
@@ -16,20 +17,21 @@ from grafos.build_rv import SERVICE_POWER_W  # noqa: E402
 from grafos.walkback import J_PER_WH  # noqa: E402
 
 from orienteering.data_io import (ROUTE_PATH, STATIONS_LAYER, STATIONS_PATH,  # noqa: E402
-                                  read_stations, write_route_gpkg)
+                                  read_station_files, write_route_gpkg)
 from orienteering.network import (load_graph, place_habitat, reachable_stations,  # noqa: E402
                                   route_path, station_matrices)
 from orienteering.problem import Problem, evaluate_route  # noqa: E402
 from orienteering.safety import (return_costs, solve_with_walkback, stop_energy,  # noqa: E402
                                  tour_walkback)
-from orienteering.solvers import MAX_STATIONS, SOLVERS  # noqa: E402
+from orienteering.solvers import MAX_STATIONS, SOLVERS, cpsat, pick, routing  # noqa: E402
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="E5 orienteering over the E3 energy cost")
     ap.add_argument("--habitat", type=float, nargs=2, metavar=("X", "Y"), required=True,
                     help="habitat position, metres in the DEM's CRS (same input as E4)")
-    ap.add_argument("--stations", default=STATIONS_PATH, help="GeoPackage with the stations")
+    ap.add_argument("--stations", nargs="+", default=[STATIONS_PATH],
+                    help="GeoPackage(s) with the stations, merged in order (e.g. manual + E8)")
     ap.add_argument("--layer", default=STATIONS_LAYER)
     ap.add_argument("--prize-col", default="score")
     ap.add_argument("--budget-wh", type=float, default=1000.0, help="energy budget (same as E4)")
@@ -42,7 +44,11 @@ def main(argv=None):
                     help="metabolic power while waiting for a time window (default 0: waiting costs no energy)")
     ap.add_argument("--human-cost", action="store_true",
                     help="E3 x E1 sand price, the cost /plan uses (needs releases e1-sand-v1 and e8-v0)")
-    ap.add_argument("--solver", choices=sorted(SOLVERS), default="dp")
+    ap.add_argument("--solver", choices=["auto", *sorted(SOLVERS)], default="auto",
+                    help="auto: the DP up to its 20 nodes, OR-Tools CP-SAT above")
+    ap.add_argument("--time-limit-s", type=float, default=None,
+                    help=f"search limit of the OR-Tools solvers (default {cpsat.TIME_LIMIT_S:g} s for "
+                         f"cpsat, which stops earlier once optimal; {routing.TIME_LIMIT_S:g} s for routing)")
     ap.add_argument("--out", default=ROUTE_PATH, help="GeoPackage for the route (layers route and stops)")
     args = ap.parse_args(argv)
     t0 = time.time()
@@ -52,7 +58,7 @@ def main(argv=None):
     except FileNotFoundError as err:
         raise SystemExit(f"error: {err}")
     print(f"cost model: {graph.cost_model}")
-    stations = read_stations(graph, args.stations, layer=args.layer, prize_col=args.prize_col)
+    stations = read_station_files(graph, args.stations, layer=args.layer, prize_col=args.prize_col)
 
     try:
         hr, hc, moved = place_habitat(graph, args.habitat)
@@ -68,6 +74,8 @@ def main(argv=None):
     if not ok.all():
         print(f"dropping stations outside the main connected area: {stations.id[~ok].tolist()}")
         stations = stations.subset(ok)
+    if args.solver == "auto":
+        args.solver = pick(len(stations))
     limit = MAX_STATIONS[args.solver]
     if len(stations) > limit:
         raise SystemExit(f"{len(stations)} stations: solver {args.solver} supports up to {limit}, select fewer")
@@ -92,7 +100,10 @@ def main(argv=None):
         return tour_walkback(graph, path, stop_index, stop_energy(problem, route), rv_j, budget_j)
 
     try:
-        solution, walkback, retries = solve_with_walkback(problem, SOLVERS[args.solver], check)
+        solve = SOLVERS[args.solver]
+        if args.solver in ("cpsat", "routing") and args.time_limit_s is not None:
+            solve = lambda p: SOLVERS[args.solver](p, args.time_limit_s)  # noqa: E731
+        solution, walkback, retries = solve_with_walkback(problem, solve, check)
     except (ValueError, NotImplementedError) as err:
         raise SystemExit(f"solver {args.solver}: {err}")
 
@@ -100,6 +111,8 @@ def main(argv=None):
     waited_j = sum(stop_energy(problem, solution.route)) - served_j if solution.route else 0.0
     print(f"{len(stations)} stations, usable budget {budget_j / J_PER_WH:.0f} Wh, solver {solution.solver} "
           f"({solution.runtime_s:.2f} s), total {time.time() - t0:.1f} s")
+    if solution.bound is not None:
+        print(f"optimal: {solution.optimal}; best bound on the prize {solution.bound:g}")
     print(f"habitat at ({hx:.1f}, {hy:.1f}); prize {solution.prize:g}, "
           f"spent {solution.energy / J_PER_WH:.1f} Wh "
           f"(walking {(solution.energy - served_j - waited_j) / J_PER_WH:.1f}, service {served_j / J_PER_WH:.1f} "

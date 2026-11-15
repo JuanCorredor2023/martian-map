@@ -62,6 +62,10 @@ Result of a solver.
     runtime_s : time the solver took
     duration_s : time at which the route ends, waits and service included
                  (None if problem.time is missing)
+    bound : best proven upper bound on the prize, for solvers that give one (CP-SAT);
+            None if the solver gives none
+    optimal : True if the solver proved the route optimal (exact solvers always do;
+              None if unknown, as for the heuristic OR-Tools routing solver)
 """
 @dataclass
 class Solution:
@@ -71,6 +75,8 @@ class Solution:
     solver: str
     runtime_s: float
     duration_s: float | None = None
+    bound: float | None = None
+    optimal: bool | None = None
 
 
 """
