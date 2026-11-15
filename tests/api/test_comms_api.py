@@ -92,3 +92,22 @@ def test_coverage_layer():
     assert client.get("/layers/comms").status_code == 200          # default habitat
     assert client.get("/layers/comms", params={"x": CENTRE[0]}).status_code == 422
     assert client.get("/layers/comms.png", params={"x": 0, "y": 0}).status_code == 422
+
+
+def test_without_gdal_only_e11_answers_503(monkeypatch):
+    monkeypatch.setattr(main.e11, "AVAILABLE", False)
+    assert check(route={"coordinates": ROUTE[:5]}, habitat=CENTRE).status_code == 503
+    assert client.get("/layers/comms").status_code == 503
+    assert client.get("/layers/comms.png").status_code == 503
+    assert client.get("/health").status_code == 200
+
+
+def test_api_starts_when_gdal_is_missing():
+    """Fresh interpreter where `import osgeo` fails: api.main must still import."""
+    import subprocess
+    code = ("import sys; sys.modules['osgeo'] = None; sys.path.insert(0, r'%s'); "
+            "import api.main as m; assert not m.e11.AVAILABLE; "
+            "assert any(r.path == '/plan' for r in m.app.routes); print('ok')" % REPO)
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                         cwd=REPO, timeout=120)
+    assert out.stdout.strip().endswith("ok"), out.stderr[-2000:]

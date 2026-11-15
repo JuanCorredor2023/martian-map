@@ -23,10 +23,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from gis import comms  # noqa: E402
+try:                                       # GDAL is not in api/requirements.txt (conda)
+    from gis import comms  # noqa: E402
+    AVAILABLE, MISSING = True, None
+except ImportError as err:                 # the rest of the API must still start
+    comms, AVAILABLE, MISSING = None, False, str(err)
 
 from .plan import feature, feature_collection  # noqa: E402
 
+UNAVAILABLE = "E11 radio needs GDAL's Python bindings (conda install -c conda-forge gdal)"
+ANTENNA_H, ASTRONAUT_H = 3.0, 1.7          # m; same defaults as src/gis/comms.py
 COVERAGE_RGBA = (42, 120, 214, 110)        # visible cells, translucent blue
 
 
@@ -43,8 +49,8 @@ class CommsRequest(BaseModel):
     habitat: Optional[Tuple[float, float]] = None   # null: the plan's habitat
     gap_m: float = Field(default=20.0, ge=0, le=1000)
     max_pair_distance_m: float = Field(default=100.0, gt=0)
-    antenna_height_m: float = Field(default=comms.ANTENNA_H, ge=0, le=100)
-    astronaut_height_m: float = Field(default=comms.ASTRONAUT_H, ge=0, le=10)
+    antenna_height_m: float = Field(default=ANTENNA_H, ge=0, le=100)
+    astronaut_height_m: float = Field(default=ASTRONAUT_H, ge=0, le=10)
     # Accepted so the plan request can be reused; they do not change the radio.
     human_cost: bool = True
     max_cell_slope_deg: Optional[float] = None
@@ -131,3 +137,10 @@ def coverage_png(base_dir, x, y):
     buf = io.BytesIO()
     Image.fromarray(rgba, mode="RGBA").save(buf, format="PNG")
     return buf.getvalue()
+
+
+def coverage_info(base_dir, habitat, source):
+    return {"habitat": list(habitat), "habitat_source": source,
+            "coverage": round(comms.coverage(habitat, base_dir), 4),
+            "antenna_height_m": ANTENNA_H, "astronaut_height_m": ASTRONAUT_H,
+            "colour_rgba": list(COVERAGE_RGBA)}

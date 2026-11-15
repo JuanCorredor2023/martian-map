@@ -433,6 +433,7 @@ def comms_check(req: e11.CommsRequest):
     """E11 radio along a route (the given one, or the last plan's): stretches with no
     direct radio to the habitat, and the pair (relay) with radio_ok / pair_state per
     route vertex."""
+    _e11_ready()
     grid = _read_json(BASE / "grid.json")
     crs_wkt = (BASE / "crs.wkt").read_text(encoding="utf-8").strip()
     try:
@@ -443,7 +444,14 @@ def comms_check(req: e11.CommsRequest):
         raise HTTPException(status_code=422, detail=str(err))
 
 
+def _e11_ready():
+    """E11 needs GDAL (conda); without it only these routes fail, with 503."""
+    if not e11.AVAILABLE:
+        raise HTTPException(status_code=503, detail=f"{e11.UNAVAILABLE}: {e11.MISSING}")
+
+
 def _comms_habitat(x, y):
+    _e11_ready()
     if (x is None) != (y is None):
         raise HTTPException(status_code=422, detail="give both x and y, or neither")
     if x is not None:
@@ -465,11 +473,7 @@ def comms_png(x: float = Query(None), y: float = Query(None)):
 @app.get("/layers/comms")
 def comms_info(x: float = Query(None), y: float = Query(None)):
     habitat, source = _comms_habitat(x, y)
-    return {"habitat": list(habitat), "habitat_source": source,
-            "coverage": round(e11.comms.coverage(habitat, str(BASE)), 4),
-            "antenna_height_m": e11.comms.ANTENNA_H,
-            "astronaut_height_m": e11.comms.ASTRONAUT_H,
-            "colour_rgba": list(e11.COVERAGE_RGBA)}
+    return e11.coverage_info(str(BASE), habitat, source)
 
 
 # Static files go last so they do not shadow the API routes.
