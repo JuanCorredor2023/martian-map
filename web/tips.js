@@ -125,6 +125,8 @@ const CSS = `
   border: 1px solid var(--accent, #ff7a45); border-radius: 10px; padding: 12px 14px 10px;
   box-shadow: 0 8px 28px rgba(0,0,0,.45); font-size: 13px; line-height: 1.4; }
 .tipkit[hidden] { display: none; }
+.tipkit:focus { outline: none; }
+.tipkit:focus-visible { outline: 2px solid var(--accent, #ff7a45); outline-offset: 2px; }
 .tipkit h3 { margin: 0 22px 4px 0; font-size: 13.5px; color: var(--accent, #ff7a45); }
 .tipkit p { margin: 0 0 10px; }
 .tipkit .tip-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -207,6 +209,7 @@ export function start({ win = window, storage = window.localStorage } = {}) {
   box.setAttribute("aria-modal", "false");
   box.setAttribute("aria-labelledby", "tipkit-title");
   box.setAttribute("aria-describedby", "tipkit-text");
+  box.tabIndex = -1;        // a click on the tip's text puts the focus in it, so Esc closes it
   box.innerHTML = `<button class="tip-x" type="button" aria-label="Close tip" title="Close (Esc)">×</button>
     <h3 id="tipkit-title"></h3><p id="tipkit-text"></p>
     <div class="tip-row"><span class="tip-count"></span><button class="tip-ok" type="button">Got it</button></div>`;
