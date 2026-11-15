@@ -3,9 +3,11 @@ leave for the E5 tours.
 
 Run from the repo root (inputs as in the E5 note; REMS release rems-v1 in data/rems for
 the sunrise/sunset check, skipped if missing):
-    python src/orienteering/paper_departure.py
+    python src/orienteering/paper_departure.py [--derive-only]
 
 Writes data/p6/departure_summary.json and paper/figures/p6_fig1_departure.png.
+--derive-only recomputes the derived block (shadow_shortening_min) in the existing
+departure_summary.json, without planning or scoring again.
 """
 import json
 import sys
@@ -41,7 +43,32 @@ COLOURS = {"nominal": "#2a78d6", "max_120_min": "#eb6834"}   # dataviz slots 1-2
 LABELS = {"nominal": "Nominal tour (181 min)", "max_120_min": "120 min tour"}
 
 
+def shadow_shortening(tours):
+    """Minutes the terrain's shadows cut from each end of the lit window (lit window with the
+    terrain against the one with a smooth horizon), per tour, and their range over the tours.
+    The team's results table reads shadow_shortening_min.range."""
+    out, cuts = {}, []
+    for name, t in tours.items():
+        lit, flat = t["lit_window_ltst_h"], t["lit_window_no_terrain_ltst_h"]
+        if not lit or not flat:
+            continue
+        start, end = round((lit[0] - flat[0]) * 60), round((flat[1] - lit[1]) * 60)
+        out[name] = {"start": start, "end": end}
+        cuts += [start, end]
+    if cuts:
+        out["min"], out["max"] = min(cuts), max(cuts)
+        out["range"] = f"{min(cuts)}–{max(cuts)}"
+    return out
+
+
 def main():
+    if "--derive-only" in sys.argv[1:]:
+        path = OUT / "departure_summary.json"
+        s = json.loads(path.read_text(encoding="utf-8"))
+        s["shadow_shortening_min"] = shadow_shortening(s["tours"])
+        path.write_text(json.dumps(s, indent=1), encoding="utf-8")
+        print(s["shadow_shortening_min"])
+        return
     OUT.mkdir(parents=True, exist_ok=True)
     FIG.mkdir(parents=True, exist_ok=True)
     graph, _ = load_graph()
@@ -89,6 +116,7 @@ def main():
         ls = float(dep.sun_position(dep.utc_of_true_solar_time(sol, 12.0, lon), lat, lon)["ls"])
         season.append({"sol": sol, "ls": round(ls, 1), "best_ltst_h": best["start_ltst_h"],
                        "best_min_sun_elevation_deg": best["min_sun_elevation_deg"], "lit_window_ltst_h": window})
+    s["shadow_shortening_min"] = shadow_shortening(s["tours"])
     s["season_120_min"] = season
     widths = [w["lit_window_ltst_h"][1] - w["lit_window_ltst_h"][0] for w in season if w["lit_window_ltst_h"]]
     s["season_window_width_h_min_max"] = [round(min(widths), 2), round(max(widths), 2)]
