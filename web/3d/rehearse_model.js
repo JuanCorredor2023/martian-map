@@ -440,7 +440,21 @@ export function energyReadout(values, usable) {
 // [label, plan, walked] rows of guide_core.adaptiveRows as the card's [label, text].
 // A plan of "—" (nothing planned to compare with) is left out of the text.
 export function adaptiveCardRows(rows) {
-  return (rows || []).map(([label, plan, walked]) => [label, plan === '—' ? walked : `${walked} (plan ${plan})`]);
+  return (rows || []).map(([label, plan, walked]) =>
+    [label, plan === '—' ? walked : plan.includes('(') ? `${walked} · plan ${plan}` : `${walked} (plan ${plan})`]);
+}
+
+// What the RETURN NOW banner does after an answer of POST /walkback/update (X2, #129),
+// with the tablet's rules: a solar storm owns the banner; on the way home there is
+// nothing to add; it shows once and clears when the way home fits again.
+//   returnNow  the answer's return_now;  storm  a storm alert is on;
+//   home       the walked route is the way home;  showing  the banner is up now.
+// Returns 'show', 'clear' or 'keep'.
+export function kAlarmAction({returnNow, storm, home, showing}) {
+  if (storm) return 'keep';
+  if (returnNow && !home && !showing) return 'show';
+  if (showing && (home || !returnNow)) return 'clear';
+  return 'keep';
 }
 
 // First line of the player: time, leg and distance.

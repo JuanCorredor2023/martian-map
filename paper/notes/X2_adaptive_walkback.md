@@ -1,6 +1,6 @@
 # X2 · Adaptive (Bayesian) walkback
 
-Owner: JB (`@JavierBonilla2004`) · Issues: #101, part of #45 (P6); follow-up experiment in #120 (C1) · PRs: #113 (backend, simulation, note), #116 (guide), #118 (3D rehearsal bias) · Status: done · Last update: 2026-11-15
+Owner: JB (`@JavierBonilla2004`) · Issues: #101, part of #45 (P6); follow-up experiment in #120 (C1) · PRs: #113 (backend, simulation, note), #116 (guide), #118 (3D rehearsal bias), #160 (3D meter, alert and card rows) · Status: done · Last update: 2026-11-15
 
 ## Question
 The walkback reserve (E4) trusts a fixed metabolic model (Santee 2001, E3). Measured metabolic rates in prototype suits reached up to twice Apollo's, and in Apollo 17 the return distance was recomputed from the real consumption during the EVA. Can the planner learn during the walk how much this astronaut really uses, and re-check the way home with that? And is that safer than the fixed reserve?
@@ -79,7 +79,7 @@ Source: `src/fisica/adaptive_sim.py` → `data/adaptive/summary.json`, figure [x
   - four rows in "plan against the walk": k with its IC90, the real energy, and where "return now" fires at k_p90 and at k = 1.
 
   The alert only shows with a tight budget (about 1.25 × the plan's energy), because the box never uses up 900 Wh.
-- **3D rehearsal (#118).** `buildRehearsal(route, points, {kTrue})` adds `used_real_wh` to each state and exposes `bias.segments` (predicted vs observed per 30 m) for the same endpoint. Without the option the rehearsal is unchanged (`?check=rehearse` identical to main). The k meter and alert in the 3D view are part of bringing the 2D guide to 3D (Juan).
+- **3D rehearsal (#118).** `buildRehearsal(route, points, {kTrue})` adds `used_real_wh` to each state and exposes `bias.segments` (predicted vs observed per 30 m) for the same endpoint. Without the option the rehearsal is unchanged (`?check=rehearse` identical to main). **#160 adds the k meter ("Spare energy at your pace"), the RETURN NOW alert, the "Use ×k" demo button and the 4 card rows to the 3D rehearsal.** They use the same `guide_core` functions as the tablet, including its simulated use per 30 m (`adaptiveStep`), so both views say the same; `model.bias` from #118 stays available but is not used, so the noise is drawn once. The rehearsal asks the server only while playing, and not when the checks turn it off, so `?check=rehearse` is unchanged.
 - **E4 (Aaron):** k is a uniform scale on the energy field. For any R(v) it is k × R(v) with the same paths.
 
 ## Reproduce

@@ -34,7 +34,7 @@ import { createAstronaut, disposeAstronaut, poseAstronaut } from './astronaut.js
 import * as M from './camera_math.js';
 import { hideCard, showCard, stationCard } from './card.js';
 import { TYPE_COLORS, mainRoute } from './plan_model.js';
-import { EYE_HEIGHT, adaptiveCardRows, buildRehearsal, clock, energyReadout, eyeAltitude, progressText } from './rehearse_model.js';
+import { EYE_HEIGHT, adaptiveCardRows, buildRehearsal, clock, energyReadout, eyeAltitude, kAlarmAction, progressText } from './rehearse_model.js';
 import * as G from '../guide_core.js';
 
 const DEG = Math.PI / 180;
@@ -639,6 +639,7 @@ export class Rehearsal {
     this.adaptive = G.createAdaptive({kTrue: this.kTrue});
     if (this.guide) G.adaptiveNewRoute(this.adaptive, this.guide);
     this._kAlarm = false;
+    this._kState = null;
     for (const id of ['rh-k-label', 'rh-k-track', 'rh-v-k']) el(id).hidden = true;
   }
 
@@ -656,16 +657,22 @@ export class Rehearsal {
       el('rh-k-track').setAttribute('aria-valuenow', String(Math.round(frac * 100)));
       el('rh-k-track').setAttribute('aria-valuetext', `${km.word}, ${km.text}`);
       el('rh-v-k').textContent = `${km.word} · ${km.text}`;
-      // The RETURN NOW banner: a storm keeps its own; on the way home there is nothing to add.
-      const home = this.guide && this.guide.kind === 'home', alert = el('rh-alert');
-      if (res.return_now && !this._storm && !home && !this._kAlarm) {
+      // Crossing into LOW is said once, as on the tablet (RETURN NOW has its own line).
+      if (km.state === 'low' && this._kState === 'ok') {
+        this.voice.say('Your energy use is above the plan. Plan to turn back.', {priority: 'alert'});
+      }
+      this._kState = km.state;
+      // The RETURN NOW banner, with the tablet's rules (kAlarmAction in rehearse_model.js).
+      const home = Boolean(this.guide && this.guide.kind === 'home'), alert = el('rh-alert');
+      const action = kAlarmAction({returnNow: res.return_now, storm: this._storm, home, showing: this._kAlarm});
+      if (action === 'show') {
         this._kAlarm = true;
         const msg = G.kAlarmMessage(res);
         alert.innerHTML = msg.html;
         alert.hidden = false;
         this.voice.say(msg.speech, {priority: 'alert'});
         if (this.walkLog) G.logEvent(this.walkLog, 'k_alarm', 'return now: way home at k p90 does not fit', g, i);
-      } else if (this._kAlarm && !this._storm && (home || !res.return_now)) {
+      } else if (action === 'clear') {
         this._kAlarm = false;
         alert.hidden = true;
       }
