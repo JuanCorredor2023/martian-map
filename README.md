@@ -1,6 +1,6 @@
 # Mars EVA Planner · Gale boxwork
 
-**Plan a Mars walk you can always come back from.** A hyper-local planner and guide for an astronaut on foot in a 2 × 2 km box of the boxwork ridges on Mount Sharp, Gale crater, where Curiosity is driving now. It works from a 1 m terrain model and 25 cm orbital photos, and it checks the plan against the route Curiosity actually drove.
+**Plan a Mars walk you can come back from, checked at every step.** A hyper-local planner and guide for an astronaut on foot in a 2 × 2 km box of the boxwork ridges on Mount Sharp, Gale crater, where Curiosity is driving now. It works from a 1 m terrain model and 25 cm orbital photos, and it checks the plan against the route Curiosity actually drove.
 
 NASA Space Apps Challenge 2026 · *Interplanetary Survival Guide: Martian Map*
 
