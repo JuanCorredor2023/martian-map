@@ -117,8 +117,9 @@
            border-radius: 8px; padding: 10px 12px; margin: 8px 0; }
 
   /* ---- legends inside the sidebar ---- */
+  /* slope: the same colours and stops (0, 15, 30, 45 deg) as SLOPE_RAMP in src/gis/tiles.py */
   .legend { height: 10px; border-radius: 3px; margin: 6px 0 2px;
-            background: linear-gradient(90deg, #2e9b3e 0%, #f2d43a 33%, #f28c28 66%, #d7301f 100%); }
+            background: linear-gradient(90deg, #1a9850 0%, #fee08b 33.3%, #f46d43 66.7%, #a50026 100%); }
   .legend.cost { background: linear-gradient(90deg, #000004, #3b0f70, #8c2981, #de4968, #fe9f6d, #fcfdbf); }
   .rock-key { display: flex; align-items: center; gap: 6px; margin: 6px 0 4px; }
   .rock-key i { flex: none; border-radius: 50%; background: rgb(232, 236, 255); border: 1px solid #0a0c10; }
@@ -1929,7 +1930,7 @@ function renderLegend() {
   if (astronaut && (currentTab === "walk" || sepPath)) dot("#ff40c8", "Astronaut");
   if (blockLimit() !== null) it.push(`<div class="lg"><i class="hatch"></i>Too steep to cross (over ${blockLimit()}°)</div>`);
   if (ui("show-radio").checked) fill("rgba(42,120,214,0.75)", "Habitat antenna in sight");
-  if (ui("show-slope").checked) fill("linear-gradient(90deg,#2e9b3e,#f2d43a,#f28c28,#d7301f)", currentTab === "walk" ? "Slope (faded here)" : "Slope, 0° to 45°");
+  if (ui("show-slope").checked) fill("linear-gradient(90deg,#1a9850 0%,#fee08b 33.3%,#f46d43 66.7%,#a50026 100%)", currentTab === "walk" ? "Slope (faded here)" : "Slope, 0° to 45°");
   if (ui("show-sand").checked) fill("rgb(250,246,235)", "Sand detected");
   if (ui("show-rocks").checked) it.push(`<div class="lg"><i class="rock"></i>Boulders (bigger dot, more cover)</div>`);
   if (ui("show-photos").checked && photoModel) {
