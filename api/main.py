@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 
 from fastapi import FastAPI, HTTPException, Query, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import guide
@@ -394,6 +394,22 @@ def walkback_update(req: adaptive.UpdateRequest):
     out["warnings"] += warnings
     return out
 
+class PlanError(Exception):
+    """A /plan request with no plan: 422 with the same text `detail` as before, plus
+    `diagnosis` (E5's structured reason, #119 A4) when the planner gives one."""
+    def __init__(self, detail, diagnosis=None):
+        super().__init__(detail)
+        self.detail, self.diagnosis = detail, diagnosis
+
+
+@app.exception_handler(PlanError)
+def _plan_error(request, err):
+    body = {"detail": err.detail}
+    if err.diagnosis is not None:
+        body["diagnosis"] = err.diagnosis
+    return JSONResponse(status_code=422, content=body)
+
+
 def _plan_tour(req):
     """E5 station tour on E4's graph (when E5 is in main)."""
     service_w = (req.service_energy_wh_per_min * 60.0 if req.service_energy_wh_per_min is not None
@@ -401,9 +417,9 @@ def _plan_tour(req):
     try:
         fc, info = tour.plan_tour(req, BASE, service_w)
     except ValueError as err:
-        raise HTTPException(status_code=422, detail=str(err))
+        raise PlanError(str(err), getattr(err, "diagnosis", None))
     except tour.NoTour as err:
-        raise HTTPException(status_code=422, detail=f"no feasible tour: {err}")
+        raise PlanError(f"no feasible tour: {err}", err.diagnosis)
     p = fc["features"][0]["properties"]
     order = {sid: i + 1 for i, sid in enumerate(info["visit_order"])}
     warnings = [f"E5 tour: {len(order)} of {info['stations_considered']} stations, prize "
@@ -484,7 +500,10 @@ def plan(req: PlanRequest):
     try:
         req.check_inside(_read_json(BASE / "grid.json")["bbox"])
     except ValueError as err:
-        raise HTTPException(status_code=422, detail=str(err))
+        msg = str(err)
+        field = "start" if msg.startswith("start") else next(
+            (f"stations[{i}]" for i, s in enumerate(req.stations) if msg.startswith(f"station {s.id} ")), "stations")
+        raise PlanError(msg, {"code": "invalid_input", "exact": True, "field": field, "message": msg})
 
     if req.stations or req.goal is not None:
         return _plan_live(req)

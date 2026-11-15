@@ -33,7 +33,11 @@ AVAILABLE = AVAILABLE or DELEGATE
 
 
 class NoTour(Exception):
-    pass
+    """Nothing fits the limits. .diagnosis is E5's structured reason (#119 A4:
+    code, exact, message, and the limiting station and resource when known), or None."""
+    def __init__(self, message, diagnosis=None):
+        super().__init__(message)
+        self.diagnosis = diagnosis
 
 
 def plan_tour(req, base_dir, service_power_w):
@@ -52,13 +56,14 @@ def _delegate(req, g):
     try:
         fc, info = _e5_plan_tour(req, g)
     except _E4NoRoute as err:
-        raise NoTour(str(err))
+        raise NoTour(str(err), getattr(err, "diagnosis", None))
     route = next(f for f in fc["features"] if f["properties"]["kind"] == "route")
     p = route["properties"]
     if not p.get("feasible", True):
         # E5 re-plans on a walkback failure but, if every retry fails, returns the last
         # (unsafe) tour. Never hand an unsafe tour to the HUD or the guide.
-        raise NoTour(_unsafe_message(p.get("first_violation"), info.get("walkback_retries", 0)))
+        raise NoTour(_unsafe_message(p.get("first_violation"), info.get("walkback_retries", 0)),
+                     p.get("diagnosis") or info.get("diagnosis"))
     # E5 lists the habitat at both ends of order/stop_index; the HUD and the guide
     # expect only the stations, in visiting order, with their positions on the line.
     order, idx = list(p.get("order", [])), list(p.get("stop_index", []))

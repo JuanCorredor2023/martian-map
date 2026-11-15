@@ -1727,7 +1727,11 @@ async function requestPlan() {
   try {
     const res = await fetch("/plan", {method: "POST",
       headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
-    if (!res.ok) throw new Error((await res.json()).detail);
+    if (!res.ok) {
+      const out = await res.json();
+      throw Object.assign(new Error(typeof out.detail === "string" ? out.detail : JSON.stringify(out.detail)),
+                          {diagnosis: out.diagnosis || null});
+    }
     planFC = await res.json();
     clearPlanStale();
     if (sepPath) dismissStorm();                  // the storm path belonged to the previous walk
@@ -1755,15 +1759,15 @@ async function requestPlan() {
       renderPlanSummary();
       planStale = false; markPlanStale();
       ui("plan-info").insertAdjacentHTML("afterbegin",
-        `<div class="alert" style="margin-top:12px"><b>Not updated.</b> ${esc(planProblem(err.message))} The plan below is the previous one.</div>`);
-      announce(`Plan not updated. ${planProblem(err.message)}`);
+        `<div class="alert" style="margin-top:12px"><b>Not updated.</b> ${esc(planProblem(err.message, err.diagnosis))} The plan below is the previous one.</div>`);
+      announce(`Plan not updated. ${planProblem(err.message, err.diagnosis)}`);
     } else {
       planFC = null;
       ui("plan-badge").textContent = "";
       clearPlanStale();
       ui("fit-plan").hidden = true;
-      ui("plan-info").innerHTML = `<div class="alert"><b>No plan.</b> ${esc(planProblem(err.message))}</div>`;
-      announce(`No plan. ${planProblem(err.message)}`);
+      ui("plan-info").innerHTML = `<div class="alert"><b>No plan.</b> ${esc(planProblem(err.message, err.diagnosis))}</div>`;
+      announce(`No plan. ${planProblem(err.message, err.diagnosis)}`);
       ui("plan-radio").textContent = "";
       setupProfile();
     }
@@ -1779,14 +1783,48 @@ async function requestPlan() {
 
 const esc = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 
-// What went wrong, in words that say what to change.
-function planProblem(detail) {
+// What went wrong, in words that say what to change. With E5's diagnosis (#119) the reason
+// is the planner's own: which limit, by how much, and what would let the closest station fit.
+function planProblem(detail, diagnosis) {
+  const fromDiagnosis = diagnosisText(diagnosis);
+  if (fromDiagnosis) return fromDiagnosis;
   const d = typeof detail === "string" ? detail : JSON.stringify(detail);
   if (/no feasible tour|no station fits|no feasible route/i.test(d)) {
     return "Nothing fits in these limits. Allow a longer walk or more energy, or move the habitat closer to the stations.";
   }
   if (/fails the walkback/i.test(d)) return "Every route that fits would leave too little energy to get back. Raise the energy budget or lower the reserve.";
   return d;
+}
+
+// Plain words for E5's structured reason (code, exact, closest station, needs, available,
+// actions). The advice is for the closest station only: it never promises a bigger tour.
+function diagnosisText(g) {
+  if (!g || !g.code) return "";
+  const RES = {energy: "energy", o2: "O2", duration: "time"};
+  const UNIT = {energy: ["energy_wh", "Wh"], o2: ["o2_l", "L"], duration: ["duration_min", "min"]};
+  const num = v => (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(1));
+  if (g.code === "insufficient_resources" && g.closest) {
+    const c = g.closest;
+    const gaps = (c.short || []).filter(r => UNIT[r]).map(r => {
+      const [k, u] = UNIT[r];
+      return `${RES[r]}: needs ${num(c.needs[k])} ${u}, ${num(c.available[k])} ${u} available`;
+    });
+    const keep = 1 - ((g.limits || {}).margin || 0), up = v => Math.ceil(v * 10) / 10;
+    const steps = (c.short || []).map(r =>
+      r === "energy" ? `an energy budget of at least ${up(c.needs.energy_wh / keep)} Wh with the same reserve`
+      : r === "o2" ? `an oxygen budget of at least ${up(c.needs.o2_l)} L`
+      : r === "duration" ? `a longest walk of at least ${Math.ceil(c.needs.duration_min)} min` : "").filter(Boolean);
+    const fix = steps.length
+      ? ` To fit ${c.id} alone you need ${steps.join(" and ")}; that is enough for ${c.id} only, not a promise of more stations.` : "";
+    return `Not even the closest station, ${c.id}, fits on its own (${gaps.join("; ")}).` + fix +
+      (g.exact ? "" : " The time is an estimate: the walk follows the least-energy path.");
+  }
+  if (g.code === "unreachable") return "No station can be reached on foot from the habitat and back. Move the habitat or the stations, or allow steeper cells.";
+  if (g.code === "search_incomplete") return "The search ran out of time before finding a tour. That does not prove there is none: try fewer stations.";
+  if (g.code === "walkback") return `Every route that fits would leave too little energy to get back (${num(g.deficit_wh || 0)} Wh short).` +
+    ((g.actions || []).length ? ` ${g.actions[0][0].toUpperCase()}${g.actions[0].slice(1)}.` : "");
+  if (g.code === "invalid_input") return g.message.charAt(0).toUpperCase() + g.message.slice(1) + ".";
+  return g.message || "";
 }
 
 // The plan in plain numbers: how many stations, how much of each limit it uses, the
