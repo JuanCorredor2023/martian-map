@@ -47,7 +47,7 @@ or press "Reload plan". With no saved plan the terrain still works.
   route, a failed request, a point the planner moved, a sample route that is not a plan, a
   message the page does not know). Which planner made it and the project codes the API
   writes stay out of the panel (`planMessages` in `plan_model.js`; the source is in
-  `viz3d.plan`). "Reload plan"; "Rehearse the route". "Plan with default settings" appears
+  `viz3d.plan`). "Reload plan"; "Rehearse". "Plan with default settings" appears
   only when there is no plan, and makes the server plan and save (it replaces the last plan
   of the 2D planner).
 - **Pins**: click one for its card; "Fly here" views it from 60 m. Stations a tour did not
@@ -59,37 +59,41 @@ or press "Reload plan". With no saved plan the terrain still works.
 - **Guide** (the arm tablet's logic, shared in `web/guide_core.js`): the next maneuver as
   the tablet shows it (the arrow, the distance big, "350 m" or "Now", the instruction under
   it), voice on/off, the tablet's meters with its labels ("Spare energy" after
-  walking home, "Time home (limit 30 min)", "Radio", "EVA time left" against the plan's
+  walking home, "Home in · limit 30", "Radio", "EVA time left" against the plan's
   maximum duration and, once the walk has learned it, "Spare energy at your pace" with this
-  astronaut's own energy use, X2), each value with the tablet's state word before it (OK, LOW
-  or TURN BACK; OK, TURN SOON or OVER 30 MIN for the time home; OK, LOW or RETURN NOW at your
-  pace), bold in its state's colour, and its bar in that colour; the radio row says
+  astronaut's own energy use, X2), each value with the state word before it (OK, LOW or TURN
+  BACK on every meter), bold in its state's colour, and its bar in that colour; the time
+  home reads "home in 12 min", as on the tablet; the radio row says
   "checking…" until the server answers (no jump), and goes if there is no radio data; a
   RETURN NOW alert when the way home no longer fits at that use (screen readers
   announce it, as the storm alert),
-  station tasks with "Done, continue", "Return home", "Detour" (demo: 25 m off the route,
+  station tasks with "Done, continue", "Return home", "Off route" (demo: 25 m off the route,
   then rejoin), "Solar storm" (demo: automatic way home with the dose) and "Use ×k" (demo:
   the simulated energy use against the model, 1.0 / 1.2 / 1.5 / 0.8). A way home is
   drawn red and a rejoin orange; it replaces the walked route until "Exit". The solar storm
-  also shows beyond the player: a red band across the top ("SOLAR STORM · go home now") and
-  a red vignette over the view, page elements (nothing is added to the 3D scene); both go at
-  the habitat, on "Replay" and on "Exit".
+  also shows beyond the player: a red band across the top with the tablet's banner ("SOLAR
+  STORM · return home now") and a red vignette over the view, page elements (nothing is
+  added to the 3D scene); both go at the habitat, on "Replay" and on "Exit".
+- **Words and numbers**: the 3D takes its names, state words and number formats from the
+  team's glossary, `web/terms.js` (#166), as the HUD, the tablet and the wrist card do: one
+  name per idea ("Return home", "Off route", "Rehearse", "Planner"), whole minutes and Wh
+  everywhere, m:ss only on the player's clock line.
 - **Rehearsal**: the side panel is hidden while rehearsing, so the scene shows; "Panel" in the
   player opens it (and closes it) without leaving. The player has the maneuver on top, with
   "More", "Panel" and "Exit" beside it; one row of main buttons: play / pause (space bar),
-  "Return home", "Detour", "Solar storm"; under "More": "Chase view" (the astronaut seen from
+  "Return home", "Off route", "Solar storm"; under "More": "Chase view" (the astronaut seen from
   behind), "Recentre", the speed (×1 to ×180), voice, "Use ×k" and the energy numbers. Then
   the scrubber, the clock line, the panel's Sun line (local solar time, the Sun's height and
   light, "Following the EVA clock: …") and the 2D planner's energy bar. The clock line is the
   EVA clock, "EVA 3:02 of 111:27 · outbound · 132 of 1392 m"; after "Return home" or the
-  storm it goes on and the way home is a stretch of it, "EVA 102:04 · way home 2:02 of 2:51 ·
+  storm it goes on and the way home is a stretch of it, "EVA 102:04 · return home 2:02 of 2:51 ·
   120 of 160 m" (after a rejoin, the EVA's new end), while the scrubber covers the new route.
   Drag to look around; double-click or "Recentre" looks forward.
   Esc closes what is on top (the card, or a message) and pauses; it never leaves the rehearsal,
   which would lose the end summary: only "Exit" does.
   It pauses at every stop with the station's card; on pause it draws the walkback lines from
-  there and says the way home from there ("Way home from here: ✔ 2.9 min (limit 30) · ✔ 14.4
-  Wh, 868.6 Wh spare after it", red line: 30 min from home, cyan: energy-safe area). At the
+  there and says the way home from there ("Return home from here: ✔ 3 min (limit 30) · ✔ 14
+  Wh, 869 Wh spare after it", red line: 30 min from home, cyan: energy-safe area). At the
   habitat it stays in the rehearsal: the storm alert ends, the player shrinks (the maneuver
   says "Home"), and the card "Plan against the walk" has "Replay" (from the start, as a new
   walk with its own summary) and "Exit"; Play (now "↺ Replay") and the space bar replay too,

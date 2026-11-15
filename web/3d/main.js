@@ -22,6 +22,8 @@
 //                   in the About section writes it.
 //   photo=<id>      open a rover photo (P3, photos.js) in the photo view, from where the
 //                   Navcam took it; the photo stops are shown after it
+// Names and number formats of the panel come from the shared glossary (web/terms.js, #166).
+import '../terms.js';
 import * as THREE from 'three';
 import { loadLastPlan, loadRubric, requestDefaultPlan } from './api.js';
 import { hideCard, showCard, stationCard } from './card.js';
@@ -37,6 +39,7 @@ import { Terrain, BUILD_HINT } from './terrain.js';
 import { formatView, parseView, viewLink } from './view_link.js';
 import { Walk } from './walk.js';
 
+const T = globalThis.TERMS;
 const ui = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const SKY = 0xd8b690;                       // dusty butterscotch sky (a look, not a model)
@@ -377,15 +380,15 @@ async function main() {
       got.source === 'last' ? 'Last plan from the planner'
       : got.source === 'default' ? "Default request: saved stations, the planner's default limits, start at the box centre"
       : got.fc ? 'Plan given to the page'
-      : got.missing ? 'No plan yet: plan an EVA in the 2D planner, then press Reload plan'
+      : got.missing ? 'No plan yet: plan an EVA in the planner, then press Reload plan'
       : 'No plan to show: the terrain works without it.';
     ui('plan-default-box').hidden = Boolean(got.fc);
     if (route) {
       const t = route.totals;
       facts.push(`${(t.length_m ?? route.lengthM).toFixed(0)} m`);
-      if (t.time_s !== null) facts.push(`${(t.time_s / 60).toFixed(0)} min`);
+      if (t.time_s !== null) facts.push(T.min(t.time_s));
       if (t.energy_wh !== null) {
-        facts.push(`${t.energy_wh.toFixed(0)} Wh${t.usable_wh !== null ? ` of ${t.usable_wh.toFixed(0)} usable` : ''}`);
+        facts.push(`${T.wh(t.energy_wh)}${t.usable_wh !== null ? ` of ${Math.round(t.usable_wh)} usable` : ''}`);
       }
     }
     ui('plan-facts').textContent = facts.join(' · ');

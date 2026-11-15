@@ -269,9 +269,11 @@
 <body>
 <canvas id="view"></canvas>
 <!-- Solar storm alert of the rehearsal (rehearse.js, #124): a red vignette over the view and
-     a red band across the top. For screen readers the alert is the player's #rh-alert. -->
+     a red band across the top, in the words of the tablet's banner (STORM_PENDING of
+     web/guide_core.js: the glossary's "Solar storm" and "Return home"). For screen readers
+     the alert is the player's #rh-alert. -->
 <div id="rh-tint" aria-hidden="true" hidden></div>
-<div id="rh-storm-band" aria-hidden="true" hidden>SOLAR STORM · go home now</div>
+<div id="rh-storm-band" aria-hidden="true" hidden>SOLAR STORM · return home now</div>
 
 <div id="info" class="panel">
   <h1>Mars EVA Planner <span>· 3D</span></h1>
@@ -281,15 +283,16 @@
   <!-- Only Plan is open when the page opens, at every screen size (#124): the other sections
        are one click on their title away, and the panel covers less of the map. -->
   <details id="plan-box" open>
-    <!-- The link to the 2D planner shares this line: no extra row in the closed panel. -->
-    <summary class="muted">Plan<a class="back" href="/">← 2D planner</a></summary>
+    <!-- The link to the 2D planner shares this line: no extra row in the closed panel. Its
+         name is the glossary's (web/terms.js), as on the tablet and the wrist card. -->
+    <summary class="muted">Plan<a class="back" href="/">← Planner</a></summary>
     <div class="muted" id="plan-source">Waiting for the terrain…</div>
     <div id="plan-facts"></div>
     <div class="muted" id="plan-key"></div>
     <div id="plan-warnings"></div>
     <button id="plan-reload" disabled>Reload plan</button>
     <!-- Walk the route at eye height (rehearse.js). Disabled, with the reason, when there is no route. -->
-    <button id="rehearse" disabled>Rehearse the route</button>
+    <button id="rehearse" disabled>Rehearse</button>
     <div class="muted" id="rehearse-note">No route to rehearse yet.</div>
     <!-- Walk anywhere at eye height, with the keys (walk.js). Works without a plan too. -->
     <button id="walk" title="First person anywhere in the box: W A S D or arrows, mouse to look">Walk freely</button>
@@ -297,7 +300,7 @@
     <div id="plan-default-box" hidden>
       <button id="plan-default">Plan with default settings</button>
       <div class="muted" id="plan-default-note">Saved stations, default limits, start at the box centre.
-        The result becomes the last plan for the 2D planner and the guide screen.</div>
+        The result becomes the last plan for the planner and the tablet guide.</div>
     </div>
   </details>
   <!-- The Sun of Mars at the box centre for a sol and a local solar time (sun.js). -->
@@ -406,7 +409,7 @@
   <div id="rh-main" class="player-row">
     <button id="rh-play">▶ Play</button>
     <button id="rh-home" title="Fastest way home from here">🏠 Return home</button>
-    <button id="rh-detour" title="Demo: step 25 m off the route, then rejoin it">↪ Detour</button>
+    <button id="rh-detour" title="Demo: step 25 m off the route, then rejoin it">↪ Off route</button>
     <button id="rh-storm" title="Demo: solar storm alert, automatic way home with the dose">☢ Solar storm</button>
     <!-- Only at the habitat: the end summary card again, after closing it. -->
     <button id="rh-summary" title="The plan against the walk, again" hidden>Summary</button>
@@ -418,7 +421,7 @@
       <select id="rh-speed" aria-label="Playback speed">
         <option value="1">×1</option><option value="30">×30</option><option value="60" selected>×60</option>
         <option value="180">×180</option></select>
-      <button id="rh-voice" aria-pressed="true" title="Spoken maneuvers and arrivals, as in guide mode">🔊 Voice on</button>
+      <button id="rh-voice" aria-pressed="true" title="Spoken maneuvers and arrivals, as on the tablet">🔊 Voice on</button>
     </div>
     <div class="player-row rh-demo">
       <span class="muted">Demo:</span>
@@ -435,12 +438,13 @@
       <div id="rh-bar-used" class="seg-used"></div><div id="rh-bar-rv" class="seg-rv"></div><div id="rh-bar-free" class="seg-free"></div>
     </div>
     <div class="keyrow"><span><i class="seg-used"></i>used</span><span><i class="seg-rv"></i>needed to return</span>
-      <span><i class="seg-free"></i>free</span></div>
+      <span><i class="seg-free"></i>spare</span></div>
   </div>
-  <!-- The tablet's meters (web/guide.html): its labels, and its state word before each value. -->
+  <!-- The tablet's meters (web/guide.html): its labels, the glossary's names (web/terms.js),
+       and its state word before each value. -->
   <div id="rh-meters" hidden>
     <span title="Energy left after walking home from here">Spare energy</span><div class="track"><div id="rh-m-energy" class="fill"></div></div><span><b id="rh-w-energy" class="rh-word"></b> · <span id="rh-v-energy"></span></span>
-    <span title="Time to walk home from here; the emergency oxygen covers 30 min">Time home (limit 30 min)</span><div class="track"><div id="rh-m-back" class="fill"></div></div><span><b id="rh-w-back" class="rh-word"></b> · <span id="rh-v-back"></span></span>
+    <span title="Time to walk home from here; the emergency oxygen covers 30 min">Home in · limit 30</span><div class="track"><div id="rh-m-back" class="fill"></div></div><span><b id="rh-w-back" class="rh-word"></b> · <span id="rh-v-back"></span></span>
     <span id="rh-radio-label" title="Line of sight to the habitat antenna, or a relay through your partner">Radio</span><div class="track" id="rh-radio-track"><div id="rh-m-radio" class="fill"></div></div><span id="rh-v-radio"></span>
     <span id="rh-k-label" title="Spare energy if you keep using energy the way you have on this walk (90 % estimate of your factor k against the model)" hidden>Spare energy at your pace</span><div class="track" id="rh-k-track" role="meter" aria-label="Spare energy after returning, with this walk's learned energy use" aria-valuemin="0" aria-valuemax="100" hidden><div id="rh-m-k" class="fill"></div></div><span id="rh-k-value" hidden><b id="rh-w-k" class="rh-word"></b> · <span id="rh-v-k"></span></span>
     <span id="rh-eva-label">EVA time left</span><div class="track" id="rh-eva-track"><div id="rh-m-eva" class="fill"></div></div><span id="rh-eva-value"><b id="rh-w-eva" class="rh-word"></b> · <span id="rh-v-eva"></span></span>

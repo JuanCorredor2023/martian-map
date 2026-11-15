@@ -10,7 +10,7 @@
 //   - relief: forced to true scale. At eye height an exaggerated knoll would be a wall
 //     that is not there, and slopes are what the rehearsal is for.
 //   - player bar (#124, block 2): the next maneuver as the arm tablet shows it; one row of
-//     main buttons (play / pause, Return home, Detour, Solar storm); speed, "Chase view",
+//     main buttons (play / pause, Return home, Off route, Solar storm); speed, "Chase view",
 //     "Recentre", voice, the "Use xk" demo and the energy numbers under "More"; the
 //     scrubber, the clock line (the EVA clock, which goes on after a way home or a rejoin:
 //     the way home is a stretch of it), the panel's Sun line and the 2D planner's energy bar.
@@ -42,16 +42,22 @@
 //     your pace" (the tablet's name since #124), the RETURN NOW alert and 4 rows of the final card come from
 //     the same guide_core functions as the tablet. It asks the server only while playing,
 //     and not when walkbackOnPause is off (checks.js), so the checks are unchanged.
+//   - words and numbers: the names, state words and formats of the shared glossary
+//     (web/terms.js, #166), as on the HUD, the tablet and the wrist card: whole minutes and
+//     Wh everywhere; m:ss only on the clock line (progressText).
 // Nothing is rendered here: update(dt) says whether the view changed, and main.js draws.
+import '../terms.js';
 import * as THREE from 'three';
 import { requestWalkback, walkbackRequest } from './api.js';
 import { createAstronaut, disposeAstronaut, poseAstronaut } from './astronaut.js';
 import * as M from './camera_math.js';
 import { cardShown, hideCard, showCard, stationCard } from './card.js';
 import { TYPE_COLORS, mainRoute } from './plan_model.js';
-import { EYE_HEIGHT, adaptiveCardRows, buildRehearsal, clock, energyReadout, eyeAltitude, homeInText, kAlarmAction,
+import { EYE_HEIGHT, adaptiveCardRows, buildRehearsal, energyReadout, eyeAltitude, homeInText, kAlarmAction,
          maneuverDistance, progressText } from './rehearse_model.js';
 import * as G from '../guide_core.js';
+
+const T = globalThis.TERMS, N = T.NAMES;
 
 const DEG = Math.PI / 180;
 export const FOV = 60;             // degrees, vertical: wider than free flight, closer to what a walker sees
@@ -168,8 +174,8 @@ export class Rehearsal {
       !plan ? 'No route to rehearse: there is no plan.'
       : !m ? 'No route to rehearse: the plan has no route.'
       : m.assumedSpeed !== null
-        ? `Walk it at eye height. The plan has no times: ${clock(m.duration)} at an assumed ${m.assumedSpeed.toFixed(0)} m/s.`
-        : `Walk it at eye height: ${clock(m.duration)} of EVA` +
+        ? `Walk it at eye height. The plan has no times: ${T.min(m.duration)} at an assumed ${m.assumedSpeed.toFixed(0)} m/s.`
+        : `Walk it at eye height: ${T.min(m.duration)} of EVA` +
           (m.stops.length ? `, ${m.stops.length} stop${m.stops.length > 1 ? 's' : ''}.` : '.');
   }
 
@@ -276,7 +282,7 @@ export class Rehearsal {
     el('rh-panel').setAttribute('aria-expanded', 'false');
     this._watchPlayer(false);
     el('player').hidden = true;
-    el('rehearse').textContent = 'Rehearse the route';
+    el('rehearse').textContent = N.rehearse;
     camera.near = saved.near;
     this.relief.unlock(saved.relief);          // the ground first: the saved camera height belongs to it
     controls.enabled = true;
@@ -427,8 +433,8 @@ export class Rehearsal {
   _showStop(stop) {
     const {model} = this, s = stop.station;
     const base = s ? stationCard(s, this.rubric()) : {title: 'Stop', subtitle: '', rows: []};
-    const rows = [...base.rows, ['Arrival', `${clock(stop.arrive - this._evaStart)} into the EVA`]];
-    if (stop.waitS > 0) rows.push(['Standing here', `${clock(stop.waitS)} min`]);
+    const rows = [...base.rows, ['Arrival', `${T.min(stop.arrive - this._evaStart)} into the EVA`]];
+    if (stop.waitS > 0) rows.push(['Standing here', T.min(stop.waitS)]);
     // Guide: why the station matters and its tasks, as on the arm tablet.
     const g = s ? G.stationCard({id: s.id, type: s.type, service_time_min: s.serviceMin}, this.rubric()) : null;
     if (s && this.walkLog && this.guide && this.guide.kind === 'plan') G.logArrival(this.walkLog, s.id);
@@ -669,10 +675,9 @@ export class Rehearsal {
       if (this.walkLog) G.logStep(this.walkLog, g, i, [this.state.x, this.state.y]);
       this._adaptiveStep(g, i);
     }
-    // The meters as on the tablet: each bar coloured by its state, and the state word
-    // (OK / LOW / TURN BACK; OK / TURN SOON / OVER 30 MIN for the time home) beside the
-    // value, so that the meaning never rests on colour alone. The values keep their own
-    // elements, which ?check=guide reads.
+    // The meters as on the tablet: each bar coloured by its state, and the glossary's state
+    // word (OK / LOW / TURN BACK, on every meter) beside the value, so that the meaning never
+    // rests on colour alone. The values keep their own elements, which ?check=guide reads.
     const m = G.meters(g, i, this._limitS());
     const fill = (id, frac, state) => {
       const f = el(id);
@@ -683,7 +688,7 @@ export class Rehearsal {
     fill('rh-m-energy', m.energy.frac, m.energy.state); word('rh-w-energy', m.energy);
     el('rh-v-energy').textContent = m.energy.text;
     fill('rh-m-back', m.back.frac, m.back.state); word('rh-w-back', m.back);
-    el('rh-v-back').textContent = homeInText(m.back.s);              // never "home in -0.0 min"
+    el('rh-v-back').textContent = homeInText(m.back.s);              // the tablet's "home in 12 min"
     // The radio row keeps its place while the server is asked (it answers a moment after
     // entering, or after a way home), so the player does not jump when it answers; with no
     // radio data at all it goes, as on the tablet.
@@ -745,7 +750,7 @@ export class Rehearsal {
     const rows = G.summaryRows(s).map(([label, plan, walked]) => [label, `${walked} (plan ${plan})`]);
     if (s.skipped.length) rows.push(['Skipped', s.skipped.join(', ')]);
     rows.push(...adaptiveCardRows(G.adaptiveRows(this.adaptive)));
-    const events = s.events.map(e => `${e.t != null ? clock(e.t - this._evaStart) + ' · ' : ''}${e.text}`);
+    const events = s.events.map(e => `${e.t != null ? T.min(e.t - this._evaStart) + ' · ' : ''}${e.text}`);
     this._endCard = {title: 'Plan against the walk', subtitle: 'rehearsal', rows,
                      note: events.length ? events.join(' | ') : 'Walked as planned.', actions: this._endActions()};
     showCard(this._endCard);
@@ -774,14 +779,14 @@ export class Rehearsal {
       this._note(home.text);
       this.voice.say(home.speech);
       return home;
-    } catch (err) { this._note(`Return home: ${err.message}`); return null; }
+    } catch (err) { this._note(`${N.returnHome}: ${err.message}`); return null; }
   }
 
   async detour() {
     if (!this.active || !this.guide) return;
     this.pause(false);
     const i = this._vertex(), pt = G.detourPoint(this.guide, i);
-    this._note('Off route (25 m) — recalculating…');
+    this._note(`${N.offRoute} (25 m) — recalculating…`);
     this.voice.say('You are off route. Recalculating.', {priority: 'alert'});   // routine lines cannot cut it off
     const token = ++this._token;
     try {
@@ -803,7 +808,7 @@ export class Rehearsal {
     alert.hidden = false;
     alert.innerHTML = G.STORM_PENDING;
     if (this.walkLog) G.logEvent(this.walkLog, 'storm', 'solar storm alert: return home', this.guide, this._vertex());
-    this.voice.say('Solar storm alert. Return to the habitat now.', {priority: 'alert'});
+    this.voice.say(`Solar storm alert. ${N.returnHome} now.`, {priority: 'alert'});     // the tablet's words
     if (this._radInfo === undefined) {
       try { const res = await fetch('/radiation'); this._radInfo = res.ok ? await res.json() : null; }
       catch { this._radInfo = null; }
@@ -843,7 +848,7 @@ export class Rehearsal {
       el('rh-k-track').setAttribute('aria-valuenow', String(Math.round(frac * 100)));
       el('rh-k-track').setAttribute('aria-valuetext', `${km.word}, ${km.text}`);
       // The state word as the other meters have it: bold, in its state's colour (OK, LOW,
-      // RETURN NOW), then the value.
+      // TURN BACK; the RETURN NOW banner is the alert's), then the value.
       Object.assign(el('rh-w-k'), {textContent: km.word, className: `rh-word ${km.state}`});
       el('rh-v-k').textContent = km.text;
       // Crossing into LOW is said once, as on the tablet (RETURN NOW has its own line).
@@ -892,11 +897,12 @@ export class Rehearsal {
     if (!this.active || !bar || !this.walkbackOnPause) return;
     const token = ++this._token, start = plan.points.find(p => p.kind === 'start');
     const base = start ? [start.x, start.y] : (Array.isArray(plan.properties.habitat) ? plan.properties.habitat : null);
-    this._note('Way home from here: computing…');
+    const lead = `${N.returnHome} from here: `;
+    this._note(`${lead}computing…`);
     const {fc, error} = await requestWalkback(walkbackRequest(
       {x: state.x, y: state.y, energyLeftWh: bar.energyLeft, base, properties: plan.properties}));
     if (token !== this._token || !this.active) return;         // played on, moved or left meanwhile
-    if (!fc) { this._note(`Way home from here: ${error}`); return; }
+    if (!fc) { this._note(`${lead}${error}`); return; }
     const lines = kind => fc.features.filter(f => f.properties && f.properties.kind === kind && f.geometry &&
                                                   f.geometry.type === 'MultiLineString')
                                      .flatMap(f => f.geometry.coordinates);
@@ -905,18 +911,17 @@ export class Rehearsal {
     const p = this.walkback = fc.properties || {};
     const part = (ok, text) => Object.assign(document.createElement('span'),
                                              {className: ok ? 'wb-ok' : 'wb-bad', textContent: `${ok ? '✔' : '⚠'} ${text}`});
-    // In the tablet's words ("Way home: 13.4 min, …", "spare"), with the numbers as before
-    // (#124): time against the 30 min line, then energy and what is left after it; then
-    // what the two lines on the ground are.
+    // In the tablet's words ("Return home: 13 min, …", "spare") and the glossary's numbers
+    // (whole minutes and Wh, "limit 30"): time against the 30 min line, then energy and what
+    // is left after it; then what the two lines on the ground are.
     const parts = [];
     if (Number.isFinite(p.return_time_s)) {
-      parts.push(part(p.contingency_ok, `${(p.return_time_s / 60).toFixed(1)} min (limit 30)`));
+      parts.push(part(p.contingency_ok, `${T.min(p.return_time_s)} (${N.homeLimit})`));
     }
     if (Number.isFinite(p.return_energy_wh) && Number.isFinite(p.energy_left_after_return_wh)) {
-      parts.push(part(p.energy_ok, `${p.return_energy_wh.toFixed(1)} Wh, ` +
-                                   `${p.energy_left_after_return_wh.toFixed(1)} Wh spare after it`));
+      parts.push(part(p.energy_ok, `${T.wh(p.return_energy_wh)}, ${T.wh(p.energy_left_after_return_wh)} spare after it`));
     }
-    this._note('Way home from here: ', ...parts.flatMap((node, k) => (k ? [' · ', node] : [node])),
+    this._note(lead, ...parts.flatMap((node, k) => (k ? [' · ', node] : [node])),
                ' (red line: 30 min from home · cyan line: energy-safe area)');
     this._dirty = true;
   }
