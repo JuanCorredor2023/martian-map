@@ -148,6 +148,16 @@ def stations_candidates():
     return _read_json(path)
 
 
+@app.get("/stations/e8")
+def stations_e8():
+    """E8 contact stations (JB, release stations-e8-v0). The HUD loads them unsaved."""
+    out = st.load_e8(STATIONS)
+    if out is None:
+        raise HTTPException(status_code=404,
+                            detail="E8 stations missing: gh release download stations-e8-v0 -D data/stations")
+    return {"stations": out, "source": "E8 (JB): rock next to boxwork-sized sand patches"}
+
+
 @app.get("/stations/stations_manual.gpkg")
 def stations_download():
     path = STATIONS / "stations_manual.gpkg"
