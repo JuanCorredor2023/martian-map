@@ -372,3 +372,15 @@ def test_thermal_themis_layer_and_sand_check():
     if c is not None:                                   # needs E8's sand.tif
         assert 500 < c["pixels"] < 700                  # ~25 x 25 THEMIS pixels in the box
         assert abs(c["spearman_brightness_vs_sand"]) < 0.2   # no relation at 81 m
+
+
+def test_e8_stations_endpoint():
+    from api import stations as stmod
+    if stmod.load_e8(REPO / "data" / "stations") is None:
+        pytest.skip("E8 stations (stations-e8-v0) not downloaded")
+    out = client.get("/stations/e8").json()["stations"]
+    assert len(out) >= 10
+    assert all(s["type"] == "contact" and s["id"].startswith("E8-") for s in out)
+    assert all("E8 score" in s["note"] and 1 <= s["e8_score"] <= 5 for s in out)
+    b = client.get("/layers").json()["grid"]["bbox"]
+    assert all(b["xmin"] <= s["x"] <= b["xmax"] and b["ymin"] <= s["y"] <= b["ymax"] for s in out)

@@ -209,6 +209,7 @@
   <div class="muted">Stations · id · type · service (min) · score</div>
   <div id="station-list"></div>
   <button id="load-candidates" class="secondary">Load suggested stations (unsaved)</button>
+  <button id="load-e8" class="secondary" title="15 contact stations found by E8 next to boxwork sand patches (JB)">Load E8 contact stations (unsaved)</button>
   <div id="unsaved" class="warn" hidden>Unsaved changes: nothing reaches E5 until you save</div>
   <button id="save-stations">Save for E5 (.gpkg)</button>
   <div id="stations-msg" class="muted"></div>
@@ -450,6 +451,22 @@ async function loadCandidates() {
   stations.push(...added);
   ui("stations-msg").textContent = `Loaded ${added.length} suggestions. Review them on the ortho; ` +
     `ids with "?" are low confidence or approximate. Hover an id for its source.`;
+  markDirty(); renderStations(); redraw();
+}
+
+// E8 contact stations (JB, release stations-e8-v0): rock points next to boxwork-sized
+// sand patches. Type "contact", so their score is the rubric's contact score; E8's own
+// 1-5 score is in the note (hover the id). E5 plans more than 20 stations with CP-SAT.
+async function loadE8Stations() {
+  const res = await fetch("/stations/e8");
+  if (!res.ok) { ui("stations-msg").innerHTML = `<span class="warn">${(await res.json()).detail}</span>`; return; }
+  const {stations: e8} = await res.json();
+  const have = new Set(stations.map(s => s.id));
+  const added = e8.filter(s => !have.has(s.id))
+    .map(({e8_score, ...s}) => s);
+  stations.push(...added);
+  ui("stations-msg").textContent = `Loaded ${added.length} E8 contact stations (${stations.length} in total). ` +
+    `They score as "contact" in the rubric; hover an id for E8's own score. Save to keep them.`;
   markDirty(); renderStations(); redraw();
 }
 
@@ -917,6 +934,7 @@ ui("block-slope").addEventListener("input", refreshBlockInfo);
 ui("plan-btn").addEventListener("click", requestPlan);
 ui("save-stations").addEventListener("click", saveStations);
 ui("load-candidates").addEventListener("click", loadCandidates);
+ui("load-e8").addEventListener("click", loadE8Stations);
 ui("sep-btn").addEventListener("click", simulateSEP);
 ui("play-btn").addEventListener("click", togglePlay);
 // Before a plan exists, the walkback energy is the usable budget from the EVA limits.
