@@ -62,6 +62,31 @@ The redesigned HUD was reviewed with the Impeccable `critique` method [Impeccabl
 
 Polish: dark `color-scheme` (scrollbars, native controls), themed selection, a stable scrollbar gutter, one stroked SVG icon set instead of Unicode glyphs, map labels in the interface face, one primary button per panel, a type scale of 13/16/20 px, and no 11 px text. The solar-storm alert now draws the fastest way home on the map (`POST /guide/return_home`). After the fixes the detector reports one finding, the hatch swatch in the legend (`repeating-gradient decorative stripes`). It is a false positive: the swatch mirrors the map's hatch. The critique report is archived in `.impeccable/critique/` (local, not in git).
 
+### Second critique round: HUD, arm tablet and 3D (2026-11-15)
+After those fixes the same method was run on the three walk views, each in an isolated review. The scores out of 40 were: HUD **25** (from 23), 3D view **22**, and arm-tablet guide **17**. The tablet and HUD findings rated P0–P2 were fixed in one PR (#105). The 3D view belongs to Juan, so its fixes wait for a handoff.
+
+**Tablet (`web/guide.html`, `web/guide_core.js`).**
+- *Safety alerts got lost (P0).* Every voice line cancelled the one before it, so a storm alert was cut off within milliseconds. The voice is now a priority queue: an alert interrupts and cannot be interrupted, and routine lines wait (only the two newest are kept). The alert box (`role="alert"`) sits right under the maneuver card. A storm closes an open station card and turns the card into "Return now" with a countdown, and arriving home clears it.
+- *Meters could not warn (P1).* Every bar now means "how much is left": full is good, empty is the limit. Each carries a word (OK / LOW / TURN BACK; for the way back, OK / TURN SOON / OVER 30 MIN), a striped track at the limit, and `role="meter"` with a text value. Each threshold crossing is spoken once.
+- *Hierarchy (P1).* The distance to the next maneuver is the largest figure (46 px). The field controls are Walk/Pause, Voice, Repeat and Return home, at least 64 px. Speed, Step off route and Solar storm moved into a folded *Demo controls*. At ≥ 1000 px wide the map is a full-height column.
+- *Broken states (P2).* Without a plan the buttons are disabled, with a link to the planner. A detour that finds no new route clears the off-route state. Errors are in plain words.
+
+**HUD (`web/index.html`).**
+- *Ghost Walk card (P1).* A `display: grid` rule overrode `[hidden]`, so before any plan the card read "– of 30 min" over a full green bar. It is hidden now. Its bar is the margin left to the 30 min line, with a state word and meter semantics.
+- *The payoff was off-frame (P1).* After a plan the limits fold into a one-line summary, so at 1366 × 768 the result is in view. *Walk* frames the route together with the nearest stretch of the 30 min line. The fixed-distance circles are dashed, 2 px and labelled.
+- *Solar storm (P1).* The storm's way home is amber and dashed, so the red line keeps one meaning. It is drawn under the Habitat label. The alert shows on the map whatever the tab, with the astronaut drawn and a *Dismiss* button, and a new plan clears it.
+- *Keyboard and screen reader (P2).*
+  - The map's focus ring beats deck.gl's inline `outline: none`.
+  - A *Skip to the map* link was added, and turning on a placing mode from the keyboard focuses the map.
+  - *Plan* uses `aria-busy` instead of `disabled`, so focus stays on it; *Rehearse it* focuses *Play*.
+  - Announcements queue instead of overwriting each other.
+  - The charts' readouts work with arrows, Home and End.
+- *A failed re-plan destroyed the good plan (P2).* It now keeps the previous plan, marked out of date, under "Not updated" and the reason. Limits out of range (walk 15–480 min, energy 50–2,800 Wh) are caught at the field before any request.
+- *Map encoding (P3).* Planned stops always keep their labels and get a white ring, which separates a blue hollow from the cyan route. The heading arrow sits just ahead of the astronaut.
+- *Minor.* The energy figure says it is the budget minus the reserve (900 of 1,000 Wh), a used share of a limit is neutral grey rather than yellow, and the radio link text follows the checkbox.
+
+**Detector.** After the fixes it reports only the striped meter track and the hatch swatch (`repeating-gradient stripes`). Both are semantic, marking a limit and steep cells, not decoration. The checks were scripted in headless Edge at 1366 × 768, 800 × 1280 and 412 × 900, muted, with no JavaScript errors. The reports are archived in `.impeccable/critique/` (local).
+
 ### Multi-station tour (E5 on E4, `api/tour.py`)
 With stations and no explicit goal, `/plan` delegates to E5's `orienteering.tour.plan_tour(req, graph)` (Diana, in `main` since #37; #64 here). It passes the same shared E4 graph (E3 or human cost) and only renames the output for the HUD and the guide (the habitat is dropped from the visiting order).
 - E5 solves the tour exactly: a bitmask DP up to 20 nodes, CP-SAT (OR-Tools) above. Its limits are energy, service time, maximum EVA duration and O2. E4 gives the legs and the walkback is checked at every vertex; E5 re-plans if it fails.

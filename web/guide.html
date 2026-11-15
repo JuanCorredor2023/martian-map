@@ -46,7 +46,7 @@
   .map-key { position: absolute; left: 8px; bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px 10px; max-width: calc(100% - 80px);
              padding: 6px 10px; border-radius: 10px; background: rgba(17,21,27,.9); font-size: 13px; color: var(--muted); }
   .map-key i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; border: 1px solid #000; }
-  .map-key i.line { width: 18px; height: 0; border: 0; border-top: 4px solid; border-radius: 2px; vertical-align: 3px; }
+  .map-key i.line { width: 18px; height: 4px; border: 0; border-radius: 2px; vertical-align: 3px; }
 
   /* meters: every bar is "how much is left", with a state word */
   .meter { margin: 4px 0 10px; }
@@ -142,8 +142,8 @@
       <button id="recentre" aria-label="Follow me again" hidden></button>
     </div>
     <div class="map-key" aria-hidden="true">
-      <span><i class="line" style="border-color:#36d1ff"></i>to walk</span>
-      <span><i class="line" style="border-color:#8c8c8c"></i>walked</span>
+      <span><i class="line" style="background:#36d1ff"></i>to walk</span>
+      <span><i class="line" style="background:#8c8c8c"></i>walked</span>
       <span><i style="background:#fff"></i>you</span>
       <span><i style="background:#ffd60a"></i>next stations</span>
       <span><i style="background:#5b6573"></i>done</span>
