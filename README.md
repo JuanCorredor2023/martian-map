@@ -169,7 +169,7 @@ We used AI coding agents (Anthropic Claude Code and OpenAI Codex) to write and r
 
 | Member | Pieces |
 | --- | --- |
-| Javier Bonilla ([@JavierBonilla2004](https://github.com/JavierBonilla2004)), team lead | base grid and terrain features, sand U-Net (E8), radio (E11), adaptive walkback (X2), paper |
+| Javier Bonilla ([@JavierBonilla2004](https://github.com/JavierBonilla2004)), team lead | base grid and terrain features, sand U-Net (E8), radio (E11), adaptive walkback (X2)|
 | Aaron ([@aahg1105](https://github.com/aahg1105)) | graph and return map (E4), baselines, boulders (E9, X1), tutorial tips |
 | Diana ([@dianagrz](https://github.com/dianagrz)) | tour solver (E5), solver benchmark (E6), departure time (P6), landing page, video |
 | Sebastián Díaz ([@Seredial0326](https://github.com/Seredial0326)) | metabolic cost (E3), API, HUD, tablet guide and wrist card, robustness evaluation (C1–C3) |
