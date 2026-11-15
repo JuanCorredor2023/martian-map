@@ -3,6 +3,11 @@
     node docs/user_guide/capture.mjs      # screenshots + boxes -> img/, shots.json
     python docs/user_guide/build.py       # template.html + shots.json -> index.html
 
+The 3D map's guide uses the same builder on its own folder:
+
+    node docs/user_guide_3d/capture.mjs
+    python docs/user_guide/build.py docs/user_guide_3d
+
 Every <!--SHOT:name--> marker in template.html becomes a figure: the screenshot with an
 SVG layer on top (same coordinate space as the screenshot, so it scales with it). Each
 control the text explains gets an outlined box, a numbered badge and an arrow from the
@@ -11,10 +16,12 @@ badge to the box. The numbers match the list under the figure (data-shot / data-
 
 import html
 import json
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PANEL_W = 372                     # width of the planner's side panel at 1440 px
+PANEL_W = 372                     # width of the 2D planner's side panel at 1440 px; a shot can
+                                  # give its own "panel_w" (0: no side panel)
 SKIP = {"no-plan": {1}}            # behind the panel header after scrolling: not visible
 
 
@@ -64,12 +71,33 @@ def figure(name, shot):
     taken, parts = [], []
     # Controls in the side panel: badges in one column just right of the panel, in the
     # order of the boxes from top to bottom, never closer than 40 px to each other.
-    side = sorted([b for b in boxes if b["x"] + b["w"] <= PANEL_W + 4], key=lambda b: b["y"] + b["h"] / 2)
+    panel_w = shot.get("panel_w", PANEL_W)
+    side = sorted([b for b in boxes if panel_w and b["x"] + b["w"] <= panel_w + 4], key=lambda b: b["y"] + b["h"] / 2)
     column, last = {}, -1e9
     for b in side:
         y = max(b["y"] + b["h"] / 2, last + 40)
-        column[id(b)] = (PANEL_W + 34, min(y, h - 22))
+        column[id(b)] = (panel_w + 34, min(y, h - 22))
         last = y
+    # Dense controls in a box (the 3D player): "columns" [x_left, x_right] puts each badge
+    # in the column on its side of the box, stacked from top to bottom, 36 px apart.
+    if shot.get("columns"):
+        xl, xr = shot["columns"]
+        mid = (xl + xr) / 2
+        sides = {"l": [], "r": []}
+        for b in boxes:
+            if id(b) in column:
+                continue
+            cx = b["x"] + b["w"] / 2
+            if abs(cx - mid) < 40:                     # as wide as the box: the emptier side
+                sides["l" if len(sides["l"]) <= len(sides["r"]) else "r"].append(b)
+            else:
+                sides["l" if cx < mid else "r"].append(b)
+        for side, x in (("l", xl), ("r", xr)):
+            last = -1e9
+            for b in sorted(sides[side], key=lambda b: b["y"] + b["h"] / 2):
+                y = max(b["y"] + b["h"] / 2, last + 36)
+                column[id(b)] = (x, min(y, h - 22))
+                last = y
     for b in boxes:
         px, py = column.get(id(b)) or badge_place(b, w, h, taken)
         taken.append((px, py))
@@ -100,15 +128,16 @@ def figure(name, shot):
 
 
 def main():
-    shots = json.loads((HERE / "shots.json").read_text(encoding="utf-8"))
-    page = (HERE / "template.html").read_text(encoding="utf-8")
+    folder = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else HERE
+    shots = json.loads((folder / "shots.json").read_text(encoding="utf-8"))
+    page = (folder / "template.html").read_text(encoding="utf-8")
     for name, shot in shots.items():
         page = page.replace(f"<!--SHOT:{name}-->", figure(name, shot))
     missing = [line for line in page.splitlines() if "<!--SHOT:" in line]
     if missing:
         raise SystemExit(f"no screenshot for: {missing}")
-    (HERE / "index.html").write_text(page, encoding="utf-8")
-    print(f"wrote {HERE / 'index.html'} ({len(page) / 1024:.0f} KB, {len(shots)} screenshots)")
+    (folder / "index.html").write_text(page, encoding="utf-8")
+    print(f"wrote {folder / 'index.html'} ({len(page) / 1024:.0f} KB, {len(shots)} screenshots)")
 
 
 if __name__ == "__main__":
