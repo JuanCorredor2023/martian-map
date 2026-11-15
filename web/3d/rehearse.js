@@ -14,6 +14,8 @@
 //     the service time run with the walker standing.
 //   - on pause: the walkback lines from that point (30 min return in red, energy-safe
 //     boundary in cyan), as the 2D planner draws them; cleared on play and on exit.
+//   - EVA clock: onTime(seconds since the start of the EVA) at every move, and
+//     onTime(null) on exit; main.js moves the Sun with it (sun.js).
 // Nothing is rendered here: update(dt) says whether the view changed, and main.js draws.
 import * as THREE from 'three';
 import { requestWalkback, walkbackRequest } from './api.js';
@@ -44,9 +46,9 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 export class Rehearsal {
   // relief: {lock(reason), unlock(k)} from main.js; lines: a GroundLines layer for the
-  // walkback boundaries; rubric(): the station rubric for the cards.
-  constructor({terrain, scene, camera, canvas, controls, relief, lines, rubric = () => ({})}) {
-    Object.assign(this, {terrain, scene, camera, canvas, controls, relief, lines, rubric});
+  // walkback boundaries; rubric(): the station rubric for the cards; onTime: see above.
+  constructor({terrain, scene, camera, canvas, controls, relief, lines, rubric = () => ({}), onTime = () => {}}) {
+    Object.assign(this, {terrain, scene, camera, canvas, controls, relief, lines, rubric, onTime});
     this.active = false;
     this.playing = false;
     this.plan = null;              // parsePlan() result
@@ -165,6 +167,7 @@ export class Rehearsal {
     this.relief.unlock(saved.relief);          // the ground first: the saved camera height belongs to it
     controls.enabled = true;
     controls.restore(saved.pose);              // also puts the field of view back
+    this.onTime(null);
     return true;
   }
 
@@ -318,6 +321,7 @@ export class Rehearsal {
     this.walker.visible = this.chase;
     this.walker.position.set(X, ground + EYE_HEIGHT / 2, Z);
     this._show();
+    this.onTime(s.time - model.start);
   }
 
   _show() {

@@ -1,6 +1,7 @@
 // Reproducible checks of the 3D map, run in the browser with ?check=<name>.
 // They print a JSON result on the page; the numbers go into paper/notes/P1_3d_map.md.
 import * as THREE from 'three';
+import { SOL_IN_SECONDS, sunPosition } from './mars_sun.js';
 
 function correlation(x, y) {
   const n = x.length;
@@ -274,4 +275,137 @@ export function rehearseCheck({terrain, scene, camera, controls, rehearsal, plan
   return out;
 }
 
-export const CHECKS = {shading: shadingCheck, route: routeCheck, rehearse: rehearseCheck};
+// ?check=sun : is the scene lit by the Sun of Mars of the chosen sol and time?
+//
+// For 07:00, 12:00, 15:00, 17:00 and 21:00 local true solar time of the page's sol: the
+// Sun's azimuth and elevation computed here again with mars_sun.js from the instant
+// the page says, the direction of the light in the scene against the unit vector of
+// that azimuth and elevation, the light levels and what the panel says. Then, with
+// "Relief only" on, the terrain is rendered from straight above with the page's own
+// lights at 07:00 and at 17:00: slopes facing east must be the bright ones in the
+// morning and the dark ones in the afternoon. Then the photo is put back and compared
+// with before, and the rehearsal is entered to see the Sun advance with the EVA clock
+// and return to the start on exit. Everything is left as it was found.
+export function sunCheck({terrain, scene, renderer, sun, sunView, rehearsal}) {
+  const round = (v, d = 3) => Number(v.toFixed(d)), text = id => document.getElementById(id).textContent;
+  const out = {check: 'sun', quality: terrain.quality, exaggeration: terrain.k};
+  if (!sunView.state) return {...out, error: 'the light is fixed by ?light=: the Sun is not used'};
+  const hemi = scene.children.find(o => o.isHemisphereLight);
+  const before = {start: {...sunView.start}, reliefOnly: sunView.reliefOnly};
+  const site = sunView.site, sol = before.start.sol;
+  out.site = {lon_east_deg: round(site.lonEastDeg, 4), lat_planetocentric_deg: round(site.latCentricDeg, 4),
+              lat_planetographic_deg: round(site.latDeg, 4)};
+  out.sol = sol;
+
+  // Light direction, levels and panel at five times of the sol.
+  out.times = [7, 12, 15, 17, 21].map(hours => {
+    sunView.set({hours});
+    const s = sunView.state, p = sunPosition(s.utcMs, site);
+    const az = THREE.MathUtils.degToRad(p.azimuth), el = THREE.MathUtils.degToRad(p.elevation);
+    const want = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
+    const light = sun.position.clone().sub(sun.target.position).normalize();
+    return {local_true_solar_time: text('sun-time-text'), utc: new Date(s.utcMs).toISOString(), ls_deg: round(p.ls, 2),
+            ltst_h: round(p.ltst, 5), azimuth_deg: round(p.azimuth, 2), elevation_deg: round(p.elevation, 2),
+            light_off_the_sun_deg: round(THREE.MathUtils.radToDeg(light.angleTo(want)), 6),
+            light_from: light.x > 0.1 ? 'east' : light.x < -0.1 ? 'west' : 'meridian',
+            sun_light: round(sun.intensity), sky_light: round(hemi.intensity),
+            sky_colour: `#${scene.background.getHexString()}`, panel: text('sun-readout')};
+  });
+
+  // Relief only, from above, with the page's own lights: 07:00 against 17:00.
+  const maps = terrain.materials.map(m => m.map), colours = terrain.materials.map(m => m.color.getHex());
+  sunView.setReliefOnly(true);
+  const N = 250, block = terrain.n / N, k = terrain.k;
+  const target = new THREE.WebGLRenderTarget(N, N);
+  const camera = new THREE.OrthographicCamera(-terrain.half, terrain.half, terrain.half, -terrain.half, 1, 20000);
+  camera.position.set(0, 8000, 0);
+  camera.up.set(0, 0, -1);                                 // north at the top of the image
+  camera.lookAt(0, 0, 0);
+  const hidden = scene.children.filter(o => o !== terrain.group && !o.isLight && o.visible);
+  hidden.forEach(o => { o.visible = false; });
+  const fog = scene.fog;
+  scene.fog = null;
+  const shot = hours => {
+    sunView.set({hours});
+    renderer.setRenderTarget(target);
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    const rgba = new Uint8Array(N * N * 4);
+    renderer.readRenderTargetPixels(target, 0, 0, N, N, rgba);     // rows from the south
+    return Float32Array.from({length: N * N}, (_, i) => rgba[i * 4 + 1]);
+  };
+  const morning = shot(7), afternoon = shot(17);
+  scene.fog = fog;
+  hidden.forEach(o => { o.visible = true; });
+  target.dispose();
+
+  // East-facing slope of the shaded surface (low + k * detail), mean of each block.
+  const {n, step, low, detail} = terrain;
+  const eastward = (a, i, j) => {
+    const jm = Math.max(0, j - 1), jp = Math.min(n - 1, j + 1);
+    return -(a[i * n + jp] - a[i * n + jm]) / ((jp - jm) * step);
+  };
+  const diff = [], facing = [], side = {east: [0, 0, 0], west: [0, 0, 0]};
+  let clipped = 0;
+  for (let py = 2; py < N - 2; py++) {
+    for (let px = 2; px < N - 2; px++) {
+      let e = 0;
+      for (let a = 0; a < block; a++) {
+        for (let b = 0; b < block; b++) {
+          const i = (N - 1 - py) * block + a, j = px * block + b;
+          e += eastward(low, i, j) + k * eastward(detail, i, j);
+        }
+      }
+      e /= block * block;
+      const q = py * N + px;
+      diff.push(morning[q] - afternoon[q]);
+      facing.push(e);
+      if (morning[q] >= 255 || afternoon[q] >= 255) clipped++;
+      const bin = e > 0.1 ? side.east : e < -0.1 ? side.west : null;       // steeper than 1 in 10
+      if (bin) { bin[0] += morning[q]; bin[1] += afternoon[q]; bin[2]++; }
+    }
+  }
+  const means = b => ({pixels: b[2], at_07: round(b[0] / b[2], 1), at_17: round(b[1] / b[2], 1)});
+  out.relief_only_from_above = {
+    morning_minus_afternoon_vs_east_facing_slope: correlation(diff, facing),
+    mean_brightness_east_facing: means(side.east), mean_brightness_west_facing: means(side.west),
+    clipped_pixels: clipped, photo_hidden: terrain.materials.every(m => m.map === null)};
+
+  sunView.setReliefOnly(false);
+  out.photo_back = {tiles: maps.length, same_textures: terrain.materials.every((m, i) => m.map === maps[i]),
+                    same_colours: terrain.materials.every((m, i) => m.color.getHex() === colours[i])};
+
+  // Rehearsal: the Sun follows the EVA clock from 15:00 and goes back on exit.
+  sunView.set({hours: 15});
+  const start = {...sunView.state}, model = rehearsal.model;
+  if (model) {
+    const walkbackOnPause = rehearsal.walkbackOnPause;
+    rehearsal.walkbackOnPause = false;
+    rehearsal.enter();
+    const moved = elapsed => {
+      rehearsal.seek(model.start + elapsed);
+      const s = sunView.state;
+      return {eva_s: round(elapsed, 1), sun_advanced_s: round((s.utcMs - start.utcMs) / 1000, 3),
+              local_time_advanced_min: round((s.ltst - start.ltst) * 60, 3),
+              expected_min: round(elapsed / SOL_IN_SECONDS * 1440, 3), panel_time: text('sun-time-text'),
+              elevation_deg: round(s.elevation, 2), azimuth_deg: round(s.azimuth, 2),
+              controls_disabled: document.getElementById('sun-time').disabled && document.getElementById('sun-sol').disabled,
+              note: text('sun-note')};
+    };
+    out.rehearsal = {duration_s: round(model.duration, 1), at: [0, 600, model.duration].map(moved)};
+    rehearsal.exit();
+    rehearsal.walkbackOnPause = walkbackOnPause;
+    const s = sunView.state;
+    out.rehearsal.after_exit = {sun_back_at_start: s.utcMs === start.utcMs && s.elevation === start.elevation,
+                                panel_time: text('sun-time-text'), elevation_deg: round(s.elevation, 2),
+                                controls_disabled: document.getElementById('sun-time').disabled};
+  } else {
+    out.rehearsal = {error: 'no route to rehearse'};
+  }
+
+  sunView.set(before.start);
+  sunView.setReliefOnly(before.reliefOnly);
+  return out;
+}
+
+export const CHECKS = {shading: shadingCheck, route: routeCheck, rehearse: rehearseCheck, sun: sunCheck};

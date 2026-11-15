@@ -5,10 +5,13 @@
 //   k=1..5          local relief exaggeration at the start (default 2; the panel has a slider)
 //   plan=default    ask the server for a plan with the default settings on load, as the
 //                   "Plan with default settings" button does (see api.js)
-//   light=az,el     light direction in degrees: azimuth from north towards east, elevation
+//   sol=4711        Curiosity sol whose Sun lights the scene (default 4711; sun.js)
+//   lt=15:00        local true solar time at the box centre (default 15:00)
+//   light=az,el     debug: a fixed light direction in degrees (azimuth from north towards
+//                   east, elevation) instead of the Sun of Mars
 //   fps=1           render every frame and show frames per second
 //   spin=1          slowly orbit the camera (to measure fps without touching anything)
-//   check=shading   run a check from checks.js (shading, route, rehearse) and show its result as JSON
+//   check=shading   run a check from checks.js (shading, route, rehearse, sun) and show its result as JSON
 //   drag=pan        map-style mouse: drag moves, right-drag rotates (default: drag rotates)
 import * as THREE from 'three';
 import { loadLastPlan, loadRubric, requestDefaultPlan } from './api.js';
@@ -18,6 +21,8 @@ import { MarkerLayer } from './markers.js';
 import { GroundLines, RouteOverlay } from './overlays.js';
 import { mainRoute, parsePlan, planMarkers } from './plan_model.js';
 import { Rehearsal } from './rehearse.js';
+import { SunView } from './sun.js';
+import { parseClock, parseSol } from './sun_model.js';
 import { Terrain, BUILD_HINT } from './terrain.js';
 
 const ui = id => document.getElementById(id);
@@ -54,7 +59,9 @@ window.addEventListener('pointerdown', e => {
 });
 
 async function main() {
-  if (window.innerWidth < 700 || window.innerHeight < 500) ui('about').open = ui('plan-box').open = false;
+  if (window.innerWidth < 700 || window.innerHeight < 500) {
+    ui('about').open = ui('plan-box').open = ui('sun-box').open = false;
+  }
   const quality = pickQuality();
   const canvas = ui('view');
   // The stencil buffer is used by the route's see-through pass (overlays.js).
@@ -87,11 +94,10 @@ async function main() {
     `${(terrain.triangles / 1e6).toFixed(1)} M triangles`;
 
   // Light: one "sun" plus sky light, so slopes facing away are dim but not black.
-  const [az, el] = (params.get('light') || '270,35').split(',').map(Number);
+  // Where the sun is and how strong both are is set by sun.js (SunView, below).
   const sun = new THREE.DirectionalLight(0xfff2e2, 2.6);
-  sun.position.copy(sunDirection(az, el)).multiplyScalar(5000);
-  scene.add(sun, sun.target);
-  scene.add(new THREE.HemisphereLight(0xf0d6b8, 0x6b4a36, 1.1));
+  const hemi = new THREE.HemisphereLight(0xf0d6b8, 0x6b4a36, 1.1);
+  scene.add(sun, sun.target, hemi);
 
   // Camera: an arcball on the terrain (controls.js). Start south of the box looking
   // north, like a tilted map.
@@ -174,13 +180,23 @@ async function main() {
   ui('relief').addEventListener('input', e => { pendingRelief = e.target.value; });
   setRelief(params.get('k') || 2);
 
+  // The Sun of Mars for a sol and a local solar time (sun.js). ?light=az,el wins over it.
+  const fixedLight = (params.get('light') || '').split(',').map(Number);
+  const sunView = new SunView({
+    terrain, scene, sun, hemi, sky: SKY,
+    fixed: fixedLight.length === 2 && fixedLight.every(Number.isFinite) ? fixedLight : null,
+    start: {sol: parseSol(params.get('sol')) ?? undefined, hours: parseClock(params.get('lt')) ?? undefined},
+    onChange: () => { dirty = true; },
+  });
+
   // Route rehearsal (rehearse.js) and the card of a station (card.js). The type labels
   // of the card come from the server's rubric, asked once; until it answers (or if it
   // does not) the card shows the type as the plan writes it.
   let rubric = {};
   loadRubric().then(r => { rubric = r; });
   const rehearsal = new Rehearsal({terrain, scene, camera, canvas, controls, relief, lines: walkbackLines,
-                                   rubric: () => rubric});
+                                   rubric: () => rubric,
+                                   onTime: elapsed => sunView.follow(elapsed)});     // the Sun follows the EVA clock
 
   // Fly to where a marker is seen from about 60 m, coming from where the camera is now.
   function flyToMarker(marker) {
@@ -310,7 +326,7 @@ async function main() {
 
   // Handle for the manual checks listed in the PR and for later blocks.
   // `plan` is {fc, source, error, missing, stationTypes, model} once a plan was asked for.
-  window.viz3d = {terrain, scene, camera, controls, renderer, sun, sunDirection, overlays, markers,
+  window.viz3d = {terrain, scene, camera, controls, renderer, sun, sunDirection, sunView, overlays, markers,
                   rehearsal, walkbackLines, plan: null, showPlan, reloadPlan, planDefault, setRelief,
                   get fps() { return fps; }, redraw() { dirty = true; }};
   // The terrain is usable while the plan loads. ?plan=default is the user asking.
