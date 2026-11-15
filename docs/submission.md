@@ -15,7 +15,7 @@ Mars EVA Planner · Gale boxwork
 
 ## Team
 
-[TEAM NAME] · Aaron, Diana, Javier, Juan and Sebastian
+Pense Em Mim · Aaron, Diana, Javier, Juan and Sebastian
 
 ## Challenge
 
