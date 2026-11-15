@@ -39,8 +39,9 @@ def _towards_home(base_dir, max_cell_slope_deg, habitat_node, human=True):
     return t, pred
 
 
-def return_home(base_dir, max_cell_slope_deg, position_xy, habitat_xy, human=True):
+def return_home(base_dir, max_cell_slope_deg, position_xy, habitat_xy, human=True, k=1.0):
     """LineString coordinates position -> habitat (fastest), with time, energy and length.
+    k (X2, #101): metabolic factor on E3's energy; it scales energy, not the path or time.
     Raises ValueError if a point is outside the box or the habitat is unreachable."""
     g = planner.graph(base_dir, max_cell_slope_deg, human)
     hr, hc, _ = g.place(*habitat_xy, label="habitat")
@@ -53,7 +54,7 @@ def return_home(base_dir, max_cell_slope_deg, position_xy, habitat_xy, human=Tru
     rows, cols = g.cell(path)
     x, y = g.cell_to_xy(rows, cols)
     one = len(path) > 1
-    energy = g.path_cost(path, "energy_j") if one else np.array([0.0])
+    energy = (g.path_cost(path, "energy_j") if one else np.array([0.0])) * k
     length = g.path_cost(path, "length_m") if one else np.array([0.0])
     times = g.path_cost(path, "time_s") if one else np.array([0.0])
     return {
