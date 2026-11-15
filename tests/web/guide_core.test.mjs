@@ -153,3 +153,25 @@ test('storm alert text is shared by both views', () => {
   assert.ok(html.includes('11.0 min') && html.includes('2.2 µGy') && html.includes('54 µGy'));
   assert.ok(G.stormFailedHtml('no path').includes('no path'));
 });
+
+test('radio (E11): meter states, debounced loss/back events and spoken warnings', () => {
+  const coords = Array.from({length: 301}, (_, k) => [k, 0]);
+  const r = G.prepareRoute({coords, t: coords.map((_, k) => 2 * k), used: coords.map(() => 0), rv: null,
+                            rvTime: null, usable: 100, turnIndex: null, goalName: '', kind: 'plan'});
+  // radio until 100 m, silent to 200 m with a 3 m flicker at 150, back after 200
+  r.radio = coords.map((_, k) => k < 100 || (k >= 150 && k < 153) || k >= 200);
+  r.pair = coords.map((_, k) => (r.radio[k] ? 'direct' : k < 180 ? 'relay' : 'none'));
+  r.radioEvents = G.radioEvents(r);
+  assert.deepEqual(r.radioEvents.map(e => [e.kind, e.i]), [['loss', 100], ['back', 200]]);   // flicker gone
+  assert.equal(r.radioEvents[0].silentS, 200);                 // 100 m at 2 s/m
+  assert.equal(r.radioEvents[0].relay, false);                 // the partner loses it too after 180 m
+  assert.equal(G.radioState(r, 50).state, 'direct');
+  assert.equal(G.radioState(r, 120).state, 'relay');
+  assert.equal(G.radioState(r, 190).state, 'none');
+  const spoken = new Set(), said = [];
+  for (let i = 0; i <= 210; i++) said.push(...G.radioAnnouncements(r, i, spoken));
+  assert.equal(said.length, 2);
+  assert.match(said[0], /^In 80 meters you lose direct radio for about 3 minutes/);
+  assert.equal(said[1], 'Direct radio back.');
+  assert.equal(G.radioState({radio: undefined}, 0), null);     // no radio data: no meter
+});
