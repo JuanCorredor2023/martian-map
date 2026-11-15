@@ -133,7 +133,8 @@ def runs(bad, s, t_s=None, xy=None):
         seg = {"start_m": round(float(s[i]), 1), "end_m": round(float(s[j + 1]), 1),
                "length_m": round(float(ds[i:j + 1].sum()), 1)}
         if dt is not None:
-            seg.update(start_min=round(float(t_s[i]) / 60, 2),
+            seg.update(start_t_s=round(float(t_s[i]), 1), end_t_s=round(float(t_s[j + 1]), 1),
+                       start_min=round(float(t_s[i]) / 60, 2),
                        end_min=round(float(t_s[j + 1]) / 60, 2),
                        duration_min=round(float(dt[i:j + 1].sum()) / 60, 2))
         if xy is not None:
@@ -175,7 +176,11 @@ def check_pair(coords, habitat_xy, base_dir, t_s=None, gap_m=20.0, max_sep_m=100
 
     Samples every `step_m` of the pair's progress p in [0, L + gap]: A at min(p, L)
     (waiting at the habitat at the end), B at clip(p - gap, 0, L) (waiting at the
-    habitat at the start). Time: A's t(p) until A arrives, then B's walk time."""
+    habitat at the start). Time: A's t(p) until A arrives, then B's walk time.
+
+    `vertex_state` has one entry per route vertex (A standing on it): "direct" (both
+    see the habitat), "relay" (only one does, and passes the link to the other) or
+    "none" (the pair has no link)."""
     xy = np.asarray(coords, float).reshape(-1, 2)
     s = _arc_length(xy)
     L = float(s[-1])
@@ -183,7 +188,7 @@ def check_pair(coords, habitat_xy, base_dir, t_s=None, gap_m=20.0, max_sep_m=100
     if t is not None and len(t) != len(xy):
         raise ValueError("t_s must have one value per route vertex")
     gap = float(gap_m)
-    p = np.unique(np.concatenate([np.arange(0.0, L + gap, step_m), [L + gap]]))
+    p = np.unique(np.concatenate([np.arange(0.0, L + gap, step_m), [L + gap], s]))
     sa, sb = np.minimum(p, L), np.clip(p - gap, 0.0, L)
     at = lambda q: np.column_stack([np.interp(q, s, xy[:, 0]), np.interp(q, s, xy[:, 1])])
     a, b = at(sa), at(sb)
@@ -215,7 +220,10 @@ def check_pair(coords, habitat_xy, base_dir, t_s=None, gap_m=20.0, max_sep_m=100
     _, b_alone = runs(~b_ok, p, time)
     for g in sep_seg:
         g.pop("coordinates", None)
+    at_vertex = np.searchsorted(p, s)                    # p contains every vertex's s
+    state = np.where(~linked, "none", np.where(relay, "relay", "direct"))[at_vertex]
     return {
+        "vertex_state": state.tolist(),
         "gap_m": gap, "max_separation_m": float(max_sep_m),
         "max_separation_seen_m": round(float(sep.max()), 1) if len(sep) else 0.0,
         "unlinked": unlinked, "unlinked_segments": unlinked_seg,
