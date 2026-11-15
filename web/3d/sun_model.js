@@ -2,8 +2,9 @@
 //
 // mars_sun.js says where the Sun is; this file turns "sol 4711 at 15:00 at the box
 // centre, 20 minutes into the EVA" into a light direction, light levels and the words
-// of the panel. No three.js and no page here, so it is tested in Node
-// (tests/viz3d/sun_model.test.mjs); sun.js applies it to the scene.
+// of the panel, and reads the planner's best time to leave (bestDeparture). No three.js
+// and no page here, so it is tested in Node (tests/viz3d/sun_model.test.mjs); sun.js
+// applies it to the scene.
 //
 // The time the page speaks is the LOCAL TRUE SOLAR TIME at the site (12:00 is when the
 // Sun crosses the meridian), and the sol is counted on that same clock
@@ -12,7 +13,8 @@ import { SOL_IN_SECONDS, planetographicLatitude, sunPosition, utcOfTrueSolarTime
 
 export const MARS_RADIUS_M = 3396190;          // sphere of the project's CRS (docs/contracts/crs.wkt)
 export const DEFAULT_SOL = 4711;               // Curiosity in the boxwork (2025-11)
-export const DEFAULT_HOURS = 15;               // mid-afternoon, like the photo's own light
+export const DEFAULT_HOURS = 15;               // mid-afternoon, like the photo's own light; with a plan,
+                                               // its best time to leave replaces it (sun.js)
 export const MAX_SOL = 9999;
 
 // Light levels. A look, not a radiometric model: no atmosphere, dust or sky brightness
@@ -85,14 +87,55 @@ export function sunState({sol, hours, elapsedS = 0}, site) {
           direction: sunVector(p.azimuth, p.elevation), ...lightLevels(p.elevation)};
 }
 
-// The one-line readout, in plain words.
+// The one-line readout, in plain words: how high the Sun is and where the light comes
+// from. The exact numbers are in readoutTitle(), the tooltip of that line.
 export function readoutText(state) {
-  const ls = `Ls ${state.ls.toFixed(0)}°`;
-  if (state.night) {
-    return `Night: the Sun is below the horizon (${Math.max(1, Math.round(-state.elevation))}° under it) · ${ls}`;
-  }
-  return `Sun ${state.elevation.toFixed(0)}° above the horizon · light from the ${compassWord(state.azimuth)} ` +
-         `(azimuth ${state.azimuth.toFixed(0)}°) · ${ls}`;
+  if (state.night) return `Night: the Sun is ${Math.max(1, Math.round(-state.elevation))}° below the horizon`;
+  return `Sun ${state.elevation.toFixed(0)}° high, light from the ${compassWord(state.azimuth)}`;
+}
+
+// The tooltip of the readout: the height to a tenth of a degree, the compass bearing of
+// the Sun (azimuth) and the season (Ls, the solar longitude: where Mars is on its orbit,
+// 0° at the start of northern spring).
+export function readoutTitle(state) {
+  const season = `Season: ${state.ls.toFixed(1)}° round Mars's orbit from the start of northern spring ` +
+                 '(solar longitude, Ls).';
+  if (state.night) return `The Sun is ${(-state.elevation).toFixed(1)}° below the horizon. ${season}`;
+  return `The Sun is ${state.elevation.toFixed(1)}° above the horizon, ${state.azimuth.toFixed(1)}° clockwise ` +
+         `from north (azimuth). ${season}`;
+}
+
+// The plan's best time to leave in an answer of GET /plan/departure?sol= (api/departure.py,
+// P6: {sol, best: {start_ltst_h, sunlit_share, ...}, best_clock: "11:00", ...}), in hours
+// of local true solar time to the minute; null when the answer has none to use: no answer,
+// an answer for another sol than the one asked, no best departure, a time that is not a
+// time of day, or a "best" departure with no sunlight at all. The planner's clock is local
+// true solar time at the habitat, the page's at the box centre: inside the box the two
+// differ by 4 s at most.
+export function bestDeparture(answer, sol) {
+  if (!answer || typeof answer !== 'object' || Number(answer.sol) !== sol) return null;
+  const best = answer.best;
+  if (!best || typeof best !== 'object') return null;
+  if (typeof best.sunlit_share === 'number' && !(best.sunlit_share > 0)) return null;
+  const hours = typeof best.start_ltst_h === 'number' ? best.start_ltst_h : parseClock(answer.best_clock);
+  if (!Number.isFinite(hours) || hours < 0 || hours >= 24) return null;
+  return (Math.round(hours * 60) % 1440) / 60;
+}
+
+const minuteOf = hours => ((Math.round(hours * 60) % 1440) + 1440) % 1440;
+
+// The note under the readout, in plain words: while rehearsing, when the EVA clock
+// started; the planner's best time to leave when there is one for the sol shown (best:
+// {sol, hours} from bestDeparture(), or null); and the Earth date of what is lit (utcMs).
+// sol and hours are the start.
+export function noteText({sol, hours, rehearsing = false, best = null, utcMs}) {
+  const forSol = Boolean(best) && best.sol === sol;
+  const atBest = forSol && minuteOf(best.hours) === minuteOf(hours);
+  const lead = rehearsing ? `Following the EVA clock: it started at ${clockText(hours)}${atBest ? ', the best time to leave' : ''}. `
+    : atBest ? `Starts at the best time to leave, ${clockText(hours)}, as the planner suggests. `
+    : forSol ? `The planner suggests leaving at ${clockText(best.hours)}. `
+    : '';
+  return `${lead}On Earth: ${utcText(utcMs)}.`;
 }
 
 // Earth date of an instant, to the minute: "2025-11-06 13:21 UTC".

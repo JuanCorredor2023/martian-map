@@ -88,6 +88,13 @@ or press "Reload plan". With no saved plan the terrain still works.
   says the speed and how far the route is. Space and the photo view's Escape are not used.
   Leaving puts the free-flight view, the relief and the route lines back as they were.
 - **Sun**: Curiosity sol, local true solar time, "Relief only" (hide the photo), "Shadows".
+  The Sun opens at 15:00 and, once a plan is drawn, moves to that plan's best time to leave,
+  the one the 2D planner shows under the plan (`GET /plan/departure` for the sol shown; 11:00
+  for its 120 min tour on sol 4711), and the note says so. It stays where it is if the sol or
+  the time was moved first, during a rehearsal or a photo view, with `?lt=`, or when the
+  planner gives no best time. The readout says how high the Sun is and where the light comes
+  from ("Sun 44° high, light from the west"); its tooltip has the exact height, the compass
+  bearing (azimuth) and the season (Ls).
 - **Map layer**: one layer of the 2D planner draped on the terrain, Off by default: Radio
   coverage, Slope, Too steep to cross, Sand detected, Walking cost or Boulders (the 2D's names;
   the hover texts are the 2D's without its codes E11, E8, E3 and E9), with the
@@ -118,7 +125,7 @@ All optional; they combine with `&`.
 | `k=1..5` | relief exaggeration at the start, in steps of 0.5 (default 2) |
 | `view=x,y,z,heading,pitch` | where the camera starts: Mars CRS metres, elevation of the camera in metres (DEM datum), heading from north and pitch below the horizon in degrees. Example (the opening view): `view=8143537.49,-286459.66,-2146.25,0,37` |
 | `sol=4711` | Curiosity sol whose Sun lights the scene (default 4711) |
-| `lt=15:00` | local true solar time at the box centre (default 15:00) |
+| `lt=15:00` | local true solar time at the box centre (default: the plan's best time to leave, else 15:00; with `lt` the planner is not asked) |
 | `shadows=0` | start without cast shadows |
 | `light=az,el` | debug: a fixed light direction in degrees instead of the Sun |
 | `drag=pan` | map-style mouse: drag moves, right-drag rotates |
@@ -133,7 +140,9 @@ All optional; they combine with `&`.
 `/3d/?check=<name>` runs a measurement in the running page and shows the result (also in
 `viz3d.checkResult` and the console). Add `&q=low` for the low preset. They ask nothing
 from the server (but `guide`, as its row says; `layers` only GETs the images and info JSON
-the 2D asks for, which changes nothing there) and leave the page as they found it.
+the 2D asks for, which changes nothing there) and leave the page as they found it. With a
+check in the address the page does not ask for the best time to leave: the Sun starts at
+15:00 (or `?lt=`), so a check gives the same answer whatever the plan.
 
 | Name | What it answers |
 |---|---|
@@ -160,7 +169,7 @@ plan answer without touching the server (how the test fixtures were looked at).
 | `terrain.js` | loads the assets, builds the meshes, heights, CRS ↔ scene coordinates, relief factor |
 | `controls.js` | free-flight camera (arcball on the terrain), `flyTo` |
 | `camera_math.js` | the camera's maths: axes, orbit, pan, zoom, ray against the heights |
-| `api.js` | the requests: saved plan, default plan, rubric, walkback |
+| `api.js` | the requests: saved plan, default plan, rubric, walkback, best time to leave |
 | `plan_model.js` | plan answer → routes, points, profile, markers |
 | `overlays.js` | route and walkback lines draped on the mesh |
 | `markers.js` | pins and the habitat dome; picking |
@@ -177,8 +186,8 @@ plan answer without touching the server (how the test fixtures were looked at).
 | `walk.js` | the "Walk freely" mode: keys, mouse capture, arrow pad, camera, the route as a path and the stations as rings |
 | `astronaut.js` | the walker of the chase views: an astronaut of a few three.js shapes that turns and swings its legs |
 | `mars_sun.js` | Mars24: where the Sun is for a UTC instant; sols and local times |
-| `sun_model.js` | sol and local time → light direction, light levels, panel texts |
-| `sun.js` | the lights, the sky colour, the Sun section, "Relief only" |
+| `sun_model.js` | sol and local time → light direction, light levels, panel texts; the best time to leave out of the planner's answer |
+| `sun.js` | the lights, the sky colour, the Sun section and its start at the best time to leave, "Relief only" |
 | `shadow_fit.js` | the box the shadow map must cover for a Sun direction |
 | `shadows.js` | cast shadows: when the shadow map is drawn again |
 | `view_link.js` | `?view=`: a free-flight view as text, and the link that carries it |

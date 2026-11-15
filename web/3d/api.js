@@ -12,6 +12,11 @@
 //                         from a position. The server computes and answers; it saves
 //                         nothing (api/main.py walkback(): return fields cached in
 //                         memory, no file is written), so the rehearsal may ask freely.
+//   loadDeparture()       GET /plan/departure?sol=: the best time to leave of the last
+//                         plan, the line under the plan in the 2D planner (P6,
+//                         api/departure.py). The server computes it (the terrain horizon
+//                         of the route, about 1 s) and saves nothing, so the Sun asks for
+//                         it by itself once a plan is drawn (sun.js).
 // Whatever comes back is drawn as is (plan_model.js). With no plan the page keeps
 // working with the terrain alone and says why.
 import { featureCollectionOf } from './plan_model.js';
@@ -128,4 +133,12 @@ export async function requestWalkback(body, {fetchFn = fetch} = {}) {
                                                   body: JSON.stringify(body)});
   const fc = res.ok ? featureCollectionOf(res.body) : null;
   return {fc, error: fc ? null : (res.ok ? 'the answer has no features' : res.error)};
+}
+
+// The answer of GET /plan/departure for a sol, or null: no saved plan (404), a route with
+// no clock or a sol the server refuses (422), no server. sun_model.bestDeparture() reads
+// the time out of it.
+export async function loadDeparture(sol, {fetchFn = fetch} = {}) {
+  const res = await request(fetchFn, `/plan/departure?sol=${encodeURIComponent(sol)}`);
+  return res.ok ? res.body : null;
 }

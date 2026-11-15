@@ -498,6 +498,9 @@ async function main() {
                   currentViewLink, capture, get fps() { return fps; }, redraw() { dirty = true; }};
   // The terrain is usable while the plan loads. ?plan=default is the user asking.
   const planReady = params.get('plan') === 'default' ? planDefault() : reloadPlan();
+  // Then the Sun moves to that plan's best time to leave (sun.js), but not with ?check=:
+  // a check must give the same answer whatever the planner says.
+  if (!params.get('check')) planReady.then(() => sunView.startAtBestTime(window.viz3d.plan));
   const photosReady = loadPhotos();
   window.viz3d.photosReady = photosReady;
   // Map layers of the 2D planner on the terrain (map_layers.js): nothing is asked until one
