@@ -625,5 +625,77 @@ export async function guideCheck({rehearsal}) {
   return out;
 }
 
+// Rover photos (P3): does the photo view put the camera where the Navcam was, at true
+// relief, under the photo's Sun, with the photo on the centred square that spans the
+// camera's field; and does Exit give back camera, relief, Sun and field exactly? For
+// three photos of different sols (?ids=a,b,c to choose them). It measures the mechanics;
+// whether the photo and the terrain agree is judged from the pictures and
+// src/viz3d/photo_skyline.py.
+async function photosCheck(viz) {
+  const {photos, controls, camera, terrain, sunView} = viz;
+  const el = id => document.getElementById(id), DEG = Math.PI / 180;
+  if (!photos) return {error: 'no rover photos loaded', note: el('photos-note').textContent};
+  const {photoPose, squareView, sunOf} = await import('./photos_model.js');
+  const frames = n => new Promise(done => {
+    const step = () => (n-- > 0 ? requestAnimationFrame(step) : done());
+    requestAnimationFrame(step);
+  });
+  const landed = async () => { for (let i = 0; i < 300 && controls._flight; i++) await frames(1); };
+  const wrap = deg => ((deg + 540) % 360) - 180;
+  const asked = (new URLSearchParams(location.search).get('ids') || '').split(',').filter(Boolean);
+  const ids = asked.length ? asked : (() => {
+    const bySol = new Map();
+    for (const p of photos.model.photos) if (p.available && !bySol.has(p.sol)) bySol.set(p.sol, p.id);
+    const sols = [...bySol.keys()].sort((a, b) => a - b);
+    return [sols[0], sols[Math.floor(sols.length / 2)], sols[sols.length - 1]].map(s => bySol.get(s));
+  })();
+  const before = {pose: controls.pose(), k: terrain.k, sun: {...sunView.start}};
+  const out = {photos: photos.model.photos.length, stops: viz.photoMarkers.items.length,
+               problems: photos.model.problems.length, views: []};
+  for (const id of ids) {
+    const photo = photos.model.byId.get(id);
+    if (!photo) { out.views.push({id, error: 'not in the catalogue'}); continue; }
+    if (!photos.enter(id)) { out.views.push({id, error: 'the photo view did not open'}); continue; }
+    await landed();
+    await frames(2);
+    const [X, Z] = terrain.toLocal(photo.x, photo.y);
+    const inside = Math.abs(X) <= terrain.half && Math.abs(Z) <= terrain.half;
+    const want = photoPose(photo, inside ? terrain.elevation(terrain.surfaceAt(X, Z, 1)) : null);
+    const [x, y] = terrain.toMars(controls.position[0], controls.position[2]);
+    const ground = terrain.surfaceAt(controls.position[0], controls.position[2], 1);
+    const canvas = viz.renderer.domElement, square = squareView(canvas.clientWidth, canvas.clientHeight);
+    const img = el('photo-overlay'), r = img ? img.getBoundingClientRect() : null, c = canvas.getBoundingClientRect();
+    const sun = sunOf(photo, sunView.site.lonEastDeg);
+    out.views.push({
+      id, sol: photo.sol, pose_ok: want.ok, reason: want.reason,
+      eye_height_m: +(controls.position[1] - ground).toFixed(3),
+      expected_eye_height_m: want.eyeHeight === null ? null : +want.eyeHeight.toFixed(3),
+      position_error_m: +Math.hypot(x - photo.x, y - photo.y).toFixed(3),
+      heading_error_deg: +wrap((controls.yaw - photo.heading) / DEG).toFixed(4),
+      pitch_error_deg: +((controls.pitch - photo.pitch) / DEG).toFixed(4),
+      fov_error_deg: +(camera.fov - square.fovY).toFixed(4),
+      relief_k: terrain.k,
+      sun_set: {sol: sunView.start.sol, hours: +sunView.start.hours.toFixed(4)},
+      sun_expected: {sol: sun.sol, hours: +sun.hours.toFixed(4)},
+      overlay_px_error: r ? +Math.max(Math.abs(r.left - c.left - square.left), Math.abs(r.top - c.top - square.top),
+                                      Math.abs(r.width - square.side), Math.abs(r.height - square.side)).toFixed(2) : null,
+      overlay_loaded: Boolean(img && img.complete && img.naturalWidth === 768),
+    });
+  }
+  photos.exit();
+  await frames(2);
+  const now = controls.pose();
+  out.after_exit = {
+    position_m: +Math.hypot(...now.position.map((v, i) => v - before.pose.position[i])).toFixed(6),
+    yaw_deg: +((now.yaw - before.pose.yaw) / DEG).toFixed(6),
+    pitch_deg: +((now.pitch - before.pose.pitch) / DEG).toFixed(6),
+    fov_deg: +(now.fov - before.pose.fov).toFixed(6),
+    relief_back: terrain.k === before.k,
+    sun_back: sunView.start.sol === before.sun.sol && sunView.start.hours === before.sun.hours,
+    bar_gone: !el('photo-bar') || el('photo-bar').hidden || !document.body.contains(el('photo-bar')),
+  };
+  return out;
+}
+
 export const CHECKS = {shading: shadingCheck, route: routeCheck, rehearse: rehearseCheck, sun: sunCheck,
-                       shadows: shadowsCheck, guide: guideCheck};
+                       shadows: shadowsCheck, guide: guideCheck, photos: photosCheck};
