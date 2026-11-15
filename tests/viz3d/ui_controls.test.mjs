@@ -350,7 +350,18 @@ test('19. nearest rover photo on a station card', () => {
   sameLabels();
 });
 
-test('20. enter and leave the rehearsal', () => {
+// Use the page's local import map in Node; no server or installed dependencies.
+async function rehearsalModule() {
+  const {registerHooks} = await import('node:module');
+  const hook = registerHooks({resolve(specifier, context, next) {
+    return next(specifier === 'three'
+      ? new URL('../../web/3d/vendor/three/build/three.module.js', import.meta.url).href : specifier, context);
+  }});
+  try { return await import('../../web/3d/rehearse.js'); }
+  finally { hook.deregister(); }
+}
+
+test('20. enter and leave the rehearsal with focus; disclosures and Tab order', async t => {
   buttons('rehearse', 'rh-exit');
   present('player', 'rehearse-note');
   wired('rehearse', 'click');
@@ -359,21 +370,150 @@ test('20. enter and leave the rehearsal', () => {
   const esc = methodWith('rehearse', /'Escape'/);
   assert.match(esc, /\bthis\.pause\(/, 'web/3d/rehearse.js: Esc no longer pauses the rehearsal');
   assert.doesNotMatch(esc, /\bthis\.exit\(/, 'web/3d/rehearse.js: Esc leaves the rehearsal, and loses the end summary');
+
+  // DOM order is the visible order, without positive tabindex or CSS reordering.
+  const player = tags(inner('player'));
+  assert.deepEqual(player.filter(t => ['button', 'input', 'select'].includes(t.tag)).map(t => t.attrs.id),
+    ['rh-play', 'rh-home', 'rh-detour', 'rh-storm', 'rh-summary', 'rh-more', 'rh-panel', 'rh-exit',
+     'rh-chase', 'rh-recentre', 'rh-speed', 'rh-voice', 'rh-ktrue', 'rh-scrub']);
+  assert.ok(element('rh-man').end < element('rh-main').end);
+  assert.ok(player.every(t => !(Number(t.attrs.tabindex) > 0)), 'the player overrides the normal Tab order');
+  const playerCSS = PAGE.slice(PAGE.indexOf('  #player {'), PAGE.indexOf('  /* Solar storm'));
+  assert.doesNotMatch(playerCSS, /(?:^|[;{])\s*order\s*:|(?:row|column)-reverse/);
+  assert.match(playerCSS, /#player :focus-visible[^{}]*\{[^}]*outline:\s*2px solid/);
+  assert.match(playerCSS, /#rh-play:focus[^{}]*\{[^}]*outline:/, 'entry focus needs a ring even after a click');
+  assert.match(playerCSS, /#rehearse:focus-visible[^{}]*\{[^}]*outline:/);
+
+  const {Rehearsal} = await rehearsalModule();
+  // Only rendering and route setup are stubbed; enter, exit, click handlers and focus run.
+  const classList = () => {
+    const values = new Set();
+    return {add: (...names) => names.forEach(n => values.add(n)),
+            remove: (...names) => names.forEach(n => values.delete(n)),
+            toggle: (name, on) => on ? values.add(name) : values.delete(name),
+            contains: name => values.has(name)};
+  };
+  const nodes = new Map(PAGE_IDS.map(id => [id, Object.assign(new EventTarget(), {
+    id, tagName: ELEMENTS.get(id).tag.toUpperCase(), hidden: 'hidden' in ELEMENTS.get(id).attrs,
+    classList: classList(), attrs: {...ELEMENTS.get(id).attrs},
+    setAttribute(name, value) { this.attrs[name] = value; },
+    getAttribute(name) { return this.attrs[name] ?? null; },
+    focus() {
+      assert.ok(!this.hidden, `focused hidden #${id}`);
+      if (id.startsWith('rh-')) assert.ok(!nodes.get('player').hidden, 'focused the hidden player');
+      if (id === 'rehearse') {
+        assert.ok(!document.body.classList.contains('rh-panel-hidden'), 'focused the hidden panel');
+        assert.ok(nodes.get('plan-box').open, 'focused Rehearse inside the folded Plan section');
+      }
+      document.activeElement = this;
+    },
+    click() { this.dispatchEvent(new Event('click')); },
+  })]));
+  const saved = {document: globalThis.document, window: globalThis.window};
+  t.after(() => {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete globalThis[name]; else globalThis[name] = value;
+    }
+  });
+  globalThis.document = {getElementById: id => nodes.get(id), activeElement: null,
+                         body: {classList: classList(), style: {removeProperty() {}}}};
+  globalThis.window = new EventTarget();
+  const rehearsal = new Rehearsal({terrain: {k: 1}, scene: {add() {}},
+    camera: {near: 2, updateProjectionMatrix() {}}, canvas: new EventTarget(),
+    controls: {pose: () => ({}), cancel() {}, restore() {}}, relief: {lock() {}, unlock() {}}});
+  rehearsal._restart = rehearsal._place = rehearsal._clearWalkback = () => {};
+  nodes.get('plan-box').open = true;
+  nodes.get('rehearse').focus();
+  assert.equal(rehearsal.enter(), false, 'no route must not move focus');
+  assert.equal(document.activeElement.id, 'rehearse');
+  rehearsal.model = {};
+  for (let entry = 0; entry < 2; entry++) {
+    nodes.get('rehearse').click();
+    assert.equal(rehearsal.active, true);
+    assert.equal(document.activeElement.id, 'rh-play');
+    assert.equal(rehearsal.playing, false);
+    assert.equal(rehearsal.enter(), false, 'entering twice must not steal focus');
+    for (const [toggle, content, inside] of [['rh-more', 'rh-more-box', 'rh-speed'], ['rh-panel', 'info', 'plan-reload']]) {
+      nodes.get(toggle).click();
+      assert.equal(nodes.get(toggle).attrs['aria-expanded'], 'true');
+      assert.equal(document.activeElement.id, toggle);
+      if (content === 'info') assert.equal(document.body.classList.contains('rh-panel-hidden'), false);
+      else assert.equal(nodes.get(content).hidden, false);
+      nodes.get(inside).focus();
+      nodes.get(toggle).click();
+      assert.equal(nodes.get(toggle).attrs['aria-expanded'], 'false');
+      assert.equal(document.activeElement.id, toggle, 'closing returns focus from the hidden contents');
+      if (content === 'info') assert.equal(document.body.classList.contains('rh-panel-hidden'), true);
+      else assert.equal(nodes.get(content).hidden, true);
+    }
+    nodes.get('plan-box').open = false;
+    nodes.get('rh-exit').click();
+    assert.equal(rehearsal.active, false);
+    assert.equal(nodes.get('player').hidden, true);
+    assert.equal(document.activeElement.id, 'rehearse');
+    assert.equal(rehearsal._listeners.length, 0);
+  }
 });
 
-test('21. player: play / pause (also Space), speed and position bar', () => {
+test('21. player: Space respects focused controls; play / pause, speed and position bar', async () => {
   buttons('rh-play');
   inputs('rh-speed', 'rh-scrub');
   present('rh-progress');
   wired('rh-play', 'click');
   wired('rh-speed', 'change');
   wired('rh-scrub', 'input');
-  // Space does what the Play button does, whatever that method is called.
+  // Outside a control, Space does what the Play button does, whatever that method is called.
   const play = listenersOf('rh-play').filter(l => l.type === 'click').map(l => /\bthis\.([\w$]+)\(/.exec(l.text)?.[1])
     .find(Boolean);
   inCode('rehearse', /'keydown'/, 'the rehearsal no longer listens to the keys');
   assert.ok(play && new RegExp(`\\bthis\\.${literal(play)}\\(`).test(methodWith('rehearse', /'Space'/)),
             'web/3d/rehearse.js: Space no longer does what Play does');
+
+  const {Rehearsal, spaceBelongsTo} = await rehearsalModule();
+  const node = (tagName, role = null, parentElement = null, isContentEditable = false) =>
+    ({tagName, parentElement, isContentEditable, getAttribute: name => name === 'role' ? role : null,
+      blur() { assert.fail('Space must not blur a focused control'); }});
+  const owned = [
+    ...['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA', 'SUMMARY'].flatMap(tag => {
+      const control = node(tag);
+      return [control, node('SPAN', null, control)];
+    }),
+    ...['button', 'link', 'checkbox', 'slider', 'switch checkbox'].flatMap(role => {
+      const control = node('DIV', role);
+      return [control, node('svg', null, control)];
+    }),
+    node('button'), node('DIV', null, null, true), node('SPAN', null, node('DIV', null, null, true)),
+  ];
+  const unowned = [null, undefined, {}, node('BODY'), node('CANVAS'), node('DIV', 'meter'),
+                   node('SPAN', null, node('DIV')), node('DIV', 'mybutton')];
+  const rehearsal = {playing: false, togglePlay() { this.playing = !this.playing; }};
+  const press = (target, extra = {}) => {
+    const event = {target, code: 'Space', repeat: false, defaultPrevented: false,
+                   preventDefault() { this.defaultPrevented = true; }, ...extra};
+    Rehearsal.prototype._key.call(rehearsal, event);
+    return event;
+  };
+  for (const target of owned) {
+    assert.equal(spaceBelongsTo(target), true, `Space belongs to ${target.tagName}`);
+    for (const playing of [false, true]) {
+      rehearsal.playing = playing;
+      assert.equal(press(target).defaultPrevented, false, 'keep the native Space action');
+      assert.equal(rehearsal.playing, playing, 'focused controls must not toggle playback');
+    }
+  }
+  for (const target of unowned) {
+    assert.equal(spaceBelongsTo(target), false);
+    rehearsal.playing = false;
+    assert.equal(press(target).defaultPrevented, true, 'Space outside controls must not scroll');
+    assert.equal(rehearsal.playing, true);
+    press(target);
+    assert.equal(rehearsal.playing, false);
+  }
+  for (const extra of [{repeat: true}, {defaultPrevented: true}, {code: 'Enter'}]) {
+    const event = press(node('BODY'), extra);
+    assert.equal(event.defaultPrevented, Boolean(extra.defaultPrevented));
+    assert.equal(rehearsal.playing, false, 'ignore repeated, handled or unrelated keys');
+  }
 });
 
 test('22. chase view, looking around and Recentre (also double-click)', () => {

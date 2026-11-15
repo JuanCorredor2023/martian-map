@@ -79,9 +79,9 @@ or press "Reload plan". With no saved plan the terrain still works.
   name per idea ("Return home", "Off route", "Rehearse", "Planner"), whole minutes and Wh
   everywhere, m:ss only on the player's clock line.
 - **Rehearsal**: the side panel is hidden while rehearsing, so the scene shows; "Panel" in the
-  player opens it (and closes it) without leaving. The player has the maneuver on top, with
-  "More", "Panel" and "Exit" beside it; one row of main buttons: play / pause (space bar),
-  "Return home", "Off route", "Solar storm"; under "More": "Chase view" (the astronaut seen from
+  player opens it (and closes it) without leaving. The player has the maneuver on top, then
+  one row of main buttons: play / pause, "Return home", "Off route", "Solar storm"; then
+  "More", "Panel" and "Exit". Under "More": "Chase view" (the astronaut seen from
   behind), "Recentre", the speed (×1 to ×180), voice, "Use ×k" and the energy numbers. Then
   the scrubber, the clock line, the panel's Sun line (local solar time, the Sun's height and
   light, "Following the EVA clock: …") and the 2D planner's energy bar. The clock line is the
@@ -89,6 +89,13 @@ or press "Reload plan". With no saved plan the terrain still works.
   storm it goes on and the way home is a stretch of it, "EVA 102:04 · return home 2:02 of 2:51 ·
   120 of 160 m" (after a rejoin, the EVA's new end), while the scrubber covers the new route.
   Drag to look around; double-click or "Recentre" looks forward.
+  Entering focuses Play with a visible ring. Tab follows the visible order: main buttons,
+  More, Panel, Exit, then the other visible controls; Shift + Tab goes back. More and Panel
+  keep focus on their toggle when opened or closed. Exit returns focus to Rehearse, opening
+  Plan if it was folded. Space plays or pauses only outside controls: buttons (including
+  Play), links, fields, section titles, editable text and custom buttons, checkboxes or
+  sliders keep their own Space action and their focus. Holding Space does not repeat the
+  rehearsal shortcut, and a key already handled by another control is left alone.
   Esc closes what is on top (the card, or a message) and pauses; it never leaves the rehearsal,
   which would lose the end summary: only "Exit" does.
   It pauses at every stop with the station's card; on pause it draws the walkback lines from
@@ -96,7 +103,7 @@ or press "Reload plan". With no saved plan the terrain still works.
   Wh, 869 Wh spare after it", red line: 30 min from home, cyan: energy-safe area). At the
   habitat it stays in the rehearsal: the storm alert ends, the player shrinks (the maneuver
   says "Home"), and the card "Plan against the walk" has "Replay" (from the start, as a new
-  walk with its own summary) and "Exit"; Play (now "↺ Replay") and the space bar replay too,
+  walk with its own summary) and "Exit"; Play (now "↺ Replay") and Space outside controls replay too,
   "Summary" shows the card again after closing it, and the scrubber goes back. On touch
   screens the player's buttons are at least 44 px tall. The relief is locked at ×1 and the Sun
   follows the EVA clock.
