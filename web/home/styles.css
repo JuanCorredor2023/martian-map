@@ -552,8 +552,3 @@ figcaption > span:first-child { max-width: 72ch; }
 @media (min-width: 720px) {
   .guide-box { grid-template-columns: minmax(0, 1fr) auto; }
 }
-.honest { padding-block: clamp(2.25rem, 1.8rem + 2vw, 3.5rem) 0; scroll-margin-top: calc(var(--header-h) + 1rem); }
-.honest h2 { font-size: var(--step-2); margin-bottom: 1.25rem; }
-.honest ul { list-style: none; padding: 0; max-width: 46rem; }
-.honest li { padding-block: 0.875rem; border-top: 1px solid var(--line); }
-.honest li:last-child { border-bottom: 1px solid var(--line); }
