@@ -10,8 +10,8 @@ Nine scenes follow the Space Apps order: who we are, the challenge, the name, th
 
 ### Scene 1 · Title · 0:00–0:03
 - **Picture:** HiRISE orthophoto of the boxwork, full frame, slow push-in (100 % → 108 %).
-- **On screen:** "[TEAM NAME]" (large) · "Aaron · Diana · Javier · Juan · Sebas" · "NASA Space Apps 2026 — Martian Map challenge" (small).
-- **Voice-over:** "We're team [TEAM NAME]: Aaron, Diana, Javier, Juan and Sebas."
+- **On screen:** "[TEAM NAME]" (large) · "Aaron · Diana · Javier · Juan · Sebastian" · "NASA Space Apps 2026 — Martian Map challenge" (small).
+- **Voice-over:** "We're team [TEAM NAME]: Aaron, Diana, Javier, Juan and Sebastian."
 - **Sound:** music fades in under the voice.
 
 ### Scene 2 · The challenge · 0:03–0:08.5
@@ -60,7 +60,7 @@ Nine scenes follow the Space Apps order: who we are, the challenge, the name, th
 Record it in one take, then cut it to the scene times; at 2.5 words per second it fits with room to breathe.
 
 ```text
-We're team [TEAM NAME]: Aaron, Diana, Javier, Juan and Sebas.
+We're team [TEAM NAME]: Aaron, Diana, Javier, Juan and Sebastian.
 Our challenge: how far can an astronaut walk on Mars and still get home?
 Mars EVA Planner: learn from the rover, guarantee the human.
 On NASA HiRISE terrain, we price every step in Mars gravity,
@@ -83,7 +83,7 @@ Burn these into the video and upload the same file to YouTube; nudge the times t
 1
 00:00:00,000 --> 00:00:03,000
 We're team [TEAM NAME]:
-Aaron, Diana, Javier, Juan and Sebas.
+Aaron, Diana, Javier, Juan and Sebastian.
 
 2
 00:00:03,000 --> 00:00:08,500
