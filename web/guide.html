@@ -56,6 +56,10 @@
       <div class="meter-label"><span>Time back to the habitat (limit 30 min)</span><span id="t-val"></span></div>
       <div class="track"><div id="t-fill" class="fill"></div></div>
     </div>
+    <div class="meter" id="radio-meter" hidden>
+      <div class="meter-label"><span>Radio (E11, line of sight)</span><span id="r-val"></span></div>
+      <div class="track"><div id="r-fill" class="fill"></div></div>
+    </div>
     <div class="meter" id="eva-meter" hidden>
       <div class="meter-label"><span>EVA time left (max duration)</span><span id="v-val"></span></div>
       <div class="track"><div id="v-fill" class="fill"></div></div>
@@ -121,7 +125,11 @@ async function init() {
   update(0);
 }
 
-function setRoute(r) { route = r; idx = 0; spoken.clear(); }
+function setRoute(r) {
+  route = r; idx = 0; spoken.clear();
+  // Radio along this route (E11): asked in the background; the meter appears when it answers.
+  G.attachComms(r, plan.plan.properties.habitat).then(() => { if (route === r) update(idx); });
+}
 
 // --- drawing ---------------------------------------------------------------
 function tileLayer(id, url, maxZoom) {
@@ -163,11 +171,14 @@ function update(i) {
   ui("arrow").textContent = next.arrow;
   ui("man-text").textContent = next.text;
   ui("man-dist").textContent = distText;
-  for (const text of G.announcements(r, i, spoken)) voice.say(text);
+  for (const text of [...G.announcements(r, i, spoken), ...G.radioAnnouncements(r, i, spoken)]) voice.say(text);
   const m = G.meters(r, i, limitS);
   meter("e-fill", "e-val", m.energy.frac, m.energy.text, m.energy.good);
   meter("t-fill", "t-val", m.back.frac, m.back.text, m.back.good);
   if (m.eva) meter("v-fill", "v-val", m.eva.frac, m.eva.text, m.eva.good);
+  const radio = G.radioState(r, i);
+  ui("radio-meter").hidden = !radio;
+  if (radio) meter("r-fill", "r-val", radio.state === "direct" ? 1 : radio.state === "relay" ? 0.5 : 0, radio.text, radio.good);
   const arrived = G.arrivals(r, i, stations(), visited);
   if (arrived.length) openStationCard(arrived[0]);
   if (deckgl) deckgl.setProps({layers: layers(),

@@ -276,3 +276,80 @@ export function stormHtml(s) {
 export const STORM_PENDING = "<b>☢ SOLAR STORM ALERT</b> · Return to the habitat now. Computing the fastest way…";
 export const stormFailedHtml = why =>
   `<b>☢ SOLAR STORM ALERT</b> · Return to the habitat now. The way home could not be computed: ${why}`;
+
+// --- radio (E11, JB): line of sight to the habitat antenna, and the pair relay ----------
+// POST /comms/check answers, per route vertex, radio_ok (one astronaut sees the habitat
+// antenna) and pair_state ("direct" / "relay" / "none": a partner walking behind can relay).
+// attachComms(r, habitat) adds r.radio, r.pair and r.radioEvents; without the API (no
+// GDAL, E11 not merged) the route simply has no radio and the views hide the meter.
+export const RADIO_WARN_M = 80;          // announce a radio loss this far ahead
+export const RADIO_FLICKER_M = 10;       // radio back for less than this is not "back"
+
+export async function attachComms(r, habitat) {
+  try {
+    const out = await post("/comms/check", {route: {coordinates: r.coords, t_s: r.t}, habitat});
+    const p = out.properties || {};
+    if (!Array.isArray(p.radio_ok) || p.radio_ok.length !== r.coords.length) return r;
+    r.radio = p.radio_ok.map(Boolean);
+    r.pair = Array.isArray(p.pair_state) && p.pair_state.length === r.coords.length ? p.pair_state : null;
+    r.radioEvents = radioEvents(r);
+  } catch { /* no radio data: the meter stays hidden */ }
+  return r;
+}
+
+// Direct radio with flickers removed: a stretch WITH radio shorter than RADIO_FLICKER_M
+// between two silent stretches counts as silent (the DEM edge of a shadow), so the voice
+// does not say "radio back" and "you lose radio" a metre apart.
+export function steadyRadio(radio, d) {
+  const out = radio.slice();
+  for (let a = 0; a < out.length; a++) {
+    if (!out[a]) continue;
+    let b = a; while (b + 1 < out.length && out[b + 1]) b++;
+    if (a > 0 && b < out.length - 1 && d[b] - d[a] < RADIO_FLICKER_M) out.fill(false, a, b + 1);
+    a = b;
+  }
+  return out;
+}
+
+// Where direct radio is lost and recovered along the route, with the silent time.
+export function radioEvents(r) {
+  const ev = [], radio = steadyRadio(r.radio, r.d);
+  for (let k = 1; k < radio.length; k++) {
+    if (radio[k - 1] && !radio[k]) {
+      let e = k; while (e < radio.length - 1 && !radio[e]) e++;
+      const relay = r.pair ? r.pair.slice(k, e).every(s => s !== "none") : false;
+      ev.push({i: k, dist: r.d[k], kind: "loss", silentS: r.t[e] - r.t[k], relay});
+    } else if (!radio[k - 1] && radio[k]) {
+      ev.push({i: k, dist: r.d[k], kind: "back"});
+    }
+  }
+  return ev;
+}
+
+// Radio state at vertex i for the meter: null when the route has no radio data.
+export function radioState(r, i) {
+  if (!r.radio) return null;
+  const pair = r.pair ? r.pair[i] : null;
+  if (r.radio[i]) return {state: "direct", good: true, text: "Direct to the habitat"};
+  if (pair === "relay") return {state: "relay", good: true, text: "Relay through your partner"};
+  return {state: "none", good: false, text: "No radio link"};
+}
+
+// Spoken radio warnings: "In 80 meters you lose direct radio for 7 minutes", "Radio back".
+export function radioAnnouncements(r, i, spoken) {
+  if (!r.radioEvents) return [];
+  const out = [];
+  for (const e of r.radioEvents) {
+    const togo = e.dist - r.d[i], key = `${r.kind}-radio-${e.i}`;
+    if (e.kind === "loss" && togo <= RADIO_WARN_M && togo > 0 && !spoken.has(key)) {
+      spoken.add(key);
+      const min = Math.max(1, Math.round(e.silentS / 60));
+      out.push(`In ${Math.max(10, Math.round(togo / 10) * 10)} meters you lose direct radio for about ${min} minute${min > 1 ? "s" : ""}` +
+               (e.relay ? ". Your partner can relay." : ". Stay with your partner."));
+    } else if (e.kind === "back" && togo <= 0 && togo > -15 && !spoken.has(key)) {
+      spoken.add(key);
+      out.push("Direct radio back.");
+    }
+  }
+  return out;
+}
