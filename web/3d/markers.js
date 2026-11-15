@@ -19,6 +19,7 @@ const STYLE = {
   goal: {font: 14, pole: 34, filled: true},
   habitat: {font: 12, pole: 14, filled: false},
   point: {font: 11, pole: 16, filled: false},
+  photo: {font: 11, pole: 10, filled: false},     // rover photo stops (P3): short, under the stations
 };
 const PANEL = 'rgba(16, 20, 26, 0.9)';     // the page's panel colour
 
@@ -72,6 +73,18 @@ function pinTexture(label, color, style) {
           painted, columns: width, rows: height};
 }
 
+// Is the pin painted near a point of its sprite (uv)? A few pixels of slack.
+function painted(pin, uv) {
+  const col = Math.round(uv.x * pin.columns), row = Math.round((1 - uv.y) * pin.rows);
+  const slack = 3 * TEXTURE_SCALE;
+  for (let r = Math.max(0, row - slack); r <= Math.min(pin.rows - 1, row + slack); r += 2) {
+    for (let c = Math.max(0, col - slack); c <= Math.min(pin.columns - 1, col + slack); c += 2) {
+      if (pin.painted[r * pin.columns + c]) return true;
+    }
+  }
+  return false;
+}
+
 export class MarkerLayer {
   constructor(terrain, scene, camera) {
     Object.assign(this, {terrain, camera});
@@ -97,7 +110,7 @@ export class MarkerLayer {
         map: pin.texture, sizeAttenuation: false, depthTest: false, depthWrite: false,
         transparent: true, opacity: dimmed ? 0.5 : 1, fog: false}));
       sprite.center.set(0.5, pin.anchor);
-      sprite.renderOrder = 20;                 // after the route's faint pass
+      sprite.renderOrder = marker.kind === 'photo' ? 19 : 20;   // after the route's faint pass; photos under stations
       sprite.userData.marker = marker;
       sprite.userData.pin = pin;
       const item = {marker, sprite, dome: null, size: [pin.width, pin.height], position: [0, 0, 0]};
@@ -149,20 +162,22 @@ export class MarkerLayer {
   // overlap, the nearest to the camera wins: it is the one drawn on top. Only the
   // painted part of a pin counts (label, pole and dot, with a few pixels of slack).
   pick(ndc) {
+    return this.pickAll(ndc)[0] || null;
+  }
+
+  // Every marker under a screen point, nearest first (overlapping photo stops are offered
+  // as a choice).
+  pickAll(ndc) {
+    if (!this.group.visible) return [];
     this.camera.updateMatrixWorld();
     this._raycaster.setFromCamera(new THREE.Vector2(ndc[0], ndc[1]), this.camera);
+    const found = [];
     for (const hit of this._raycaster.intersectObjects(this.group.children, false)) {
       const {marker, pin} = hit.object.userData;
-      if (!pin) return marker;                 // the habitat dome
-      const col = Math.round(hit.uv.x * pin.columns), row = Math.round((1 - hit.uv.y) * pin.rows);
-      const slack = 3 * TEXTURE_SCALE;
-      for (let r = Math.max(0, row - slack); r <= Math.min(pin.rows - 1, row + slack); r += 2) {
-        for (let c = Math.max(0, col - slack); c <= Math.min(pin.columns - 1, col + slack); c += 2) {
-          if (pin.painted[r * pin.columns + c]) return marker;
-        }
-      }
+      if (found.includes(marker)) continue;
+      if (!pin || painted(pin, hit.uv)) found.push(marker);      // no pin: the habitat dome
     }
-    return null;
+    return found;
   }
 
   select(marker) {

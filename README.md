@@ -16,7 +16,7 @@ Equipo de NASA Space Apps 2026, reto *Martian Map*: planificador de EVA para el 
 
 ## Correr la app (HUD, modo Guiar y vista 3D)
 
-Un solo servidor (FastAPI) sirve la API, el HUD y las teselas en `http://localhost:8000/`. No hace falta internet en la demo. Detalle y guion de 5 minutos: `docs/demo.md`.
+Un solo servidor (FastAPI) sirve la API, el HUD y las teselas en `http://localhost:8000/`. No hace falta internet en la demo. Detalle y guion de 6 minutos: `docs/demo.md`.
 
 **Requisitos:** Python 3.12 (el entorno del equipo, por ejemplo `conda activate martian`) y `gh` con `gh auth login`. Todo en una terminal normal, no de administrador, desde la raíz del repositorio.
 
@@ -34,6 +34,9 @@ Un solo servidor (FastAPI) sirve la API, el HUD y las teselas en `http://localho
    gh release download e12-dose-v1 --dir data; Expand-Archive data\e12_dose_v1.zip data\e12 -Force; Remove-Item data\e12_dose_v1.zip
    gh release download e8-v0 --dir data; Expand-Archive data\e8_v0.zip data\e8 -Force; Remove-Item data\e8_v0.zip
    gh release download e1-sand-v1 --dir data; Expand-Archive data\e1_sand_v1.zip data\e1 -Force; Remove-Item data\e1_sand_v1.zip
+   gh release download minerals-v1 --dir data; Expand-Archive data\minerals_v1.zip data\minerals -Force; Remove-Item data\minerals_v1.zip
+   gh release download themis-v1 --dir data; Expand-Archive data	hemis_v1.zip data	hermal -Force; Remove-Item data	hemis_v1.zip
+   gh release download rems-v1 --dir data; Expand-Archive dataems_v1.zip dataems -Force; Remove-Item dataems_v1.zip
    python src/viz3d/build_terrain_assets.py
    ```
    La última línea genera `data/tiles/3d/` para la vista 3D (unos segundos). Comprueba qué falta con:

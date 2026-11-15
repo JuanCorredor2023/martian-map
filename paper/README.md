@@ -31,9 +31,10 @@ Besides the demo, the team will submit a scientific paper. This folder collects 
 | E1 · MaxEnt IRL: terrain cost learned from Curiosity's route | [notes/E1_maxent_irl.md](notes/E1_maxent_irl.md) | Juan |
 | E3 · metabolic and O2 cost | [notes/E3_metabolic_cost.md](notes/E3_metabolic_cost.md) | Sebas |
 | E4 · graph, R(v), walkback · MVP baselines | [notes/E4_walkback.md](notes/E4_walkback.md) | Aaron |
-| E5 · orienteering · E6 benchmark | to do | Diana |
+| E5 · orienteering · E6 benchmark | [notes/E5_orienteering.md](notes/E5_orienteering.md) · [notes/E6_benchmark.md](notes/E6_benchmark.md) | Diana |
 | E8 · boxwork top-hat and U-Net | to do | JB |
 | E9 · BoulderNet and distillation | [notes/E9_boulders.md](notes/E9_boulders.md) | Aaron |
 | E12 · radiation dose and SEP alert | [notes/E12_radiation_dose.md](notes/E12_radiation_dose.md) | Juan |
-| Product: API, HUD and manual stations | [notes/product_api_hud.md](notes/product_api_hud.md) | Sebas |
-| P1 · 3D map of the box and route rehearsal | [notes/P1_3d_map.md](notes/P1_3d_map.md) (in progress) | Juan |
+| Product: API, HUD, manual stations, guide mode (P2), data types (P4), E11 radio in the UI | [notes/product_api_hud.md](notes/product_api_hud.md) | Sebas |
+| P1 · 3D map of the box and route rehearsal | [notes/P1_3d_map.md](notes/P1_3d_map.md) | Juan |
+| P6 · best time to leave; working without Earth | [notes/P6_departure_time.md](notes/P6_departure_time.md) | Diana |

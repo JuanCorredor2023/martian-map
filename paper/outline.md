@@ -22,16 +22,19 @@ Why EVA planning on Mars needs terrain-aware, energy-aware routes; the boxwork a
 - 3.3 Learned terrain cost (MaxEnt IRL) → *E1 note*
 - 3.4 Metabolic and O2 cost under Mars gravity → [E3](notes/E3_metabolic_cost.md)
 - 3.5 Graph, return-energy layer R(v) and walkback routes → *E4 note*
-- 3.6 Station selection (orienteering) → *E5 note*
+- 3.6 Station selection (orienteering) → [E5](notes/E5_orienteering.md)
 - 3.7 Boxwork ridges and hollows (top-hat, U-Net) → *E8 note*
 - 3.8 Boulder density (BoulderNet, distillation) → *E9 note*
 - 3.9 Radiation dose along the EVA timeline → *E12 note*
-- 3.10 Product: API and HUD; manual stations and their rubric → [product](notes/product_api_hud.md)
+- 3.10 Product: API and HUD; manual stations and their rubric; guide mode shared by the arm tablet and the 3D rehearsal; context data (REMS, CRISM/OMEGA, THEMIS) and radio (E11) in the UI → [product](notes/product_api_hud.md)
+- 3.11 Best time to leave (Sun and terrain shadows along the planned EVA) → [P6](notes/P6_departure_time.md)
 
 ## 4. Results
 - MVP route versus the three baselines → *E4/E5 notes, results table*
 - How well terrain and learned costs explain Curiosity's route → [E2](notes/E2_curiosity_traverse.md), *E1 note*
 - Second-priority layers (E8, E9, E12) and their effect on the plan
+- The 30 min red line against fixed-radius rules (about a third of the circle is falsely safe) → [product](notes/product_api_hud.md), *E4 note*
+- What binds in the box: time, not energy; the rubric decides only when time is short; radio line of sight leaves about 41 % of a 120 min tour without direct radio → [product](notes/product_api_hud.md), [E3](notes/E3_metabolic_cost.md), *E5 and E11 notes*
 
 ## 5. Discussion
 What the validation does and does not show; limitations collected from every note; future work.

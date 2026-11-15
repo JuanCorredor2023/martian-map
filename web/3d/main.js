@@ -15,6 +15,12 @@
 //   check=shading   run a check from checks.js (shading, route, rehearse, sun, shadows) and show its
 //                   result as JSON
 //   drag=pan        map-style mouse: drag moves, right-drag rotates (default: drag rotates)
+//   view=x,y,z,heading,pitch   where the free-flight camera starts: Mars CRS metres, the
+//                   camera's elevation in metres (DEM datum), heading from north and pitch
+//                   below the horizon in degrees (view_link.js). "Copy link to this view"
+//                   in the About section writes it.
+//   photo=<id>      open a rover photo (P3, photos.js) in the photo view, from where the
+//                   Navcam took it
 import * as THREE from 'three';
 import { loadLastPlan, loadRubric, requestDefaultPlan } from './api.js';
 import { hideCard, showCard, stationCard } from './card.js';
@@ -25,12 +31,16 @@ import { mainRoute, parsePlan, planMarkers } from './plan_model.js';
 import { Rehearsal } from './rehearse.js';
 import { Shadows } from './shadows.js';
 import { SunView } from './sun.js';
-import { parseClock, parseSol } from './sun_model.js';
+import { clockText, parseClock, parseSol } from './sun_model.js';
 import { Terrain, BUILD_HINT } from './terrain.js';
+import { formatView, parseView, viewLink } from './view_link.js';
 
 const ui = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const SKY = 0xd8b690;                       // dusty butterscotch sky (a look, not a model)
+const DEG = Math.PI / 180;
+// Text from the address or from an error, made safe to put inside HTML.
+const esc = text => String(text).replace(/[&<>"']/g, ch => `&#${ch.charCodeAt(0)};`);
 
 function pickQuality() {
   const q = params.get('q');
@@ -63,7 +73,7 @@ window.addEventListener('pointerdown', e => {
 
 async function main() {
   if (window.innerWidth < 700 || window.innerHeight < 500) {
-    ui('about').open = ui('plan-box').open = ui('sun-box').open = false;
+    ui('about').open = ui('plan-box').open = ui('sun-box').open = ui('photos-box').open = false;
   }
   const quality = pickQuality();
   const canvas = ui('view');
@@ -89,7 +99,7 @@ async function main() {
     console.error(err);
     ui('readout').textContent = 'Terrain not loaded';
     ui('plan-source').textContent = 'No terrain to draw the plan on.';
-    showMessage(`${err.message.replace(BUILD_HINT, '')}<code>${BUILD_HINT}</code>`);
+    showMessage(`${esc(err.message.replace(BUILD_HINT, ''))}<code>${BUILD_HINT}</code>`);
     return;
   }
   scene.add(terrain.group);
@@ -116,6 +126,8 @@ async function main() {
   // lines of the rehearsal.
   const overlays = new RouteOverlay(terrain, scene);
   const markers = new MarkerLayer(terrain, scene, camera);
+  const photoMarkers = new MarkerLayer(terrain, scene, camera);       // rover photo stops (P3): their own layer
+  photoMarkers.group.name = 'photo markers';
   const walkbackLines = new GroundLines(terrain, scene, 'walkback');
 
   function resize() {
@@ -125,6 +137,7 @@ async function main() {
     camera.updateProjectionMatrix();
     overlays.setResolution(w, h);
     markers.setResolution(w, h);
+    photoMarkers.setResolution(w, h);
     walkbackLines.setResolution(w, h);
     shownFov = camera.fov;
     dirty = true;
@@ -170,6 +183,7 @@ async function main() {
     const k = terrain.setExaggeration(reliefLock ? 1 : Number(value) || 1);
     overlays.refresh();
     markers.refresh();
+    photoMarkers.refresh();
     walkbackLines.refresh();
     controls.refresh();
     shadows.invalidate();                      // what casts and receives changed shape
@@ -187,7 +201,17 @@ async function main() {
   ui('relief').max = terrain.maxExaggeration;
   ui('relief').disabled = false;
   ui('relief').addEventListener('input', e => { pendingRelief = e.target.value; });
-  setRelief(params.get('k') || 2);
+  // ?k= that is not a number means the default; the slider moves in steps of 0.5.
+  const startK = parseFloat(params.get('k'));
+  setRelief(Number.isFinite(startK) ? Math.round(startK * 2) / 2 : 2);
+
+  // ?view= places the camera (view_link.js). After the relief: the camera's floor is the
+  // ground as shown.
+  const startView = parseView(params.get('view'));
+  if (startView) {
+    const [X, Z] = terrain.toLocal(startView.x, startView.y);
+    controls.setView([X, startView.z - terrain.zRef, Z], startView.heading * DEG, startView.pitch * DEG);
+  }
 
   // The Sun of Mars for a sol and a local solar time (sun.js). ?light=az,el wins over it.
   const fixedLight = (params.get('light') || '').split(',').map(Number);
@@ -236,9 +260,52 @@ async function main() {
   canvas.addEventListener('pointerup', e => {
     if (!press || press.id !== e.pointerId || Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4) return;
     const r = canvas.getBoundingClientRect();
-    const hit = markers.pick([(e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height * 2 - 1)]);
-    if (hit) markers.select(hit);
+    const ndc = [(e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height * 2 - 1)];
+    const hit = markers.pick(ndc);
+    if (hit) { markers.select(hit); return; }
+    // Rover photo stops: one opens its card; pins on top of each other offer a choice.
+    const stops = photos ? photoMarkers.pickAll(ndc).map(m => m.data.groupId) : [];
+    if (stops.length === 1) photos.openGroup(stops[0]);
+    else if (stops.length > 1) photos.chooseStop(stops);
+    if (stops.length) dirty = true;
   });
+
+  // ---- rover photos (P3, photos.js) ---------------------------------------------------
+  // Loaded on their own: a missing catalogue, missing images or an error in this part
+  // leaves the rest of the map as it is.
+  let photos = null;
+  const photosNote = text => { ui('photos-note').textContent = text; };
+  const showPhotoPins = () => photos && photos.setVisible(ui('photos-show').checked && !rehearsal.active);
+  async function loadPhotos() {
+    try {
+      const {PhotoLayer} = await import('./photos.js');
+      const layer = new PhotoLayer({terrain, controls, camera, canvas, relief, sunView, markers: photoMarkers,
+                                    showCard, hideCard, onChange: () => { dirty = true; },
+                                    isBusy: () => rehearsal.active});
+      const got = await layer.load();
+      if (!got.ok) {
+        photosNote(`No rover photos: ${got.error}. The rest of the map works without them ` +
+                   '(web/3d/README.md, "Rover photos", says how to build them).');
+        return;
+      }
+      photos = layer;
+      window.viz3d.photos = layer;
+      ui('photos-show').disabled = false;
+      photosNote(`${got.count} Navcam photos (black and white, 2025–2026) at the stops where they were ` +
+                 'taken. Click a camera pin for the photo; "View from here" lays it over the terrain.');
+      showPhotoPins();
+      dirty = true;
+    } catch (err) {
+      console.error(err);
+      photosNote(`Rover photos not available (${err.message}). The rest of the map works without them.`);
+    }
+  }
+  ui('photos-show').addEventListener('change', showPhotoPins);
+  // The rehearsal takes the camera and the relief: leave the photo view before it starts.
+  document.addEventListener('click', e => {
+    if (photos && photos.active && e.target.closest && e.target.closest('#rehearse')) photos.exit();
+  }, true);
+  let rehearsing = false;                      // pins are hidden while rehearsing (frame())
 
   // ---- plan ---------------------------------------------------------------------
   const line = (parent, cls, text) => {
@@ -312,16 +379,63 @@ async function main() {
   ui('plan-reload').addEventListener('click', reloadPlan);
   ui('plan-default').addEventListener('click', planDefault);
 
+  // ---- a view to share: its address and its picture --------------------------------
+  // The address that opens the page on the free-flight view as it is now, with what
+  // changes the picture: relief, sol, time and the shadows switch (view_link.js).
+  function currentViewLink() {
+    const [x, y] = terrain.toMars(controls.position[0], controls.position[2]);
+    const view = formatView({x, y, z: terrain.elevation(controls.position[1]),
+                             heading: controls.yaw / DEG, pitch: controls.pitch / DEG});
+    const fixed = Boolean(sunView.fixed);      // ?light= stays as it is in the address
+    return viewLink(location.origin + location.pathname, location.search, {
+      view, k: terrain.k, sol: fixed ? params.get('sol') : sunView.start.sol,
+      lt: fixed ? params.get('lt') : clockText(sunView.start.hours), shadows: shadows.enabled ? null : 0});
+  }
+  // The link is always shown in the box, selected: the clipboard only works on localhost
+  // or https, and the page is also opened from other machines of the local network.
+  ui('copy-view').addEventListener('click', async () => {
+    const link = currentViewLink(), box = ui('view-link');
+    box.value = link;
+    box.hidden = false;
+    box.select();
+    let copied = false;
+    try { await navigator.clipboard.writeText(link); copied = true; } catch { /* no clipboard here */ }
+    ui('share-note').textContent = copied ? 'Link copied.' : 'Copy the link from the box.';
+  });
+  // The picture is the canvas alone (no panels), at its size on screen times the pixel
+  // ratio. The frame is drawn again right before it is read: three.js does not keep the
+  // drawing buffer between frames.
+  function capture() {
+    renderer.render(scene, camera);
+    return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  }
+  ui('save-image').addEventListener('click', async () => {
+    const blob = await capture();
+    if (!blob) { ui('share-note').textContent = 'The browser could not make the image.'; return; }
+    const a = document.createElement('a'), url = URL.createObjectURL(blob);
+    a.href = url;
+    a.download = 'mars-eva-3d.png';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);        // after the download has started
+    ui('share-note').textContent = `Image saved (${canvas.width} × ${canvas.height} px).`;
+  });
+
   function frame(now) {
     requestAnimationFrame(frame);
     if (pendingRelief !== null) { setRelief(pendingRelief); pendingRelief = null; }
     if (controls.update((now - last) / 1000)) dirty = true;    // wheel easing, auto-rotate, drags, flights
     if (rehearsal.update((now - last) / 1000)) dirty = true;   // every frame only while playing or dragging
+    if (rehearsal.active !== rehearsing) {     // photo pins out of the way of the walk, back after it
+      rehearsing = rehearsal.active;
+      showPhotoPins();
+      dirty = true;
+    }
     last = now;
     if (!dirty && !continuous) return;
     if (camera.fov !== shownFov) {             // a flight or the rehearsal changed it: resize the pins
       shownFov = camera.fov;
       markers.setResolution(canvas.clientWidth, canvas.clientHeight);
+      photoMarkers.setResolution(canvas.clientWidth, canvas.clientHeight);
     }
     renderer.render(scene, camera);
     dirty = false;
@@ -336,30 +450,52 @@ async function main() {
 
   // Handle for the manual checks listed in the PR and for later blocks.
   // `plan` is {fc, source, error, missing, stationTypes, model} once a plan was asked for.
+  // `photos` is the PhotoLayer once its catalogue has loaded (photosReady), else missing.
   window.viz3d = {terrain, scene, camera, controls, renderer, sun, sunDirection, sunView, shadows, overlays, markers,
-                  rehearsal, walkbackLines, plan: null, showPlan, reloadPlan, planDefault, setRelief,
-                  get fps() { return fps; }, redraw() { dirty = true; }};
+                  photoMarkers, rehearsal, walkbackLines, plan: null, showPlan, reloadPlan, planDefault, setRelief,
+                  currentViewLink, capture, get fps() { return fps; }, redraw() { dirty = true; }};
   // The terrain is usable while the plan loads. ?plan=default is the user asking.
   const planReady = params.get('plan') === 'default' ? planDefault() : reloadPlan();
+  const photosReady = loadPhotos();
+  window.viz3d.photosReady = photosReady;
+
+  // ?photo=<id>: its card and the photo view, once the plan has drawn (it hides the card).
+  const startPhoto = params.get('photo');
+  if (startPhoto) {
+    Promise.all([planReady, photosReady]).then(async () => {
+      const {parsePhotoParam} = await import('./photos_model.js');
+      const id = parsePhotoParam(startPhoto), photo = photos && id && photos.model.byId.get(id);
+      if (photo) {
+        photos.openGroup(photo.groupId, id);
+        photos.enter(id);
+      } else {
+        photosNote(photos ? `The address asks for photo "${startPhoto}", which is not in the catalogue.`
+                          : ui('photos-note').textContent);
+      }
+      dirty = true;
+    });
+  }
 
   // ?check=<name>: run a reproducible check (checks.js) and show its JSON result.
   const check = params.get('check');
   if (check) {
     const {CHECKS} = await import('./checks.js');
     await planReady;
-    const result = CHECKS[check] ? CHECKS[check](window.viz3d) : {error: `unknown check: ${check}`};
+    await photosReady;
+    const result = CHECKS[check] ? await CHECKS[check](window.viz3d) : {error: `unknown check: ${check}`};   // guide is async
     window.viz3d.checkResult = result;
     console.log(JSON.stringify(result));
     const plain = new URLSearchParams(params);
     plain.delete('check');
-    showMessage(`<div class="muted">Result of the "${check}" check, shown because the address has
-      <b>?check=${check}</b>. <a href="?${plain}">Open the map without it</a>.</div>
-      <code style="text-align:left;white-space:pre-wrap">${JSON.stringify(result, null, 1)}</code>`);
+    // The name comes from the address: as text, never as HTML.
+    showMessage(`<div class="muted">Result of the "${esc(check)}" check, shown because the address has
+      <b>?check=${esc(check)}</b>. <a href="?${esc(plain)}">Open the map without it</a>.</div>
+      <code style="text-align:left;white-space:pre-wrap">${esc(JSON.stringify(result, null, 1))}</code>`);
     dirty = true;
   }
 }
 
 main().catch(err => {
   console.error(err);
-  showMessage(`Error: ${err.message}`);
+  showMessage(`Error: ${esc(err.message)}`);
 });

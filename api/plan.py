@@ -96,3 +96,10 @@ class RejoinRequest(BaseModel):
     habitat: Tuple[float, float]
     max_cell_slope_deg: Optional[float] = Field(default=30.0, ge=0, le=90)
     human_cost: bool = True
+
+
+class WalkRecord(BaseModel):
+    """POST /walks (P6, #45): a walk logged by the guide (tablet or 3D rehearsal) and its
+    summary against the plan. points: [x, y, t_s, used_wh, route_kind, radio_ok]."""
+    summary: dict
+    points: List[list] = Field(default_factory=list, max_length=50000)

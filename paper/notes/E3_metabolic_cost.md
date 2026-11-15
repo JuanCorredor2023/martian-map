@@ -1,6 +1,6 @@
 # E3 · Metabolic and O2 cost of walking under Mars gravity
 
-Owner: Sebas (`@Seredial0326`) · Issue: #6 · PRs: #21, #26 · Status: done for the MVP (E1 weights still to be combined, hours 20–24) · Last update: 2026-11-14 (sensitivity added)
+Owner: Sebas (`@Seredial0326`) · Issue: #6 (closed) · PRs: #21, #26, #30, #40, #41, #58 · Status: done; the human cost (E3 × E1 sand price) is live in `/plan`, the walkback and the guide · Last update: 2026-11-15
 
 ## Question
 How much energy, time and metabolic O2 does a suited astronaut spend on each move across the 1 m base grid, under Mars gravity? The answer is the cost the planner uses: E4 (return energy R(v) and walkback) and E5 (orienteering) plan on it.
@@ -133,8 +133,8 @@ What it shows:
 - **Negative result: the Apollo regression breaks on steep climbs.** V = 0.75 − 0.01·alpha reaches 0 at +75°. Without a slope limit, the real DEM has 107 climbing edges at or above 75°; their time is negative and 91 of them gave negative energy, which breaks Dijkstra (non-negative weights). The regression was fitted on gentle slopes and must not be extrapolated; hence the guard.
 - **Cross-slope is not modelled.** Santee only sees the slope along the move. The 30° cell block is a design choice, not a physiological threshold.
 - **The DEM does not see the boxwork.** The base grid note shows that the 1 m DEM does not resolve the 1–3 m ridges that the 0.25 m orthophoto shows clearly, so inside the boxwork the metabolic cost misses the up-and-down of crossing ridges and is probably an underestimate. This matches E2: terrain features from the DEM do not explain the route inside the boxwork (AUC about 0.53). The fix has to come from the image (E8 `sand.tif`, ridge/hollow masks) and the E1 weights.
-- **No terrain factor.** Santee 2001 has no surface factor (eta); sand and boulders will come from E8 and E9 and from the E1 weights.
-- **O2 is a metabolic equivalence** (20.1 kJ/L, 1–7 % uncertainty), not a PLSS tank reading. Time spent at stations is not included yet.
+- **Only one terrain factor, and a small one.** Santee 2001 has no surface factor (eta). The only terrain term that held up on unseen data is E1's sand price (1.0–1.115, from E8's sand); it moves the route to Nevado Sajama by up to 23 m (+1.8 % energy) and leaves the 120 min tour's stations unchanged. Boulders wait for E9's `rocas.tif`. The price is learned from a rover's route and applied to an astronaut, which is an assumption.
+- **O2 is a metabolic equivalence** (20.1 kJ/L, 1–7 % uncertainty), not a PLSS tank reading. E3 covers walking only; time at stations is charged by the planner at E4's service power (205 W) unless the request gives another, not by this model.
 
 ## What other pieces can use
 - **E4 and baselines (Aaron):** `data/base/edges_e3.npz` or `edge_costs()` directly; J and s inside the engine. Dijkstra on the reversed graph must keep the cost of the original arc. Use `time_s` for the 30 min contingency line (R_T = 1800 s) and `energy_j` for R_E.
@@ -149,7 +149,7 @@ python -m pytest tests/fisica -q
 python src/fisica/build_cost_layers.py data/base/dem_1m.tif data/base --slope-raster data/base/slope_deg.tif
 python src/fisica/paper_figures.py
 python src/fisica/sensitivity.py
-python src/fisica/build_cost_layers.py data/base/dem_1m.tif data/base --slope-raster data/base/slope_deg.tif --e1-weights data/e1/e1_weights.json   # when E1 delivers
+python src/fisica/build_cost_layers.py data/base/dem_1m.tif data/base --slope-raster data/base/slope_deg.tif --e1-weights data/e1/e1_weights.json   # human cost (release e1-sand-v1)
 ```
 
 ## Outputs

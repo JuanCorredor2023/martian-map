@@ -1,6 +1,6 @@
 # E4 · Graph, return-energy layer R(v) and walkback routes
 
-Owner: Aaron (`@aahg1105`) · Issues: #7, #8 · PRs: #39 (E4), baselines PR · Status: E4 and baselines done · Last update: 2026-11-14
+Owner: Aaron (`@aahg1105`) · Issues: #7, #8, #65 · PRs: #39 (E4), #56 (baselines), human-cost PR · Status: E4 and baselines done · Last update: 2026-11-15
 
 ## Question
 From any cell of the study box, what is the minimum metabolic energy needed to walk back to the habitat, R(v)? And what is the best round trip habitat → goal → habitat such that, at every point, what has been used plus what is still needed to get home fits the budget, now with energy, EVA duration and oxygen as limits at the same time?
@@ -108,9 +108,37 @@ All numbers come from `src/grafos/paper_figures.py` → `data/e4/summary.json` (
 
 **Deliverable routes** to the reference station R0 (Nevado Sajama, the drilled ridge), from the box centre at the 50 % budget: `data/baselines/b1_astar_slope.geojson`, `b2_fixed_radius.geojson`, `b3_linear_o2.geojson` and `mvp_e4.geojson`. Each carries the real E3 energy, the exact R(v) and the slack per vertex, plus the baseline's own estimate and verdict. The per-goal table for the results table (#16) is `data/baselines/baselines_goals.csv`.
 
+### With the human cost (issue #65)
+**Question.** The live planner prices sand since PR #58: arc energy = E3 × E1's terrain factor of the arrival cell (`e1-sand-v1`, 1.0 on bare ground to 1.115 in full sand). If the terrain truth includes sand, do the baselines fail more?
+
+**Set-up.**
+- **Graph:** `evaluate_baselines.py --human-cost` builds it with `api.planner.graph(base, 30, human=True)`. On the real grid this factor multiplies arc energy by 1.0095 on average (max 1.1146); time is unchanged. With `human=False` the same function gives exactly the graph above (same arcs, 0 difference).
+- **What changes:** the terrain truth and the MVP use the human cost. The baselines keep their flat-E3 calibration (389.6 J/m, 293 W): they plan as someone who knows nothing about sand.
+- **Budget levels:** they stay fractions of the farthest round trip on the graph in use, so they keep their meaning (the human farthest loop is slightly larger).
+- **Goals:** the 15 sand-rock contact stations of E8 (JB, `stations-e8-v0`) are added to the 13 manual ones and the 2,000 random cells. These are the places where sand should matter most.
+- **Two runs:** E3 (`_e8`) and human (`_human_e8`), same habitats, goals and seed, 42,588 evaluations per method and level.
+
+**Results** (`src/grafos/compare_baselines.py` → `data/baselines/baselines_compare_human.json`). False safes as % of "safe", E3 → human:
+
+| Budget | B1 A\*-slope | B2 radius | B3 linear O2 | MVP |
+|---|---|---|---|---|
+| 25 % | 34.0 → 35.1 | 57.0 → 57.5 | 25.6 → 27.1 | 0 → 0 |
+| 50 % | 27.7 → 28.5 | 45.6 → 45.5 | 21.4 → 22.4 | 0 → 0 |
+| 75 % | 15.7 → 15.8 | 16.2 → 16.1 | 12.4 → 12.8 | 0 → 0 |
+
+- **Real / estimated energy (median):** B1 1.290 → 1.307, B2 1.552 → 1.572 and B3 1.207 → 1.222. The safety factor needed (p99) becomes 1.44 for B1, 4.13 for B2 and 1.35 for B3.
+- **E8 contacts only:**
+  - The median real/estimated ratio rises a little more: B1 1.272 → 1.299, B3 1.195 → 1.213.
+  - At the 25 % budget, B1's false safes go from 33.3 % to 37.4 %.
+- **The MVP stays at 0 false safes.** It plans on the same cost that is used as the truth.
+- **Reading:** sand makes every baseline slightly worse, but the effect is about 1 percentage point. The E1 factor averages 1 %, while slope makes the real cost 20–55 % higher than the flat estimate. The case for the exact planner rests on slope and asymmetry, not on sand.
+- **Small B2 changes:** B2's rate barely moves, and drops by 0.1 points at 50 %. Its own budget grows with the human farthest loop and its radius rule ignores the cost.
+- **Figure 3 is not redrawn:** with differences of about 1 point it would look the same.
+
 **Limitations of the baselines.**
 - They are calibrated on E3's own flat-ground numbers, the most favourable choice for them. A real planner with a different metabolic model would be off by a different amount.
 - Only energy is the limit here. Duration and O2 limits are in the MVP (`labels.py`) but were not added to this comparison.
+- The human cost is only as good as E1's sand factor (one feature, factor ≤ 1.115). Rocks (E9 `rocas.tif`) are not in it.
 
 ## Checks
 - **E3 contract** (checked on the real DEM before use): `NEIGHBOURS` points to `dem[r + dr, c + dc]` with N = row − 1. There are 0 finite arcs leaving the grid, and all energies with the default limits are positive (339–1,428 J per arc).
@@ -124,7 +152,7 @@ All numbers come from `src/grafos/paper_figures.py` → `data/e4/summary.json` (
 - **Visual check:** in Figure 1, R(v) grows away from the habitat and jumps across the ridges, and the safe areas follow the valleys and stop at the steep walls.
 
 ## Limitations
-- **Costs come from the 1 m DEM only.** Its effective resolution does not resolve the boxwork ridges ([base grid note](base_grid.md)), and E2 found that DEM features do not explain the route inside the boxwork (AUC ≈ 0.53, [E2 note](E2_curiosity_traverse.md)). Sand (E8) and rocks (E9) are not in the cost yet.
+- **Costs come from the 1 m DEM only.** Its effective resolution does not resolve the boxwork ridges ([base grid note](base_grid.md)), and E2 found that DEM features do not explain the route inside the boxwork (AUC ≈ 0.53, [E2 note](E2_curiosity_traverse.md)). The numbers in Results use E3 only; sand enters through the human cost (E1 × E8, PR #58), compared for the baselines in "With the human cost". Rocks (E9) are not in the cost.
 - **Blocking and edge limits are E3 defaults** (30° cell, 20° move). The 3.6 % of walkable cells outside the main component are islands created mostly by the cell block.
 - **Suit figures** are planning numbers taken from NASA conference papers seen through search summaries. They must be checked in the full texts before the paper cites them as facts. `q` (leakage/purge) has no source and is 0.
 - **Exactness under binding limits:** with the limits binding, the exact search is capped at 50,000 labels (~30 s), and the result can be a lagrangian route with a reported gap. Pure-Python label-setting on 4 M nodes is the bottleneck. Numba or C++ for that loop only is the option if exact answers are needed in the HUD.
@@ -135,7 +163,7 @@ All numbers come from `src/grafos/paper_figures.py` → `data/e4/summary.json` (
 - **E5 (Diana):** `Graph.cost_matrix(nodes, "energy_j")` gives the directed station-to-station matrix (one Dijkstra per station). `check_walkback(graph, path, rv_j, usable_j)` validates a tour and returns the first point of no return.
 - **E12 (Juan):** read `data/e4/rv_time_s.tif` (minimum return time in seconds, same habitat and snap) instead of a separate Dijkstra. Agreed on the board on 2026-11-14. The route profile carries `t_s` per vertex.
 - **API/HUD (Sebas):** `rv.tif` (Wh), `safe.tif` and `e4_route.geojson`, with per-vertex `used_wh`, `rv_wh`, `t_s`, `o2_used_l` and `slack_wh`. The planner takes energy, duration and O2 limits, which need new fields in `/plan` (contract change in #2).
-- **Results table (Juan, #16):** `data/baselines/baselines_summary.json` (false-safe counts per method and budget level) and `baselines_goals.csv` (one row per habitat × budget × goal × method).
+- **Results table (Juan, #16):** `data/baselines/baselines_summary.json` (false-safe counts per method and budget level) and `baselines_goals.csv` (one row per habitat × budget × goal × method). Human-cost version with E8 stations: `baselines_summary_human_e8.json` and `baselines_goals_human_e8.csv`, its E3 twin `_e8`, and the side-by-side `baselines_compare_human.json`.
 - **Demo (Sebas):** Figure 3 is the one-picture argument: a fixed radius calls almost half of its "safe" area impossible at a 50 % budget.
 
 ## Reproduce
@@ -147,12 +175,17 @@ python src/grafos/build_rv.py --habitat 8143537.99 -284463.58 --max-duration-min
 gh release download stations-v1 --dir data/stations           # 13 manual stations (Sebas)
 python src/grafos/evaluate_baselines.py --habitat 8143537.99 -284463.58   # one habitat, ~10 s
 python src/grafos/evaluate_baselines.py --n-habitats 20                    # paper table, ~4 min
+gh release download stations-e8-v0 --dir data/stations                    # 15 E8 contact stations (JB)
+# human cost needs data/e1/ (release e1-sand-v1) and data/e8/ (release e8-v0), unzipped
+python src/grafos/evaluate_baselines.py --n-habitats 20 --extra-stations data/stations/stations_e8.gpkg               # -> *_e8
+python src/grafos/evaluate_baselines.py --n-habitats 20 --extra-stations data/stations/stations_e8.gpkg --human-cost  # -> *_human_e8
+python src/grafos/compare_baselines.py
 python src/grafos/paper_figures.py
 python -m pytest tests/grafos
 ```
 
 ## Outputs
 - `data/e4/`: `rv.tif` (Wh), `rv_time_s.tif` (s), `g.tif` (Wh), `safe.tif`, `e4_route.geojson` and `summary.json`.
-- `data/baselines/`: `baselines_summary.json`, `baselines_goals.csv` (91 MB) and the four reference routes.
+- `data/baselines/`: `baselines_summary.json`, `baselines_goals.csv` (91 MB) and the four reference routes; the same files with suffixes `_e8` (E3, with E8 stations) and `_human_e8` (human cost), and `baselines_compare_human.json`.
 
 Not in git; regenerate with the commands above.

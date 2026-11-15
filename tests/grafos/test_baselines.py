@@ -82,3 +82,26 @@ def test_linear_o2_uses_constant_rate_on_true_time():
     t = g.costs_from(g.node(1, 0), "time_s")[goal] + g.costs_to(g.node(1, 0), "time_s")[goal]
     assert b3["time_s"] == pytest.approx(t)
     assert b3["estimate_j"] == pytest.approx(RATE_W * t)
+
+
+def test_sand_raises_truth_not_baseline_estimates():
+    """#65: with a pricier terrain (E1 sand factor > 1 on the arrival cell), the
+    baselines keep their flat-E3 estimates while the real cost and the MVP rise, so
+    a goal that was safe on E3 can become a false safe."""
+    from fisica.human_cost import human_edge_costs
+    rng = np.random.default_rng(3)
+    dem = np.cumsum(rng.normal(0, 0.05, (20, 20)), axis=1)
+    t, e, _ = edge_costs(dem)
+    factor = np.ones(dem.shape)
+    factor[:, 10:] = 1.115                                  # full sand on the east half
+    e_h = human_edge_costs(e, factor, NEIGHBOURS)
+    g3 = Graph({"energy_j": e, "time_s": t}, NEIGHBOURS, transform=TRANSFORM)
+    gh = Graph({"energy_j": e_h, "time_s": t}, NEIGHBOURS, transform=TRANSFORM)
+    hab, goal = g3.node(10, 2), g3.node(10, 17)
+    r3 = by_method(BaselineEvaluator(g3, hab).evaluate(goal, budget_j=1e9))
+    rh = by_method(BaselineEvaluator(gh, hab).evaluate(goal, budget_j=1e9))
+    for m in ("B1_astar_slope", "B2_fixed_radius", "B3_linear_o2"):
+        assert rh[m]["estimate_j"] == pytest.approx(r3[m]["estimate_j"])   # blind to sand
+        assert rh[m]["real_j"] > r3[m]["real_j"]
+    assert rh["MVP_e4"]["real_j"] > r3["MVP_e4"]["real_j"]
+    assert rh["MVP_e4"]["estimate_j"] == pytest.approx(rh["MVP_e4"]["real_j"])

@@ -22,8 +22,13 @@ from . import guide
 from . import planner
 from . import tour
 from . import radiation as rad
+from . import data_sources
+from . import minerals
+from . import thermal
+from . import weather
 from . import walkback as wb
-from .plan import (PlanRequest, RejoinRequest, ReturnHomeRequest, WalkbackRequest, feature,
+from . import comms as e11
+from .plan import (PlanRequest, RejoinRequest, ReturnHomeRequest, WalkRecord, WalkbackRequest, feature,
                    feature_collection)
 from .raster_layers import blocked_layer, cost_layer, sand_layer
 from . import stations as st
@@ -37,6 +42,7 @@ STATIONS = DATA / "stations"
 E12 = DATA / "e12"
 E8 = DATA / "e8"
 PLANS = DATA / "plans"
+WALKS = DATA / "walks"
 WEB = REPO / "web"
 
 app = FastAPI(title="Mars EVA planner", version="0.1.0")
@@ -144,6 +150,16 @@ def stations_candidates():
     return _read_json(path)
 
 
+@app.get("/stations/e8")
+def stations_e8():
+    """E8 contact stations (JB, release stations-e8-v0). The HUD loads them unsaved."""
+    out = st.load_e8(STATIONS)
+    if out is None:
+        raise HTTPException(status_code=404,
+                            detail="E8 stations missing: gh release download stations-e8-v0 -D data/stations")
+    return {"stations": out, "source": "E8 (JB): rock next to boxwork-sized sand patches"}
+
+
 @app.get("/stations/stations_manual.gpkg")
 def stations_download():
     path = STATIONS / "stations_manual.gpkg"
@@ -159,6 +175,67 @@ def radiation():
     if not (E12 / "sep_alert.json").exists():
         raise HTTPException(status_code=404, detail="E12 outputs missing in data/e12/")
     return {**rad.summary(E12), "curve": rad.dose_curve(E12)}
+
+
+@app.get("/weather")
+def weather_summary(sol: int = Query(weather.DEFAULT_SOL, ge=1),
+                    eva_min: float = Query(None, gt=0)):
+    """Surface weather of one sol from Curiosity's REMS (context, not a cost term)."""
+    path = weather.find_feed(DATA)
+    if path is None:
+        raise HTTPException(status_code=404, detail="REMS feed missing: data/rems/ (release rems-v1)")
+    return weather.summary(path, sol, eva_min)
+
+
+@app.get("/layers/thermal.png")
+def thermal_png():
+    """THEMIS night IR over the box (Mars Odyssey, ~81 m pixels), gray."""
+    path = thermal.find(DATA)
+    if path is None:
+        raise HTTPException(status_code=404, detail="THEMIS tile missing: data/thermal/ (release themis-v1)")
+    bbox = json.loads((BASE / "grid.json").read_text(encoding="utf-8"))["bbox"]
+    return Response(thermal.layer_png(path, (bbox["xmin"], bbox["ymin"], bbox["xmax"], bbox["ymax"])),
+                    media_type="image/png")
+
+
+@app.get("/thermal")
+def thermal_summary():
+    """What the THEMIS layer is, and how it compares with E8's sand (context only)."""
+    path = thermal.find(DATA)
+    if path is None:
+        raise HTTPException(status_code=404, detail="THEMIS tile missing: data/thermal/ (release themis-v1)")
+    return thermal.summary(path, E8 / "sand.tif", BASE / "slope_deg.tif")
+
+
+@app.get("/minerals")
+def minerals_summary(radius_km: float = Query(100.0, gt=0, le=minerals.KEEP_RADIUS_KM)):
+    """Orbital mineral detections (CRISM/OMEGA) around the box: regional context only."""
+    path = minerals.find(DATA)
+    if path is None:
+        raise HTTPException(status_code=404,
+                            detail="mineral detections missing: data/minerals/ (release minerals-v1)")
+    return minerals.summary(path, radius_km)
+
+
+@app.get("/data_sources")
+def data_sources_summary():
+    """Data types, instruments and missions the product combines (HUD panel)."""
+    return data_sources.summary(DATA)
+
+
+@app.post("/walks")
+def walks_save(rec: WalkRecord):
+    """Keep a walk logged by the guide (tablet or 3D rehearsal) with its summary
+    against the plan, for the debrief (P6, #45)."""
+    return {"saved": guide.save_walk(WALKS, rec.model_dump())}
+
+
+@app.get("/walks/last")
+def walks_last():
+    rec = guide.load_walk(WALKS)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="no walk logged yet: walk a plan in guide mode first")
+    return rec
 
 
 @app.get("/plan/last")
@@ -365,6 +442,54 @@ def plan(req: PlanRequest):
         energy_usable_wh=req.energy_usable_j / 3600.0,
         max_cell_slope_deg=req.max_cell_slope_deg,
         feasible=None, warnings=warnings)
+
+
+@app.post("/comms/check")
+def comms_check(req: e11.CommsRequest):
+    """E11 radio along a route (the given one, or the last plan's): stretches with no
+    direct radio to the habitat, and the pair (relay) with radio_ok / pair_state per
+    route vertex."""
+    _e11_ready()
+    grid = _read_json(BASE / "grid.json")
+    crs_wkt = (BASE / "crs.wkt").read_text(encoding="utf-8").strip()
+    try:
+        return e11.check(str(BASE), req, guide.load_plan(PLANS), grid["bbox"], crs_wkt)
+    except LookupError as err:
+        raise HTTPException(status_code=404, detail=str(err))
+    except ValueError as err:
+        raise HTTPException(status_code=422, detail=str(err))
+
+
+def _e11_ready():
+    """E11 needs GDAL (conda); without it only these routes fail, with 503."""
+    if not e11.AVAILABLE:
+        raise HTTPException(status_code=503, detail=f"{e11.UNAVAILABLE}: {e11.MISSING}")
+
+
+def _comms_habitat(x, y):
+    _e11_ready()
+    if (x is None) != (y is None):
+        raise HTTPException(status_code=422, detail="give both x and y, or neither")
+    if x is not None:
+        b = _read_json(BASE / "grid.json")["bbox"]
+        if not (b["xmin"] <= x <= b["xmax"] and b["ymin"] <= y <= b["ymax"]):
+            raise HTTPException(status_code=422, detail="habitat is outside the study box")
+        return (x, y), "request"
+    return e11.default_habitat(guide.load_plan(PLANS), _box_centre())
+
+
+@app.get("/layers/comms.png")
+def comms_png(x: float = Query(None), y: float = Query(None)):
+    """E11 radio coverage of a habitat (default: the last plan's), blue = visible."""
+    (hx, hy), _ = _comms_habitat(x, y)
+    return Response(e11.coverage_png(str(BASE), round(hx, 1), round(hy, 1)),
+                    media_type="image/png")
+
+
+@app.get("/layers/comms")
+def comms_info(x: float = Query(None), y: float = Query(None)):
+    habitat, source = _comms_habitat(x, y)
+    return e11.coverage_info(str(BASE), habitat, source)
 
 
 # Static files go last so they do not shadow the API routes.

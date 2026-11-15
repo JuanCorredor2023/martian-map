@@ -126,3 +126,28 @@ def load(out_dir):
                      "service_time_min": float(r.service_time_min), "note": r.note or ""}
                     for r in gdf.itertuples()]
     return {"rubric": rubric, "stations": stations}
+
+
+E8_FILE = "stations_e8.gpkg"
+
+
+def load_e8(out_dir):
+    """JB's E8 contact stations (release stations-e8-v0): the highest rock point next to
+    a boxwork-sized sand patch. They are type "contact", so in the HUD their score is the
+    rubric's contact score like any other station; E8's own 1-5 score (patch size and
+    hollow density) goes in the note, as a hint for choosing among them."""
+    path = Path(out_dir) / E8_FILE
+    if not path.exists():
+        return None
+    gdf = gpd.read_file(path, layer="stations")
+    out = []
+    for _, r in gdf.iterrows():
+        note = f"E8 score {float(r['score']):.1f}/5"
+        if "sand_patch_m2" in gdf.columns:
+            note += f" · sand patch {float(r['sand_patch_m2']):.0f} m²"
+        if "tpi_m" in gdf.columns:
+            note += f" · {float(r['tpi_m']):.1f} m above its surroundings"
+        out.append({"id": str(r["id"]), "type": str(r["type"]), "x": float(r.geometry.x),
+                    "y": float(r.geometry.y), "service_time_min": float(r["service_time_min"]),
+                    "note": note + " (E8 U-Net + TPI, JB)", "e8_score": float(r["score"])})
+    return out

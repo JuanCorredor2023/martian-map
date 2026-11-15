@@ -1,10 +1,14 @@
 // Plan model of the 3D map. Run from the repo root:  node --test tests/viz3d/
 //
-// Fixtures (tests/viz3d/fixtures/), both real answers of the API on 2026-11-14:
+// Fixtures (tests/viz3d/fixtures/), real answers of the API on 2026-11-14:
 //   plan_e4.json           POST /plan with the 13 saved stations and the 2D planner's
 //                          default limits: E4 round trip to R0, with the profile. Whole.
 //   plan_fixed_route.json  POST /plan with stations: []: the fixed test route, with no
 //                          profile, cut to its first 400 vertices.
+//   plan_tour_e5.json      what POST /plan answers to the same default request when the
+//                          tour planner (E5, branch 9-e5-orienteering) is present: 8 of
+//                          the 13 stations in 111 min. Whole. Made in-process, nothing
+//                          saved, by src/viz3d/make_tour_fixture.py.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -13,7 +17,7 @@ import * as P from '../../web/3d/plan_model.js';
 import { defaultPlanRequest, loadLastPlan, requestDefaultPlan, stationTypes } from '../../web/3d/api.js';
 
 const fixture = name => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
-const E4 = fixture('plan_e4.json'), FIXED = fixture('plan_fixed_route.json');
+const E4 = fixture('plan_e4.json'), FIXED = fixture('plan_fixed_route.json'), TOUR = fixture('plan_tour_e5.json');
 const close = (a, b, tol = 1e-6) => assert.ok(Math.abs(a - b) <= tol, `${a} vs ${b}`);
 
 // A tour as api/tour.py writes it (E5 on E4): no 'goal' point, no crs, stations with
@@ -147,6 +151,62 @@ test('tour (E5 shape): several stops, no goal point, nothing assumes a single go
                    ['habitat:Habitat', 'station:H0', 'station:R0', 'station:C1']);
   assert.equal(markers[3].data.visited, false);
   assert.deepEqual(markers[1].color, P.TYPE_COLORS.hollow);
+});
+
+test('real E5 tour: one route with its profile, eight stops in visiting order, no goal', () => {
+  const plan = P.parsePlan(TOUR), route = P.mainRoute(plan), props = TOUR.features[0].properties;
+  assert.deepEqual(plan.notes, []);
+  assert.equal(plan.routes.length, 1);
+  assert.equal(route.coords.length, 1134);
+  assert.deepEqual(Object.keys(route.profile).sort(), [...P.PROFILE_KEYS].sort());
+  for (const key of P.PROFILE_KEYS) assert.equal(route.profile[key].length, 1134);
+  close(route.lengthM, route.totals.length_m, 0.06);         // 1391.9 m, given to 0.1 m
+  assert.equal(route.totals.time_s, 6686.7);
+  assert.equal(route.totals.feasible, true);
+  // The stops are the answer's own: vertex and station, in visiting order.
+  assert.deepEqual(route.stops.map(s => s.id), ['R3', 'R2', 'H2', 'H4', 'H0', 'R0', 'R4', 'R1']);
+  assert.deepEqual(route.stops.map(s => s.index), props.stop_index);
+  assert.ok(route.stops.every((s, i) => i === 0 || s.index > route.stops[i - 1].index));
+  // The answer marks the last station as the turn: the way back to the habitat is the return leg.
+  assert.equal(route.turnIndex, route.stops.at(-1).index);
+  assert.equal(plan.points.filter(p => p.kind === 'goal').length, 0);
+  // E5 writes a 'stop' point on the route for every station it visits, where the route
+  // really passes (the station snapped to its cell), next to the 13 'station' points.
+  const stops = plan.points.filter(p => p.kind === 'stop');
+  assert.equal(stops.length, 8);
+  stops.forEach((p, i) => {
+    assert.equal(String(p.properties.id), route.stops[i].id);
+    const [x, y] = route.coords[route.stops[i].index];
+    close(p.x, x); close(p.y, y);
+  });
+  assert.equal(plan.warnings.length, 3);
+});
+
+test('real E5 tour: one pin per station (visited or not), none for the stop points', () => {
+  const plan = P.parsePlan(TOUR), markers = P.planMarkers(plan);
+  assert.equal(markers.length, 14);                          // the habitat and the 13 stations
+  assert.deepEqual(markers.map(m => m.kind), ['habitat', ...Array(13).fill('station')]);
+  assert.equal(new Set(markers.map(m => m.id)).size, 14);
+  assert.ok(markers.slice(1).every(m => m.id === m.label), 'no station pin was renamed by a second pin');
+  const visited = markers.filter(m => m.data.visited === true), skipped = markers.filter(m => m.data.visited === false);
+  assert.deepEqual(visited.map(m => m.label).sort(), ['H0', 'H2', 'H4', 'R0', 'R1', 'R2', 'R3', 'R4']);
+  assert.deepEqual(skipped.map(m => m.label).sort(), ['C1', 'C2', 'H1', 'H3', 'Q1']);
+  assert.deepEqual(visited.map(m => m.data.order).sort(), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.ok(skipped.every(m => m.data.order == null));
+  assert.deepEqual(markers.find(m => m.label === 'R3').color, P.TYPE_COLORS.ridge);
+  assert.deepEqual(markers.find(m => m.label === 'Q1').color, P.TYPE_COLORS.curiosity);
+  // A stop that names no station of the plan is still shown, as a plain point.
+  const lone = P.parsePlan({features: [{type: 'Feature', geometry: {type: 'Point', coordinates: [8143000, -284000]},
+                                        properties: {kind: 'stop', id: 'X9'}}]});
+  assert.deepEqual(P.planMarkers(lone).map(m => `${m.kind}:${m.label}`), ['point:X9']);
+});
+
+test('real E5 tour: the drawn legs split at the last station and no step is over 1 m', () => {
+  const route = P.mainRoute(P.parsePlan(TOUR)), d = P.densify(route.coords, 1);
+  for (let i = 1; i < d.dist.length; i++) assert.ok(d.dist[i] - d.dist[i - 1] <= 1 + 1e-9);
+  const split = P.splitAtTurn(d, route.turnIndex);
+  assert.equal(d.at[split.outbound[1]], route.turnIndex);
+  assert.deepEqual(split.back, [split.outbound[1], d.at.length - 1]);
 });
 
 test('malformed optional fields are dropped and reported, not fatal', () => {

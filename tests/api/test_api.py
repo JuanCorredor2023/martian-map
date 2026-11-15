@@ -234,7 +234,7 @@ def test_guide_saved_plan_and_return_home(tmp_path, monkeypatch):
     assert client.post("/guide/return_home", json={"position": [0, 0], "habitat": CENTRE}).status_code == 422
 
 
-@pytest.mark.parametrize("page", ["index.html", "guide.html"])
+@pytest.mark.parametrize("page", ["index.html", "guide.html", "card.html"])
 def test_pages_work_offline(page):
     import re
     html = (REPO / "web" / page).read_text(encoding="utf-8")
@@ -317,3 +317,83 @@ def test_plan_refuses_a_tour_that_fails_the_walkback(monkeypatch):
     r = client.post("/plan", json=plan_body(stations=st))
     assert r.status_code == 422
     assert "fails the walkback" in r.json()["detail"] and "vertex 1" in r.json()["detail"]
+
+
+def test_weather_from_rems():
+    from api import weather
+    if weather.find_feed(REPO / "data") is None:
+        pytest.skip("REMS feed (rems-v1) not downloaded")
+    w = client.get("/weather", params={"sol": 4711, "eva_min": 120}).json()
+    d = w["day"]
+    assert d["sol"] == 4711 and d["earth_date"] == "2025-11-06"
+    assert d["air_min_c"] < d["air_max_c"] and d["ground_min_c"] < d["ground_max_c"]
+    assert 11 < d["daylight_h"] < 13                       # near the equator: ~12 h of light
+    assert any("fits in daylight" in n for n in w["notes"])
+    lo, hi = w["campaign"]["sols"]
+    assert all(lo <= p["sol"] <= hi for p in w["campaign"]["series"])
+    assert w["campaign"]["n_sols"] > 200
+    near = client.get("/weather", params={"sol": 10_000}).json()["day"]   # beyond the feed
+    assert near["sol"] == w["sol_range"][1] and near["requested_sol"] == 10_000
+    assert client.get("/weather", params={"sol": 0}).status_code == 422
+
+
+def test_data_sources_counts_only_what_is_on_disk():
+    d = client.get("/data_sources").json()
+    assert d["n_types"] == len(d["sources"]) >= 3          # the challenge asks for 3 or more
+    assert d["n_missions"] == len({m for s in d["sources"] for m in s["mission"].split(" / ")})
+    assert {"Orbital image", "Elevation"} <= {s["type"] for s in d["sources"]}
+    planned = {p["type"] for p in d["planned"]}
+    assert not planned & {s["type"] for s in d["sources"]}   # planned is never counted
+
+
+def test_minerals_are_regional_context_only():
+    from api import minerals
+    if minerals.find(REPO / "data") is None:
+        pytest.skip("mineral detections (minerals-v1) not downloaded")
+    m = client.get("/minerals", params={"radius_km": 100}).json()
+    assert all(p["distance_km"] <= 100 for p in m["points"])
+    assert all(p["distance_km"] > 1.5 for p in m["points"])        # none inside the 2 x 2 km box
+    assert set(m["counts"]) == set(m["classes"])
+    assert m["nearest"]["hydrous"]["distance_km"] < m["nearest"]["phyllosilicate"]["distance_km"]
+    lon, lat = m["box_centre_lonlat"]
+    assert 137.3 < lon < 137.5 and -4.9 < lat < -4.7                # Gale, the boxwork
+    assert client.get("/minerals", params={"radius_km": 1000}).status_code == 422
+
+
+def test_thermal_themis_layer_and_sand_check():
+    from api import thermal
+    if thermal.find(REPO / "data") is None:
+        pytest.skip("THEMIS tile (themis-v1) not downloaded")
+    png = client.get("/layers/thermal.png")
+    assert png.status_code == 200 and png.content[:4] == b"\x89PNG"
+    t = client.get("/thermal").json()
+    assert t["mission"] == "Mars Odyssey" and 75 < t["m_per_px"] < 90
+    c = t.get("check_vs_e8_sand")
+    if c is not None:                                   # needs E8's sand.tif
+        assert 500 < c["pixels"] < 700                  # ~25 x 25 THEMIS pixels in the box
+        assert abs(c["spearman_brightness_vs_sand"]) < 0.2   # no relation at 81 m
+
+
+def test_e8_stations_endpoint():
+    from api import stations as stmod
+    if stmod.load_e8(REPO / "data" / "stations") is None:
+        pytest.skip("E8 stations (stations-e8-v0) not downloaded")
+    out = client.get("/stations/e8").json()["stations"]
+    assert len(out) >= 10
+    assert all(s["type"] == "contact" and s["id"].startswith("E8-") for s in out)
+    assert all("E8 score" in s["note"] and 1 <= s["e8_score"] <= 5 for s in out)
+    b = client.get("/layers").json()["grid"]["bbox"]
+    assert all(b["xmin"] <= s["x"] <= b["xmax"] and b["ymin"] <= s["y"] <= b["ymax"] for s in out)
+
+
+def test_walks_are_kept_for_the_debrief(tmp_path, monkeypatch):
+    from api import main as m
+    monkeypatch.setattr(m, "WALKS", tmp_path)
+    assert client.get("/walks/last").status_code == 404
+    rec = {"summary": {"plan": {"timeS": 600}, "walked": {"timeS": 660}},
+           "points": [[8143537.5, -284463.1, 0.0, 0.0, "plan", True], [8143540.5, -284463.1, 4.0, 0.3, "plan", False]]}
+    name = client.post("/walks", json=rec).json()["saved"]
+    assert (tmp_path / name).exists() and (tmp_path / "last_walk.json").exists()
+    last = client.get("/walks/last").json()
+    assert last["summary"]["walked"]["timeS"] == 660 and len(last["points"]) == 2
+    assert client.post("/walks", json={"points": []}).status_code == 422      # summary is required

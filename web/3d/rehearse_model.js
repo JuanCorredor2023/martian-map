@@ -297,7 +297,8 @@ export function buildRehearsal(route, points = []) {
     const i = Math.min(n - 2, lastAtMost(t, now));
     const dt = t[i + 1] - t[i], e = now - t[i], len = dist[i + 1] - dist[i];
     const moved = walk[i] > 0 ? Math.min(1, e / walk[i]) : (e > 0 || dt === 0 ? 1 : 0);
-    const standing = wait[i] > 0 && e >= walk[i] && e < dt;
+    // (the margin: a stop's arrival time is t - wait, which rounding can leave a hair short)
+    const standing = wait[i] > 0 && e >= walk[i] - 1e-9 && e < dt;
     const clockF = dt > 0 ? e / dt : moved;
     const distance = dist[i] + len * moved;
     // Until the walker leaves vertex i+1 it is on the piece that ends there.
