@@ -122,16 +122,16 @@ Over all 23 selected photographs with |pitch| ≤ 12° (17 sols, 12,524 compared
 - Block 2, `?check=photos` (photos of sols 4450, 4596 and 4848; 2026-11-15, high preset): camera position error 0 m, eye height equal to the catalogue's height above the DEM (1.778, 2.007, 1.924 m), heading, pitch and field errors 0°, relief ×1, the Sun at each photo's sol and solar time, the laid photo on the centred square to 0 px; after Exit, position, heading, pitch, field, relief and Sun as before. P1's `?check=shading`, `route` and `rehearse` give the same numbers as on main; the only change is one more marker layer in the scene list.
 - Block 3: `?check=stations` as in Results. P1's `?check=route`, `shading` and `rehearse` give the same JSON on this branch as on main, and `?check=photos` the same as in block 2 (all errors 0). `?check=photos` and `?check=stations` step the camera flight themselves and pause on timers, so they also run in a hidden browser tab.
 - Block 2 visual check: the three figures above, inspected by eye, and the aggregate over 23 photographs. Node tests: 86 passed (`node --test tests/viz3d/`), including 15 for `photos_model.js` (catalogue parsing, pose limits, the square view, and the photographs' own LMST reproduced from their UTC time within 4 s).
-- P3b, Node: `tests/web/hud_photos.test.mjs`, 12 tests on the 3D page's photo fixture (`tests/viz3d/fixtures/photos_catalog.json`: 3 stops of the real catalogue, 7 photos). They check:
+- P3b, Node: `tests/web/hud_photos.test.mjs`, 14 tests on the 3D page's photo fixture (`tests/viz3d/fixtures/photos_catalog.json`: 3 stops of the real catalogue, 7 photos). They check:
   - the catalogue address, and that the wedge radius equals `PREVIEW_MAX_M`;
   - the counts, and that a missing, unreadable or wrong catalogue gives one plain clause and never a throw;
   - that the dots are the 3D page's pins;
   - the wedge geometry (north = +y, edges one field apart, real photos);
   - the 3D link, which accepts only valid photo ids;
   - the stop card against `viewsOf` and `photoFacts`;
-  - the station lines, against `previewText(nearestPhoto(...))`, including "no photo nearby";
+  - the station lines, against `previewText(nearestPhoto(...))`, including "no photo nearby" and both sides of the 150 m limit (149.7 m is a hit; 150.3 m reads "nearest just over 150 m");
   - that a short line never says a station is seen.
-- P3b, full runs on 2026-11-15: `node --test tests/web/ tests/viz3d/` 122 passed. `python -m pytest tests -q` 913 passed, 4 skipped and 1 failed. The failure is unrelated to this change: `test_curiosity_drill_targets_match_places` needs a raw-data file that is not on this machine (`03_curiosity/places_pds/.../mech_drill.csv`). No file under `web/3d/` changed, so the 3D page and its checks are as in block 3.
+- P3b, full runs on 2026-11-15, on `main` at 61dc98d plus this change: `node --test tests/web/ tests/viz3d/` 135 passed. `python -m pytest tests -q` 1005 passed, 4 skipped and 1 failed. The failure is unrelated to this change: `test_curiosity_drill_targets_match_places` needs a raw-data file that is not on this machine (`03_curiosity/places_pds/.../mech_drill.csv`). No file under `web/3d/` changed, so the 3D page and its checks are as in block 3.
 - P3b, in the browser on 2026-11-15, at 1024 × 768, 1440 × 900 and 375 × 812, all of these worked:
   - the layer, the card and the wedges;
   - the station lines, and opening the card from one;
