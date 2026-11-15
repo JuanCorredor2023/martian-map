@@ -229,7 +229,11 @@ async function main() {
   loadRubric().then(r => { rubric = r; });
   const rehearsal = new Rehearsal({terrain, scene, camera, canvas, controls, relief, lines: walkbackLines,
                                    rubric: () => rubric,
-                                   onTime: elapsed => sunView.follow(elapsed)});     // the Sun follows the EVA clock
+                                   onTime: elapsed => sunView.follow(elapsed),       // the Sun follows the EVA clock
+                                   // A stop's card also shows the nearest rover photo (P3): the card only.
+                                   stationMedia: s => (photos && s.x != null
+                                     ? (photos.stationPreview({x: s.x, y: s.y, label: s.id}, {interactive: false}) || {}).media || null
+                                     : null)});
 
   // Fly to where a marker is seen from about 60 m, coming from where the camera is now.
   function flyToMarker(marker) {
@@ -249,8 +253,12 @@ async function main() {
                        order: d.order, visited: d.visited}, rubric)
         : {title: marker.label || 'Point', subtitle: '', rows: []};
     if (marker.kind === 'goal') what.subtitle = what.subtitle ? `${what.subtitle} · goal of the route` : 'Goal of the route';
-    showCard({...what, color: marker.color,
-              actions: rehearsal.active ? [] : [{label: 'Fly here', onClick: () => flyToMarker(marker)}]});
+    // A station's card also shows its nearest rover photo, or says there is none near (P3).
+    const preview = photos && marker.kind !== 'habitat'
+      ? photos.stationPreview({x: marker.x, y: marker.y, label: marker.label}, {interactive: !rehearsal.active}) : null;
+    const actions = rehearsal.active ? [] : [{label: 'Fly here', onClick: () => flyToMarker(marker)}];
+    if (preview && preview.action) actions.push(preview.action);
+    showCard({...what, color: marker.color, media: preview ? preview.media : null, actions});
     dirty = true;
   };
 
@@ -305,7 +313,18 @@ async function main() {
   document.addEventListener('click', e => {
     if (photos && photos.active && e.target.closest && e.target.closest('#rehearse')) photos.exit();
   }, true);
-  let rehearsing = false;                      // pins are hidden while rehearsing (frame())
+  // Photo pins out of the way of the walk and back after it, whoever starts or ends it
+  // (its button, a check, a plan that replaces the route): the rehearsal's own calls go
+  // through these, so nothing waits for a frame to be drawn.
+  for (const name of ['enter', 'exit']) {
+    const original = rehearsal[name].bind(rehearsal);
+    rehearsal[name] = (...args) => {
+      const result = original(...args);
+      showPhotoPins();
+      dirty = true;
+      return result;
+    };
+  }
 
   // ---- plan ---------------------------------------------------------------------
   const line = (parent, cls, text) => {
@@ -425,11 +444,6 @@ async function main() {
     if (pendingRelief !== null) { setRelief(pendingRelief); pendingRelief = null; }
     if (controls.update((now - last) / 1000)) dirty = true;    // wheel easing, auto-rotate, drags, flights
     if (rehearsal.update((now - last) / 1000)) dirty = true;   // every frame only while playing or dragging
-    if (rehearsal.active !== rehearsing) {     // photo pins out of the way of the walk, back after it
-      rehearsing = rehearsal.active;
-      showPhotoPins();
-      dirty = true;
-    }
     last = now;
     if (!dirty && !continuous) return;
     if (camera.fov !== shownFov) {             // a flight or the rehearsal changed it: resize the pins
