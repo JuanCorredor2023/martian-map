@@ -190,6 +190,7 @@ All optional; they combine with `&`.
 | `spin=1` | slowly orbit the camera (to measure speed without touching anything) |
 | `photo=<id>` | open a rover photo (its Navcam image id) in the photo view; the photo stops are shown after it. An id that is not in the catalogue opens the *Rover photos* section, which says so |
 | `check=<name>` | run a check (below) and show its result as JSON |
+| `tips=reset` / `tips=off` | show the in-context tips again from the first / no tips. They are off during a `check=` |
 
 ## Checks in the page
 
@@ -248,6 +249,7 @@ plan answer without touching the server (how the test fixtures were looked at).
 | `shadows.js` | cast shadows: when the shadow map is drawn again |
 | `view_link.js` | `?view=`: a free-flight view as text, and the link that carries it |
 | `checks.js` | the `?check=` measurements |
+| `tips_3d.js` | the in-context tips of this page (#125): the list, when each one shows; the engine is the HUD's, `../tips_core.js` |
 | `vendor/` | three.js r187, only the files the page imports (`vendor/README.md`) |
 
 The files with "model", "math", "fit" or "link" in the name, `mars_sun.js` and `api.js`

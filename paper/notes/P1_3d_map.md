@@ -136,6 +136,13 @@ Block 7 (issue #110). The layers of the 2D planner draped on the 3D relief, so t
 - **With the other modes.** Hidden in the photo view (`body.photo-view`), which compares the rover photo with the bare terrain, and shown again on exit; on during the rehearsal; "Relief only" hides the photo and keeps the layer.
 - **Not draped:** THEMIS night temperature (81 m pixels), climate, minerals and dose (panels in the 2D, not maps of the box). The photo from orbit and the shaded relief are the 3D's own.
 
+### In-context tips (`web/3d/tips_3d.js`, `web/tips_core.js`; issue #125)
+The first-use help of the 3D map is not a manual but eleven short tips, one at a time, next to the control they are about, in the order of the 3D user guide: move the view, the plan (or "No plan yet"), relief, Rehearse, Play, the meters, Return home / Off route / Solar storm, More, Exit, Sun and Walk freely. A tip closes with "Got it", ×, Esc or by using its control, and is remembered in the browser (`martian.tips.3d.v1`); `?tips=reset` shows them again and `?tips=off` hides them. The engine (box, memory, placement, keyboard and screen-reader text) is the 2D HUD's (#143), moved to `web/tips_core.js` so both views share it; the 2D tip list and its storage key are unchanged.
+
+- **When a tip shows.** Each tip has a moment (`when`) and a "done" test read from the page only: body classes (`rehearsing`, `walking`, `photo-view`), hidden panels, button states and the Play/Pause label. Nothing in the scene or the API changes.
+- **Where.** Beside the side panel for its controls, above the player and the walk bar for theirs, below the compass and Frame buttons; never over the control itself. No tip in the photo view or while the mouse is captured.
+- **With the checks.** Off with any `?check=`, so the reproducible checks and the user-guide captures see the page as before.
+
 ## Results
 Source of every number: `src/viz3d/build_terrain_assets.py` → `data/tiles/3d/terrain.json`, unless stated.
 
@@ -247,6 +254,13 @@ Entry reveals the player before focusing Play; its focus ring is visible even af
 Checks: `tests/viz3d/ui_controls.test.mjs`, tests 20 and 21, load the actual rehearsal module through the vendored three.js import mapping. A stub page exercises entry/exit twice, no-route entry, the folded Plan section, disclosure clicks and focus return; rendering and route setup are stubbed. The pure predicate and real key handler are exercised on native controls, custom roles and descendants, editable text, plain elements and missing targets, with playback both on and off. The markup assertions cover control order and focus styles. `node --test tests/viz3d/ tests/web/` passed (terminal output, not retained as a file). `checks.js` was read and left unchanged; its rehearsal and guide checks still use the same ids and methods.
 
 Limitations: no browser or server was run for this change. Native Space key-up clicks, screen-reader behavior, the focus ring and the added row's fit at narrow sizes still need a browser check. The Node page does not simulate native Tab traversal or layout; no visual measurement or figure is claimed.
+
+### In-context tips (issue #125)
+Node: `tests/viz3d/tips_3d.test.mjs` (8 tests: the demo order, the no-plan path, tips retired by use, the arrival, hidden controls, the "n / 11" numbering, `?tips=` and `?check=`) and `tests/web/tips_anchors.test.mjs` (every tip's id or attribute exists in `web/index.html` and `web/3d/index.html`). `node --test tests/web/ tests/viz3d/`: 289 passed (terminal output, not retained).
+
+Browser (local server, saved plan of 1392 m, 111 min, 448 Wh): at 1366 × 768 the eleven tips came in order, 1/11 to 11/11, and none after them; a reload showed none, `?tips=reset` showed the first again, `?tips=off` created no tip box. Esc with the focus in a tip closed only the tip while the walk kept playing. At 375 × 812 the Play tip sat above the player without covering its buttons; at 768 × 1024 the first tip did not touch the panel. `/3d/?check=route&tips=reset` gave its result with no tip box. No console errors.
+
+Limitations: the no-plan tip was checked in Node only (the saved plan was not removed); no screen reader was run.
 
 ### Sun and lighting (block 4)
 "Node" numbers come from `tests/viz3d/mars_sun.test.mjs` (10 tests) and `sun_model.test.mjs` (7 tests in block 4; 12 since #124 block 1), `node --test`; "page" numbers from `web/3d/checks.js` (`/3d/?check=sun`), high preset at relief ×2 with the saved E4 plan unless stated; "manual" was measured with `javascript` in the running page.
