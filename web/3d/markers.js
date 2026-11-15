@@ -6,7 +6,7 @@
 // size on screen (the same pixels from 5 m or from 5 km) and is never hidden by the
 // terrain, like the labels of a map. Kinds with a special look:
 //   'goal'     highlighted: filled label, larger, taller pole
-//   'habitat'  also a white dome about 8 m across standing on the ground
+//   'habitat'  also a white dome about 8 m across standing on the ground; it casts a shadow
 // A marker whose data.visited is false (a station the tour skipped) is dimmed.
 // pick() finds the marker under a screen point; select() calls onSelect(marker), the
 // hook for later blocks (station card, rover photos).
@@ -102,7 +102,11 @@ export class MarkerLayer {
       sprite.userData.pin = pin;
       const item = {marker, sprite, dome: null, size: [pin.width, pin.height], position: [0, 0, 0]};
       if (marker.kind === 'habitat') {
-        item.dome = new THREE.Mesh(this._dome, new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.7}));
+        // It casts a shadow (shadows.js) with its sunlit side: the shadow map's bias would
+        // leave a gap behind the dome if its far side were the one that counted.
+        item.dome = new THREE.Mesh(this._dome, new THREE.MeshStandardMaterial({
+          color: 0xffffff, roughness: 0.7, shadowSide: THREE.FrontSide}));
+        item.dome.castShadow = true;
         item.dome.userData.marker = marker;
         this.group.add(item.dome);
       }

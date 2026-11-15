@@ -162,6 +162,7 @@ export class Terrain {
       const [j0, j1] = split[tiles.length === 1 ? 0 : t % 2];
       const mesh = new THREE.Mesh(this._geometry(i0, i1, j0, j1), material);
       mesh.userData = {i0, j0, rows: i1 - i0 + 1, cols: j1 - j0 + 1};
+      mesh.castShadow = mesh.receiveShadow = true;           // used when the sun light casts (shadows.js)
       this.group.add(mesh);
     });
     this.setExaggeration(this.k);

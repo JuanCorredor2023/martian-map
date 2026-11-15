@@ -22,8 +22,10 @@ function correlation(x, y) {
 // north-facing slope of the surface being shaded, low + k * detail (same for east
 // minus west). If the normal map were mirrored or inverted, the correlation with the
 // "detail flipped" surface would be the high one instead.
-export function shadingCheck({terrain, scene, renderer, sun, sunDirection}) {
+export function shadingCheck({terrain, scene, renderer, sun, sunDirection, shadows}) {
   const N = 250, block = terrain.n / N, k = terrain.k;
+  const cast = shadows.enabled;
+  shadows.set(false);                                      // the shading alone is measured
   const target = new THREE.WebGLRenderTarget(N, N);
   const camera = new THREE.OrthographicCamera(-terrain.half, terrain.half, terrain.half, -terrain.half, 1, 20000);
   camera.position.set(0, 8000, 0);
@@ -82,6 +84,7 @@ export function shadingCheck({terrain, scene, renderer, sun, sunDirection}) {
   sun.position.copy(saved.pos);
   hidden.forEach(o => { o.visible = true; });
   terrain.materials.forEach((m, i) => { m.map = saved.maps[i]; m.needsUpdate = true; });
+  shadows.set(cast);
   target.dispose();
 
   const mean = a => Number((a.reduce((s, v) => s + v, 0) / a.length).toFixed(2));
@@ -285,14 +288,16 @@ export function rehearseCheck({terrain, scene, camera, controls, rehearsal, plan
 // lights at 07:00 and at 17:00: slopes facing east must be the bright ones in the
 // morning and the dark ones in the afternoon. Then the photo is put back and compared
 // with before, and the rehearsal is entered to see the Sun advance with the EVA clock
-// and return to the start on exit. Everything is left as it was found.
-export function sunCheck({terrain, scene, renderer, sun, sunView, rehearsal}) {
+// and return to the start on exit. Everything is left as it was found. Cast shadows are
+// off while it runs (they have their own check): the slopes' own shading is measured.
+export function sunCheck({terrain, scene, renderer, sun, sunView, rehearsal, shadows}) {
   const round = (v, d = 3) => Number(v.toFixed(d)), text = id => document.getElementById(id).textContent;
   const out = {check: 'sun', quality: terrain.quality, exaggeration: terrain.k};
   if (!sunView.state) return {...out, error: 'the light is fixed by ?light=: the Sun is not used'};
   const hemi = scene.children.find(o => o.isHemisphereLight);
-  const before = {start: {...sunView.start}, reliefOnly: sunView.reliefOnly};
+  const before = {start: {...sunView.start}, reliefOnly: sunView.reliefOnly, shadows: shadows.enabled};
   const site = sunView.site, sol = before.start.sol;
+  shadows.set(false);
   out.site = {lon_east_deg: round(site.lonEastDeg, 4), lat_planetocentric_deg: round(site.latCentricDeg, 4),
               lat_planetographic_deg: round(site.latDeg, 4)};
   out.sol = sol;
@@ -405,7 +410,175 @@ export function sunCheck({terrain, scene, renderer, sun, sunView, rehearsal}) {
 
   sunView.set(before.start);
   sunView.setReliefOnly(before.reliefOnly);
+  shadows.set(before.shadows);
   return out;
 }
 
-export const CHECKS = {shading: shadingCheck, route: routeCheck, rehearse: rehearseCheck, sun: sunCheck};
+// ?check=shadows : are the cast shadows where the terrain puts them?
+//
+// At 07:00, 15:00 and 17:00 of sol 4711, at relief x1 and x5, with "Relief only" on, the
+// terrain is rendered from straight above three times with the page's own lights:
+// without shadows, with them, and with the sun light off. A pixel is "in shadow" when
+// the shadows take away more than half of the sun light it had; pixels that the sun
+// light does not reach anyway (slopes shaded as facing away) cannot tell and are left
+// out. Independently, for the ground point of every pixel, a ray is marched towards the
+// Sun over terrain.surfaceAt (the drawn triangles): the point is in shadow when the
+// ground rises above the ray. The march starts as far from the point as the shadow
+// map's bias, which is the same rule by another route; how much more ground is shaded
+// when the march starts at the point itself (single facets shading themselves) is
+// reported apart. The two answers are compared over all pixels and away from the shadow
+// edges (the computed answer is the same all around the pixel, three texels of the
+// shadow map or more). The same march with the Sun mirrored east-west says which side
+// the shadows fall to: the rendered shadows must be the true Sun's, not the mirrored
+// one's (at x1 only: at x5 the hollows are shaded from both sides).
+// Two views: the whole block (5 m pixels) and, at 07:00 and 17:00, a close-up of 200 m
+// at the box centre (0.5 m pixels, finer than a texel). Acne or stripes on sunlit
+// ground would show there as shadow drawn where none is computed, or as sunlit pixels
+// that get darker at all when the shadows are switched on (by 2 levels of 255 or more:
+// the same frame drawn twice can differ by 1).
+// The camera of the shadow map is also checked with three.js' own matrices: the block's
+// corners must fall inside it. Everything is left as it was found.
+export function shadowsCheck({terrain, scene, renderer, sun, sunView, shadows, setRelief}) {
+  const round = (v, d = 3) => Number(v.toFixed(d));
+  const out = {check: 'shadows', quality: terrain.quality, mesh_step_m: terrain.step, map_size: shadows.mapSize,
+               bias_texels: shadows.biasTexels, sol: 4711};
+  if (!sunView.state) return {...out, error: 'the light is fixed by ?light=: the Sun is not used'};
+  const before = {start: {...sunView.start}, reliefOnly: sunView.reliefOnly, k: terrain.k, shadows: shadows.enabled};
+  const N = 400, half = terrain.half, MIN_DIRECT = 8;
+  const target = new THREE.WebGLRenderTarget(N, N);
+  // Only the terrain is measured: hidden objects cast no shadow either.
+  const hidden = scene.children.filter(o => o !== terrain.group && !o.isLight && o.visible);
+  hidden.forEach(o => { o.visible = false; });
+  const fog = scene.fog;
+  scene.fog = null;
+  sunView.setReliefOnly(true);
+  const shot = camera => {
+    renderer.setRenderTarget(target);
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    const rgba = new Uint8Array(N * N * 4);
+    renderer.readRenderTargetPixels(target, 0, 0, N, N, rgba);     // rows from the south
+    return Float32Array.from({length: N * N}, (_, i) => rgba[i * 4 + 1]);
+  };
+
+  // Distance along the ray from the ground point (X, Z) towards `dir` at which the
+  // ground first rises above it, looking between `from` and `to` metres; 0 if it never does.
+  const blockedAt = (X, Z, dir, from, to, stride, top) => {
+    const y0 = terrain.surfaceAt(X, Z);
+    for (let s = from; s <= to; s += stride) {
+      const x = X + dir[0] * s, z = Z + dir[2] * s, y = y0 + dir[1] * s;
+      if (y > top || Math.abs(x) > half || Math.abs(z) > half) return 0;
+      if (y < terrain.surfaceAt(x, z)) return s;
+    }
+    return 0;
+  };
+
+  // view: {name, x, z, span}: a square of `span` metres centred on scene (x, z).
+  const measure = (k, hours, view) => {
+    const pixel = view.span / N;
+    const camera = new THREE.OrthographicCamera(-view.span / 2, view.span / 2, view.span / 2, -view.span / 2, 1, 20000);
+    camera.position.set(view.x, 8000, view.z);
+    camera.up.set(0, 0, -1);                               // north at the top of the image
+    camera.lookAt(view.x, 0, view.z);
+    sunView.set({sol: 4711, hours});
+    const s = sunView.state, dir = s.direction;
+    shadows.set(false);
+    const open = shot(camera), level = sun.intensity;
+    sun.intensity = 0;
+    const ambient = shot(camera);
+    sun.intensity = level;
+    shadows.set(true);
+    const drawn = shadows.updates, cast = shot(camera);
+
+    // The camera of the shadow map, with three.js' own matrices.
+    const light = sun.shadow.camera, ndc = {xy: 0, zMin: Infinity, zMax: -Infinity};
+    for (const x of [-half, half]) for (const y of [shadows.block.yMin, shadows.block.yMax]) for (const z of [-half, half]) {
+      const p = new THREE.Vector3(x, y, z).project(light);
+      ndc.xy = Math.max(ndc.xy, Math.abs(p.x), Math.abs(p.y));
+      ndc.zMin = Math.min(ndc.zMin, p.z); ndc.zMax = Math.max(ndc.zMax, p.z);
+    }
+
+    // The independent answer, for the centre of every pixel.
+    const top = shadows.block.yMax, stride = terrain.step / 2, bias = shadows.biasM;
+    const mirrored = [-dir[0], dir[1], dir[2]];
+    const far = new Float32Array(N * N), near = new Uint8Array(N * N), flipped = new Uint8Array(N * N);
+    for (let py = 0; py < N; py++) {
+      for (let px = 0; px < N; px++) {
+        const X = view.x - view.span / 2 + (px + 0.5) * pixel, Z = view.z + view.span / 2 - (py + 0.5) * pixel, p = py * N + px;
+        far[p] = blockedAt(X, Z, dir, bias, Infinity, stride, top);
+        near[p] = far[p] > 0 || blockedAt(X, Z, dir, 0.01, bias, 0.1, top) > 0 ? 1 : 0;
+        if (k === 1) flipped[p] = blockedAt(X, Z, mirrored, bias, Infinity, stride, top) > 0 ? 1 : 0;
+      }
+    }
+
+    // Away from the edges: the computed answer is the same within R pixels all around.
+    const R = Math.max(2, Math.ceil(3 * Math.max(shadows.texel.across, shadows.texel.along) / pixel));
+    const c = {seen: 0, rendered: 0, computed: 0, agree: 0, inside: 0, insideAgree: 0, insideLit: 0, falseShadow: 0,
+               insideDark: 0, missed: 0, dimmed: 0, computedAll: 0, nearAll: 0, both: 0, bothFlipped: 0, distance: 0};
+    for (let py = 0; py < N; py++) {
+      for (let px = 0; px < N; px++) {
+        const p = py * N + px, dark = far[p] > 0;
+        c.computedAll += dark; c.nearAll += near[p];
+        const direct = open[p] - ambient[p];
+        if (direct < MIN_DIRECT) continue;                 // the sun light does not reach it anyway
+        const shaded = cast[p] - ambient[p] < 0.5 * direct;
+        c.seen++; c.rendered += shaded; c.computed += dark; c.agree += shaded === dark;
+        if (shaded && dark) { c.both++; c.distance += far[p]; }
+        if (shaded && flipped[p]) c.bothFlipped++;
+        let edge = px < R || py < R || px >= N - R || py >= N - R;
+        for (let a = -R; a <= R && !edge; a++) for (let b = -R; b <= R; b++) if ((far[p + a * N + b] > 0) !== dark) { edge = true; break; }
+        if (edge) continue;
+        c.inside++; c.insideAgree += shaded === dark;
+        if (dark) { c.insideDark++; c.missed += !shaded; } else { c.insideLit++; c.falseShadow += shaded; c.dimmed += open[p] - cast[p] >= 2; }
+      }
+    }
+    const share = (a, b) => (b ? round(a / b, 4) : null), flat = Math.hypot(dir[0], dir[2]);
+    return {
+      view: view.name, pixel_m: pixel, relief_k: k, local_true_solar_time: document.getElementById('sun-time-text').textContent,
+      sun: {azimuth_deg: round(s.azimuth, 2), elevation_deg: round(s.elevation, 2)},
+      shadow_map: {drawn_once: shadows.updates === drawn + 1, width_m: round(shadows.fit.width, 1),
+                   height_m: round(shadows.fit.height, 1), texel_across_m: round(shadows.texel.across),
+                   texel_along_m: round(shadows.texel.along), bias_m: round(bias),
+                   corners_inside: ndc.xy <= 1 && ndc.zMin >= -1 && ndc.zMax <= 1,
+                   corners_max_xy: round(ndc.xy, 4), corners_depth: [round(ndc.zMin, 4), round(ndc.zMax, 4)]},
+      pixels: N * N, sun_light_reaches: share(c.seen, N * N),
+      in_shadow: {rendered: share(c.rendered, c.seen), computed: share(c.computed, c.seen),
+                  computed_all_pixels: share(c.computedAll, N * N),
+                  computed_from_the_point_itself_all_pixels: share(c.nearAll, N * N)},
+      agreement: {all: share(c.agree, c.seen), away_from_edges: share(c.insideAgree, c.inside),
+                  edge_pixels_each_way: R, pixels_away_from_edges: c.inside,
+                  sunlit_pixels_away_from_edges: c.insideLit, of_them_drawn_in_shadow: c.falseShadow,
+                  of_them_darker_at_all: c.dimmed,
+                  shaded_pixels_away_from_edges: c.insideDark, of_them_drawn_sunlit: c.missed},
+      // Which Sun explains the rendered shadows: share of them that the march also shades.
+      rendered_shadow_pixels: c.rendered,
+      explained_by: {the_sun: share(c.both, c.rendered), the_sun_mirrored_east_west: k === 1 ? share(c.bothFlipped, c.rendered) : null},
+      // From a shadowed point (by both answers) to the ground that blocks its sunlight.
+      to_the_blocking_ground: {east: round(dir[0] / flat), north: round(-dir[2] / flat),
+                               mean_distance_m: c.both ? round(c.distance / c.both, 1) : null},
+      shadows_fall_towards: dir[0] < 0 ? 'east' : 'west',
+    };
+  };
+
+  const started = performance.now();
+  const block = {name: 'whole block', x: 0, z: 0, span: terrain.size}, closeUp = {name: 'close-up at the box centre', x: 0, z: 0, span: 200};
+  out.cases = [];
+  for (const k of [1, 5]) {
+    setRelief(k);
+    for (const hours of [7, 15, 17]) out.cases.push(measure(k, hours, block));
+    for (const hours of [7, 17]) out.cases.push(measure(k, hours, closeUp));
+  }
+  out.seconds = round((performance.now() - started) / 1000, 1);
+
+  scene.fog = fog;
+  hidden.forEach(o => { o.visible = true; });
+  target.dispose();
+  setRelief(before.k);
+  sunView.set(before.start);
+  sunView.setReliefOnly(before.reliefOnly);
+  shadows.set(before.shadows);
+  return out;
+}
+
+export const CHECKS = {shading: shadingCheck, route: routeCheck, rehearse: rehearseCheck, sun: sunCheck,
+                       shadows: shadowsCheck};
