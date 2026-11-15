@@ -38,6 +38,7 @@ When E5 (Diana, `src/orienteering`) is importable and no explicit goal is given,
 
   Energy never binds (≤ 732 of 900 Wh usable), but duration does. With 60 min the DP keeps the three highest-scoring ridges, so **the rubric decides the plan once time is short**, as the literature on reward sensitivity predicts [Smith2004].
 - Until E5 is merged, the tour is inactive and `/plan` keeps the single-goal E4 round trip. It was tested with Diana's branch on the path.
+- **Walkback failure.** The DP checks energy only at the stations, but the walkback is checked at every vertex of the walked line, so a tour can pass the DP and still leave the astronaut without enough energy to return partway through a leg. E5's `plan_tour` re-plans (lower budget, or drop the failing station). If every retry still fails, it returns the last tour marked `feasible = False`. `/plan` **refuses that tour with a 422** that names the first failing vertex, so an unsafe tour never reaches the HUD or the guide. The local fallback (`api/tour.py`, for E5 versions without `plan_tour`) re-plans up to 5 times, lowering the DP budget by the deficit each time, and refuses the same way (`tests/api/test_api.py::test_plan_refuses_a_tour_that_fails_the_walkback`). This matches E4's single-goal round trip, which is feasible by construction.
 
 ### Route profile in the HUD
 The HUD walks the planned route vertex by vertex, with a slider and play at ×30/×60/×180, using E4's per-vertex profile (guide section 32).
@@ -119,6 +120,34 @@ The HUD can load suggestions **unsaved**; a person reviews them on the orthophot
 ### Implied trade-offs (orienteering adds scores)
 - One ridge (5) is worth less than two Curiosity sites (6).
 - Hollow + contact (8) ties ridge + Curiosity site (8); the E3/E4 cost breaks the tie.
+
+### Data types combined and surface weather (P4, #44; `api/data_sources.py`, `api/weather.py`)
+The challenge asks for at least three data types. `GET /data_sources` lists the ones the product actually uses, and only counts a source whose file is on disk. The HUD shows the count under the title. Today it is **6 data types from 3 missions**:
+- orbital image (HiRISE orthophoto, MRO);
+- elevation (HiRISE DEM, MRO);
+- rover traverse (Curiosity localization, MSL);
+- radiation (RAD, MSL);
+- surface weather (REMS, MSL);
+- spectral minerals (CRISM detections, MRO; OMEGA, Mars Express).
+
+Thermal (THEMIS) and chemistry (ChemCam/APXS) are listed as planned and not counted.
+
+`GET /weather?sol=&eva_min=` reads the public REMS feed (release `rems-v1`; 4,745 sols, 1–4995). It returns:
+- the chosen sol: air and ground temperature range, pressure, UV index, sunrise, sunset and hours of daylight;
+- whether the EVA's maximum duration fits in daylight;
+- the daily air range over the boxwork campaign (sols 4541–4848, 299 sols with data).
+
+If a sol has no data, the nearest one is used and reported. The default sol is 4711 (the Nevado Sajama drill), the same as the 3D view's Sun.
+- On sol 4711 (2025-11-06), the air ranged from −74 to −4 °C, the ground from −86 to +12 °C, the pressure was 692 Pa, UV was moderate, and there were 11.9 h of daylight (05:24–17:20).
+- Over the campaign, the air ranged from −100 to +8 °C (`tests/api/test_api.py::test_weather_from_rems`).
+
+Weather is context, not a cost term: REMS gives one value per sol for the whole site, not a map. The feed calls itself an outreach product; REMS science data is in PDS.
+
+`GET /minerals?radius_km=` reads `data/minerals/gale_minerals.geojson` (release `minerals-v1`, built by `python -m api.minerals build`). It combines two NASA Mars Trek point layers:
+- *Aqueous Mineral Distribution*: phyllosilicate, sulfate, silica, chloride or carbonate; it names neither author nor instrument.
+- *Hydrous Mineral Detections OMEGA/CRISM*: hydrous minerals, with the instrument.
+
+Within 300 km there are 27 distinct detections, after removing the repeated points. **None falls inside the 2 × 2 km box.** Within 100 km there are 7 hydrous detections, 5 phyllosilicate, 1 silica and 1 sulfate. The nearest hydrous one is 16 km to the south-west (OMEGA and CRISM at the same point), and the nearest clay is 30 km to the west. The HUD draws them on a 100 km north-up inset with the box and an approximate Gale rim (centre 5.4° S, 137.8° E, radius 77 km). The layers are global compilations rounded to 0.01–0.1° (0.6–6 km), so they are regional context only, never a per-cell layer or a station score. The box's own minerals come from Curiosity's drills (rubric, `docs/research/station_value_rubric.md`) (`tests/api/test_api.py::test_minerals_are_regional_context_only`).
 
 ## Results
 - Blocked share of the box by the cell limit: 12.4 % at 30°, 29.6 % at 20° (`/layers/blocked`, from `slope_deg.tif`).

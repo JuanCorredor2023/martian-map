@@ -25,6 +25,10 @@ RELEASES = [
     ("e8", ["sand.tif"], "e8-v0", False, "the sand layer and E1's sand price"),
     ("e1", ["e1_weights.json", "sand_mean_5m.tif"], "e1-sand-v1", False,
      "the human cost (without it /plan uses E3 alone)"),
+    ("rems", ["rems_weather_msl.json"], "rems-v1", False,
+     "the surface weather panel (REMS); the downloaded kit's 03_curiosity/clima_rems also works"),
+    ("minerals", ["gale_minerals.geojson"], "minerals-v1", False,
+     "the regional minerals panel (CRISM/OMEGA); or build it: python -m api.minerals build"),
     ("tiles/3d", ["."], "generated", False,
      "the 3D view (run once: python src/viz3d/build_terrain_assets.py)"),
 ]

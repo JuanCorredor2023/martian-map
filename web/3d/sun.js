@@ -9,8 +9,9 @@
 //     goes back to the start when the rehearsal ends.
 //   - ?light=az,el (debug) fixes the light as before this block: the Sun is not used.
 // The light is a look, not a radiometric model: no atmosphere, no dust, no sky
-// brightness. Nothing casts a shadow yet, and the photo keeps its own mid-afternoon
-// light under the one added here ("Relief only" hides the photo to judge the light).
+// brightness. The shadows this light casts are in shadows.js. The photo keeps its own
+// mid-afternoon light under the one added here ("Relief only" hides the photo to judge
+// the light).
 import * as THREE from 'three';
 import * as M from './sun_model.js';
 

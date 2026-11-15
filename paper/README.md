@@ -36,4 +36,4 @@ Besides the demo, the team will submit a scientific paper. This folder collects 
 | E9 · BoulderNet and distillation | to do | Aaron |
 | E12 · radiation dose and SEP alert | [notes/E12_radiation_dose.md](notes/E12_radiation_dose.md) | Juan |
 | Product: API, HUD and manual stations | [notes/product_api_hud.md](notes/product_api_hud.md) | Sebas |
-| P1 · 3D map of the box and route rehearsal | [notes/P1_3d_map.md](notes/P1_3d_map.md) (in progress) | Juan |
+| P1 · 3D map of the box and route rehearsal | [notes/P1_3d_map.md](notes/P1_3d_map.md) | Juan |

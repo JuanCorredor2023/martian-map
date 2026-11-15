@@ -68,6 +68,28 @@
   button:disabled { opacity: 0.5; cursor: wait; }
   #plan-info { margin-top: 8px; }
   .warn { color: #f2c94c; font-size: 12px; margin-top: 4px; }
+  #sources { margin: -4px 0 8px; font-size: 12px; }
+  #sources summary { cursor: pointer; color: var(--text); }
+  #sources summary b { color: var(--accent); }
+  #sources ul { margin: 4px 0 0; padding-left: 16px; color: var(--muted); }
+  #sources li { margin: 2px 0; }
+  #wx-chart { display: block; margin: 6px 0 2px; overflow: visible; }
+  #wx-chart .axis { stroke: rgba(255,255,255,0.25); stroke-width: 1; }
+  #wx-chart .tick { fill: var(--muted); font-size: 10px; }
+  #wx-chart .hi { fill: none; stroke: #c97a1a; stroke-width: 2; stroke-linejoin: round; }
+  #wx-chart .lo { fill: none; stroke: #5b8fde; stroke-width: 2; stroke-linejoin: round; }
+  #wx-chart .lab { font-size: 10px; fill: var(--muted); }
+  #wx-chart .sel { stroke: var(--text); stroke-width: 1; stroke-dasharray: 2 2; }
+  #wx-chart .cross { stroke: rgba(255,255,255,0.5); stroke-width: 1; }
+  #min-map { display: block; margin: 6px auto 2px; overflow: visible; }
+  #min-map .ring { fill: none; stroke: rgba(255,255,255,0.18); stroke-width: 1; stroke-dasharray: 2 3; }
+  #min-map .rim { fill: none; stroke: rgba(255,255,255,0.45); stroke-width: 1.5; }
+  #min-map .tick { fill: var(--muted); font-size: 10px; }
+  #min-map circle.pt { stroke: #141a21; stroke-width: 2; cursor: default; }
+  #min-tip { font-size: 11px; color: var(--text); min-height: 14px; }
+  .min-key { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--muted); }
+  .min-key i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 3px; }
+  #wx-tip { font-size: 11px; color: var(--text); min-height: 14px; }
   hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
   @media (max-width: 520px) { #layers { width: auto; right: 16px; } }
 </style>
@@ -77,6 +99,7 @@
 
 <div id="layers" class="panel">
   <h1>Mars EVA Planner <span>· Gale boxwork</span></h1>
+  <details id="sources"><summary>Data sources…</summary><ul id="sources-list"></ul></details>
   <label><input type="checkbox" id="show-ortho" checked> HiRISE ortho (0.25 m)</label>
   <label><input type="checkbox" id="show-hillshade"> Hillshade</label>
   <label><input type="checkbox" id="show-slope" checked> Slope</label>
@@ -151,6 +174,20 @@
           border:1px solid var(--border);border-radius:4px;padding:3px"></select>
   <button id="sep-btn" class="secondary">Simulate SEP alert at the astronaut</button>
   <div id="sep-info"></div>
+  <hr>
+  <div class="muted"><b style="color: var(--text)">Surface weather (REMS)</b> · one value per sol, not a map</div>
+  <div class="row"><span class="muted">EVA sol</span>
+    <input type="number" id="wx-sol" min="1" step="1" value="4711" style="width:70px"></div>
+  <div id="wx-summary" class="muted"></div>
+  <div class="muted" style="margin-top:6px">Air temperature, boxwork campaign (°C)</div>
+  <svg id="wx-chart" width="226" height="96" role="img" aria-label="Daily maximum and minimum air temperature over the boxwork campaign sols"></svg>
+  <div id="wx-tip" class="muted"></div>
+  <hr>
+  <div class="muted"><b style="color: var(--text)">Minerals from orbit (CRISM/OMEGA)</b> · regional context, 100 km</div>
+  <svg id="min-map" width="200" height="200" role="img" aria-label="Orbital mineral detections within 100 km of the study box"></svg>
+  <div id="min-key" class="min-key"></div>
+  <div id="min-tip" class="muted"></div>
+  <div id="min-summary" class="muted"></div>
   <hr>
   <div class="muted" id="status">Loading layers…</div>
 </div>
@@ -513,6 +550,140 @@ function drawDoseChart(curve) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Data sources (P4, #44): the "N data types from M missions" line. Only sources
+// that are on disk and used by the product are counted; planned ones are listed.
+// ---------------------------------------------------------------------------
+async function loadSources() {
+  const res = await fetch("/data_sources");
+  if (!res.ok) return;
+  const d = await res.json();
+  ui("sources").querySelector("summary").innerHTML =
+    `<b>${d.n_types} data types</b> from ${d.n_missions} missions`;
+  const esc = t => String(t).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
+  ui("sources-list").innerHTML =
+    d.sources.map(s => `<li><span style="color:var(--text)">${esc(s.type)}</span>: ${esc(s.instrument)} ` +
+                       `(${esc(s.mission)}) → ${esc(s.use)}</li>`).join("") +
+    d.missing.map(s => `<li>${esc(s.type)}: ${esc(s.instrument)} — data missing on this machine</li>`).join("") +
+    d.planned.map(s => `<li><i>Planned</i>: ${esc(s.type)}, ${esc(s.instrument)} (${esc(s.mission)})</li>`).join("");
+}
+
+// ---------------------------------------------------------------------------
+// Surface weather (REMS, P4): conditions of the EVA's sol and the campaign's
+// daily air temperature range. Context for when to go out, not a cost term.
+// ---------------------------------------------------------------------------
+function drawWeatherChart(series, selSol) {
+  const svg = ui("wx-chart"), W = 226, H = 96, L = 30, B = 16, T = 6, R = 34;
+  const s0 = series[0].sol, s1 = series[series.length - 1].sol;
+  const vals = series.flatMap(p => [p.air_min_c, p.air_max_c]);
+  const vMin = Math.floor(Math.min(...vals) / 10) * 10, vMax = Math.ceil(Math.max(...vals) / 10) * 10;
+  const x = sol => L + (sol - s0) / (s1 - s0) * (W - L - R);
+  const y = v => H - B - (v - vMin) / (vMax - vMin) * (H - B - T);
+  // Break the line where sols are missing (gaps longer than 3 sols).
+  const line = key => series.map((p, i) => {
+    const jump = i === 0 || p.sol - series[i - 1].sol > 3;
+    return `${jump ? "M" : "L"}${x(p.sol).toFixed(1)},${y(p[key]).toFixed(1)}`;
+  }).join("");
+  const last = series[series.length - 1];
+  const inRange = selSol >= s0 && selSol <= s1;
+  svg.innerHTML = `
+    <line class="axis" x1="${L}" y1="${H - B}" x2="${W - R}" y2="${H - B}"/>
+    <line class="axis" x1="${L}" y1="${T}" x2="${L}" y2="${H - B}"/>
+    <text class="tick" x="${L - 4}" y="${y(vMax) + 3}" text-anchor="end">${vMax}</text>
+    <text class="tick" x="${L - 4}" y="${y(vMin) + 3}" text-anchor="end">${vMin}</text>
+    ${vMin < 0 && vMax > 0 ? `<line class="axis" x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke-dasharray="1 3"/>
+      <text class="tick" x="${L - 4}" y="${y(0) + 3}" text-anchor="end">0</text>` : ""}
+    <text class="tick" x="${L}" y="${H - 3}">sol ${s0}</text>
+    <text class="tick" x="${W - R}" y="${H - 3}" text-anchor="end">${s1}</text>
+    <path class="hi" d="${line("air_max_c")}"/>
+    <path class="lo" d="${line("air_min_c")}"/>
+    <text class="lab" x="${x(last.sol) + 4}" y="${y(last.air_max_c) + 3}">max</text>
+    <text class="lab" x="${x(last.sol) + 4}" y="${y(last.air_min_c) + 3}">min</text>
+    ${inRange ? `<line class="sel" x1="${x(selSol)}" x2="${x(selSol)}" y1="${T}" y2="${H - B}"/>` : ""}
+    <line class="cross" id="wx-cross" y1="${T}" y2="${H - B}" visibility="hidden"/>
+    <rect x="${L}" y="0" width="${W - L - R}" height="${H}" fill="transparent" id="wx-hit"/>`;
+  const cross = svg.querySelector("#wx-cross"), hit = svg.querySelector("#wx-hit");
+  hit.addEventListener("mousemove", ev => {
+    const box = svg.getBoundingClientRect();
+    const sol = s0 + (ev.clientX - box.left - L) / (W - L - R) * (s1 - s0);
+    const p = series.reduce((a, b) => Math.abs(b.sol - sol) < Math.abs(a.sol - sol) ? b : a);
+    cross.setAttribute("x1", x(p.sol)); cross.setAttribute("x2", x(p.sol));
+    cross.setAttribute("visibility", "visible");
+    ui("wx-tip").textContent = `sol ${p.sol} · air ${p.air_min_c} to ${p.air_max_c} °C · ground ${p.ground_min_c} to ${p.ground_max_c} °C`;
+  });
+  hit.addEventListener("mouseleave", () => { cross.setAttribute("visibility", "hidden"); ui("wx-tip").textContent = ""; });
+  hit.addEventListener("click", () => {          // click a sol on the chart to select it
+    const sol = Number(ui("wx-tip").textContent.match(/sol (\d+)/)?.[1]);
+    if (sol) { ui("wx-sol").value = sol; loadWeather(); }
+  });
+}
+
+async function loadWeather() {
+  const sol = Number(ui("wx-sol").value) || 4711;
+  const eva = Number(ui("max-min").value) > 0 ? Number(ui("max-min").value) : null;
+  const q = new URLSearchParams({sol});
+  if (eva) q.set("eva_min", eva);
+  const res = await fetch("/weather?" + q);
+  if (!res.ok) { ui("wx-summary").innerHTML = `<span class="warn">${(await res.json()).detail}</span>`; return; }
+  const w = await res.json(), d = w.day;
+  const moved = d.sol !== d.requested_sol ? ` (no data for sol ${d.requested_sol}; nearest)` : "";
+  ui("wx-summary").innerHTML =
+    `<b style="color:var(--text)">Sol ${d.sol}</b> · ${d.earth_date}${moved}<br>` +
+    `Air ${d.air_min_c} to ${d.air_max_c} °C · ${d.pressure_pa} Pa<br>` +
+    w.notes.map(n => "• " + n).join("<br>");
+  if (w.campaign.series.length > 1) drawWeatherChart(w.campaign.series, d.sol);
+}
+
+// ---------------------------------------------------------------------------
+// Minerals from orbit (CRISM/OMEGA, P4): detections within 100 km of the box on a
+// small north-up map in km. None is inside the box: context, not a station value.
+// ---------------------------------------------------------------------------
+const MINERAL_COLORS = {phyllosilicate: "#3987e5", sulfate: "#d95926", silica: "#199e70",
+                        chloride: "#c98500", carbonate: "#d55181", hydrous: "#0ca30c"};
+
+async function loadMinerals() {
+  const res = await fetch("/minerals?radius_km=100");
+  if (!res.ok) { ui("min-summary").innerHTML = `<span class="warn">${(await res.json()).detail}</span>`; return; }
+  const m = await res.json(), S = 200, C = S / 2, k = (C - 8) / m.radius_km;   // px per km
+  const pos = (d, b) => [C + d * k * Math.sin(b * Math.PI / 180), C - d * k * Math.cos(b * Math.PI / 180)];
+  // One mark per location; several detections at the same rounded point share it.
+  const groups = new Map();
+  for (const p of m.points) {
+    const key = `${p.lon.toFixed(2)},${p.lat.toFixed(2)},${p.class}`;
+    if (!groups.has(key)) groups.set(key, {...p, instruments: new Set()});
+    groups.get(key).instruments.add(p.instrument);
+  }
+  const g = m.gale, [gx, gy] = pos(g.distance_km, g.bearing_deg);
+  const marks = [...groups.values()].map((p, i) => {
+    const [x, y] = pos(p.distance_km, p.bearing_deg);
+    return `<circle class="pt" data-i="${i}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" fill="${MINERAL_COLORS[p.class] || "#999"}"/>`;
+  }).join("");
+  ui("min-map").innerHTML = `
+    <clipPath id="min-clip"><rect x="0" y="0" width="${S}" height="${S}"/></clipPath>
+    <circle class="ring" cx="${C}" cy="${C}" r="${50 * k}"/>
+    <circle class="ring" cx="${C}" cy="${C}" r="${100 * k}"/>
+    <text class="tick" x="${C + 3}" y="${C - 50 * k + 11}">50 km</text>
+    <text class="tick" x="${C + 3}" y="${C - 100 * k + 11}">100 km</text>
+    <g clip-path="url(#min-clip)"><circle class="rim" cx="${gx}" cy="${gy}" r="${g.radius_km * k}"/></g>
+    <text class="tick" x="${gx}" y="${gy + 3}" text-anchor="middle">Gale</text>
+    <text class="tick" x="${C}" y="10" text-anchor="middle">N</text>
+    <rect x="${C - 3}" y="${C - 3}" width="6" height="6" fill="var(--accent)"/>
+    <text class="tick" x="${C + 6}" y="${C + 12}">box</text>
+    ${marks}`;
+  const list = [...groups.values()];
+  ui("min-map").querySelectorAll("circle.pt").forEach(el => {
+    el.addEventListener("mouseenter", () => {
+      const p = list[Number(el.dataset.i)];
+      ui("min-tip").textContent = `${p.class} · ${[...p.instruments].join(", ")} · ` +
+        `${p.distance_km.toFixed(0)} km at ${p.bearing_deg.toFixed(0)}°`;
+    });
+    el.addEventListener("mouseleave", () => { ui("min-tip").textContent = ""; });
+  });
+  ui("min-key").innerHTML = m.classes.filter(c => m.counts[c] > 0)
+    .map(c => `<span><i style="background:${MINERAL_COLORS[c]}"></i>${c} ${m.counts[c]}</span>`).join("");
+  ui("min-summary").innerHTML = m.notes.map(n => "• " + n).join("<br>");
+}
+
 async function loadRadiation() {
   const res = await fetch("/radiation");
   if (!res.ok) { ui("rad-summary").innerHTML = `<span class="warn">${(await res.json()).detail}</span>`; return; }
@@ -736,7 +907,9 @@ ui("wb-energy").addEventListener("change", requestWalkback);
 for (const id of ["block-on", "block-slope"]) ui(id).addEventListener("change", requestWalkback);
 window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 
-main().then(refreshBlockInfo).then(loadStations).then(loadRadiation).catch(err => { ui("status").textContent = "Error: " + err.message; console.error(err); });
+ui("wx-sol").addEventListener("change", loadWeather);
+ui("max-min").addEventListener("change", loadWeather);
+main().then(refreshBlockInfo).then(loadStations).then(loadRadiation).then(loadSources).then(loadWeather).then(loadMinerals).catch(err => { ui("status").textContent = "Error: " + err.message; console.error(err); });
 </script>
 </body>
 </html>

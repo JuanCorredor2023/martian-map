@@ -293,3 +293,68 @@ def test_walkback_compares_fixed_radius_rules():
         assert 0 <= r["falsely_safe_pct"] <= 100
         assert abs(r["falsely_safe_pct"] - r["falsely_safe_no_way_back_pct"]
                    - r["falsely_safe_too_slow_pct"]) < 1e-6
+
+
+def test_plan_refuses_a_tour_that_fails_the_walkback(monkeypatch):
+    """If E5's re-plans all fail, plan_tour returns the last tour with feasible=False:
+    /plan must refuse it (422), never hand an unsafe tour to the HUD or the guide."""
+    from api import tour
+
+    def unsafe(req, g):
+        line = {"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[0, 0], [1, 1]]},
+                "properties": {"kind": "route", "feasible": False, "first_violation": 1,
+                               "order": ["habitat", "R0", "habitat"], "stop_index": [0, 1, 1]}}
+        return {"type": "FeatureCollection", "features": [line]}, {"walkback_retries": 5}
+
+    class NoRoute(Exception):
+        pass
+
+    monkeypatch.setattr(tour, "AVAILABLE", True)
+    monkeypatch.setattr(tour, "DELEGATE", True)
+    monkeypatch.setattr(tour, "_e5_plan_tour", unsafe, raising=False)
+    monkeypatch.setattr(tour, "_E4NoRoute", NoRoute, raising=False)
+    st = [{"id": "R0", "x": 8143217.5, "y": -284993.2, "score": 5, "type": "ridge", "service_time_min": 10}]
+    r = client.post("/plan", json=plan_body(stations=st))
+    assert r.status_code == 422
+    assert "fails the walkback" in r.json()["detail"] and "vertex 1" in r.json()["detail"]
+
+
+def test_weather_from_rems():
+    from api import weather
+    if weather.find_feed(REPO / "data") is None:
+        pytest.skip("REMS feed (rems-v1) not downloaded")
+    w = client.get("/weather", params={"sol": 4711, "eva_min": 120}).json()
+    d = w["day"]
+    assert d["sol"] == 4711 and d["earth_date"] == "2025-11-06"
+    assert d["air_min_c"] < d["air_max_c"] and d["ground_min_c"] < d["ground_max_c"]
+    assert 11 < d["daylight_h"] < 13                       # near the equator: ~12 h of light
+    assert any("fits in daylight" in n for n in w["notes"])
+    lo, hi = w["campaign"]["sols"]
+    assert all(lo <= p["sol"] <= hi for p in w["campaign"]["series"])
+    assert w["campaign"]["n_sols"] > 200
+    near = client.get("/weather", params={"sol": 10_000}).json()["day"]   # beyond the feed
+    assert near["sol"] == w["sol_range"][1] and near["requested_sol"] == 10_000
+    assert client.get("/weather", params={"sol": 0}).status_code == 422
+
+
+def test_data_sources_counts_only_what_is_on_disk():
+    d = client.get("/data_sources").json()
+    assert d["n_types"] == len(d["sources"]) >= 3          # the challenge asks for 3 or more
+    assert d["n_missions"] == len({m for s in d["sources"] for m in s["mission"].split(" / ")})
+    assert {"Orbital image", "Elevation"} <= {s["type"] for s in d["sources"]}
+    planned = {p["type"] for p in d["planned"]}
+    assert not planned & {s["type"] for s in d["sources"]}   # planned is never counted
+
+
+def test_minerals_are_regional_context_only():
+    from api import minerals
+    if minerals.find(REPO / "data") is None:
+        pytest.skip("mineral detections (minerals-v1) not downloaded")
+    m = client.get("/minerals", params={"radius_km": 100}).json()
+    assert all(p["distance_km"] <= 100 for p in m["points"])
+    assert all(p["distance_km"] > 1.5 for p in m["points"])        # none inside the 2 x 2 km box
+    assert set(m["counts"]) == set(m["classes"])
+    assert m["nearest"]["hydrous"]["distance_km"] < m["nearest"]["phyllosilicate"]["distance_km"]
+    lon, lat = m["box_centre_lonlat"]
+    assert 137.3 < lon < 137.5 and -4.9 < lat < -4.7                # Gale, the boxwork
+    assert client.get("/minerals", params={"radius_km": 1000}).status_code == 422
