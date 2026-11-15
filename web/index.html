@@ -833,9 +833,14 @@ async function requestPlan() {
   }
 }
 
+// Every layer of the HUD lies on the same plane (z = 0). With the depth test on, coplanar
+// layers can fight on some GPUs (patches or flicker, e.g. after turning the slope tiles
+// off and on under the night thermal layer). Draw them in list order instead.
+const FLAT = {depthCompare: "always", depthWriteEnabled: false};
+
 function layers() {
   const L = tiles.layers;
-  return [
+  return withFlat([
     tileLayer("ortho", "/" + L.ortho.url, 5, ui("show-ortho").checked),
     tileLayer("hillshade", "/" + L.hillshade.url, 3, ui("show-hillshade").checked, 0.6),
     // deck.gl applies opacity^(1/2.2) internally (gamma), so we raise the slider
@@ -847,8 +852,10 @@ function layers() {
     ...stationLayers(),
     ...wbLayers(),
     ...headingLayer(),
-  ];
+  ]);
 }
+
+function withFlat(list) { return list.map(l => l.clone({parameters: {...(l.props.parameters || {}), ...FLAT}})); }
 
 async function main() {
   const meta = await (await fetch("/layers")).json();
