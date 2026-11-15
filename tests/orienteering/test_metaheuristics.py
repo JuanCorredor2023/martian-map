@@ -1,4 +1,4 @@
-"""E6 metaheuristics (ILS, SA): always feasible, never above the optimum, and usually on it."""
+"""E6 metaheuristics (ILS, SA, ACO, GA): always feasible, never above the optimum, and usually on it."""
 
 import sys
 from pathlib import Path
@@ -13,9 +13,10 @@ from test_dp_vs_brute import KINDS, random_problem, window_problem
 
 from orienteering.instances import instance_dir, random_instance, read_op
 from orienteering.problem import Problem, evaluate_route
-from orienteering.solvers import SOLVERS, dp, ils, sa
+from orienteering.solvers import SOLVERS, aco, dp, ga, ils, sa
 
-HEURISTICS = {"ils": ils.solve, "sa": lambda p: sa.solve(p, seed=0, steps=4000)}
+HEURISTICS = {"ils": ils.solve, "sa": lambda p: sa.solve(p, seed=0, steps=4000),
+              "aco": lambda p: aco.solve(p, seed=0), "ga": lambda p: ga.solve(p, seed=0)}
 
 
 def small_case(seed):
@@ -67,6 +68,47 @@ def test_sa_is_reproducible():
     assert sa.solve(problem, seed=5, steps=3000).route == sa.solve(problem, seed=5, steps=3000).route
 
 
+def test_aco_is_reproducible_and_builds_feasible_tours():
+    from orienteering.solvers.heuristics import Evaluator
+
+    problem = random_instance(np.random.default_rng(3), 12, "windows")
+    assert aco.solve(problem, seed=5).route == aco.solve(problem, seed=5).route
+
+    # Every ant's tour holds under the shared rules before any polishing or repair:
+    # the incremental feasibility of aco.Steps agrees with problem.evaluate_route
+    for seed in range(40):
+        p = small_case(seed)
+        ev = Evaluator(p)
+        if ev.initial() is None:
+            continue
+        step = aco.Steps(ev)
+        rng = np.random.default_rng(seed)
+        state, route, at = step.initial(), [p.start], p.start
+        visited = np.zeros(p.n, dtype=bool)
+        visited[[p.start, p.end]] = True
+        while True:
+            cand = np.flatnonzero(step.candidates(at, state) & ~visited)
+            if len(cand) == 0:
+                break
+            nxt = int(cand[rng.integers(len(cand))])
+            state = step.advance(at, nxt, state)
+            visited[nxt] = True
+            route.append(nxt)
+            at = nxt
+        result = evaluate_route(p, route + [p.end])
+        assert result["feasible"] and result["energy"] <= p.budget + 1e-6
+
+
+def test_ga_is_reproducible_and_crossover_keeps_the_ends():
+    problem = random_instance(np.random.default_rng(4), 12, "energy")
+    assert ga.solve(problem, seed=7).route == ga.solve(problem, seed=7).route
+    rng = np.random.default_rng(0)
+    for _ in range(50):
+        child = ga.crossover([0, 3, 1, 4, 9], [0, 2, 4, 3, 9], rng)
+        assert child[0] == 0 and child[-1] == 9
+        assert len(set(child[1:-1])) == len(child) - 2 and set(child[1:-1]) <= {1, 2, 3, 4}
+
+
 def test_random_instance_and_op_reader(tmp_path):
     p = random_instance(np.random.default_rng(0), 9, "windows")
     assert p.n == 9 and p.prize[0] == 0 and p.windows[0].tolist() == [0.0, np.inf]
@@ -86,4 +128,4 @@ def test_tsiligirides_file_reads():
 
 
 def test_registry():
-    assert SOLVERS["ils"] is ils.solve and SOLVERS["sa"] is sa.solve
+    assert SOLVERS["ils"] is ils.solve and SOLVERS["sa"] is sa.solve and SOLVERS["aco"] is aco.solve and SOLVERS["ga"] is ga.solve
