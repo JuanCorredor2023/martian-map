@@ -110,3 +110,46 @@ test('return home: the energy meter still counts what returning needs', async ()
   assert.ok(Math.abs(m.energy.leftWh - (r.usable - r.used[i] - 40)) < 1e-9);
   assert.equal(m.back.s, 600);
 });
+
+test('rejoin search looks ahead only: a round trip never snaps onto the way back', () => {
+  // Out along y = 0 to x = 100, back along y = 2 (parallel legs 2 m apart).
+  const coords = [];
+  for (let x = 0; x <= 100; x++) coords.push([x, 0]);
+  for (let x = 100; x >= 0; x--) coords.push([x, 2]);
+  const r = G.prepareRoute({coords, t: coords.map((_, k) => k), used: coords.map((_, k) => k / 10),
+                            rv: null, rvTime: null, usable: 100, turnIndex: 100, goalName: 'Goal', kind: 'plan'});
+  const back = 101 + 70;                                 // vertex (30, 2) on the way back
+  const off = [30, 2 + 25];                              // 25 m beside both legs, nearer the way back
+  assert.ok(G.nearestOnRoute(r, off, 20).k <= 100);     // walking out: rejoin the way out
+  assert.ok(G.nearestOnRoute(r, off, 150).k > 100);     // walking back: rejoin the way back
+  assert.ok(G.nearestOnRoute(r, off, 0).k <= 100 && back > 100);
+  assert.ok(Math.abs(G.nearestOnRoute(r, off, 20).dist - 25) < 1e-9);
+});
+
+test('rejoin: within 15 m of the route nothing is asked', async () => {
+  const r = G.routeFromPlan(saved('plan_e4'));
+  let asked = false;
+  globalThis.fetch = async () => { asked = true; return {ok: true, json: async () => ({})}; };
+  const out = await G.rejoin(r, 100, [r.coords[100][0] + 5, r.coords[100][1]], saved('plan_e4'));
+  delete globalThis.fetch;
+  assert.equal(out, null);
+  assert.equal(asked, false);
+});
+
+test('return home while standing at a stop keeps the real clock and energy', async () => {
+  const r = G.routeFromPlan(saved('plan_e4')), i = 400;
+  const answer = {features: [{geometry: {coordinates: [r.coords[i], [0, 0]]},
+                              properties: {t_s: [0, 600], used_wh: [0, 40], time_s: 600, energy_wh: 40, length_m: 450}}]};
+  globalThis.fetch = async () => ({ok: true, json: async () => answer});
+  const now = {t: r.t[i] - 120, used: r.used[i] - 3};    // mid-wait: before the vertex's departure time
+  const home = await G.returnHome(r, i, {plan: {properties: {habitat: [0, 0]}}}, r.coords[i], now);
+  delete globalThis.fetch;
+  assert.equal(home.route.t[0], now.t);
+  assert.equal(home.route.used[0], now.used);
+});
+
+test('storm alert text is shared by both views', () => {
+  const html = G.stormHtml({minutes: 11, realUgy: 2.2, x50Ugy: 54, rule: 'r'});
+  assert.ok(html.includes('11.0 min') && html.includes('2.2 µGy') && html.includes('54 µGy'));
+  assert.ok(G.stormFailedHtml('no path').includes('no path'));
+});

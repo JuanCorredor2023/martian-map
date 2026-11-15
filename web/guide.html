@@ -97,6 +97,7 @@ const {Deck, OrthographicView, TileLayer, BitmapLayer, PathLayer, ScatterplotLay
 const ui = id => document.getElementById(id);
 let S, X0, Y0, deckgl, tiles, plan, rubric = {}, radInfo = null, limitS = null;
 let route = null, idx = 0, timer = null, speed = 60, cardOpen = false, offRoute = null;
+let request = 0;           // answers to an older click are dropped
 const voice = G.createVoice();
 const spoken = new Set(), visited = new Set();
 const toWorld = (x, y) => [(x - X0) / S, (Y0 - y) / S];
@@ -201,25 +202,31 @@ function walk() {
 async function returnHome() {
   stop();
   ui("status").textContent = "Computing the fastest way home…";
+  const mine = ++request;
   try {
     const home = await G.returnHome(route, idx, plan, offRoute || route.coords[idx]);
+    if (mine !== request) return false;
     offRoute = null;
     setRoute(home.route);
     ui("status").textContent = home.text;
     voice.say(home.speech);
     update(0);
-  } catch (err) { ui("status").textContent = `Error: ${err.message}`; }
+    return true;
+  } catch (err) { ui("status").textContent = `Error: ${err.message}`; return false; }
 }
 
 // --- block 2: off route -> recalculating ------------------------------------
 async function checkOffRoute(pt) {
-  const near = G.nearestOnRoute(route, pt);
+  const near = G.nearestOnRoute(route, pt, idx);
   if (near.dist <= G.OFF_ROUTE_M) return;
   stop();
   ui("status").textContent = `Off route (${near.dist.toFixed(0)} m) — recalculating…`;
   voice.say("You are off route. Recalculating.");
+  const mine = ++request;
   try {
     const out = await G.rejoin(route, idx, pt, plan);
+    if (mine !== request) return;
+    if (!out) { ui("status").textContent = "Still within 15 m of the route: no rejoin needed."; return; }
     offRoute = null;
     setRoute(out.route);
     ui("status").textContent = out.text;
@@ -241,15 +248,10 @@ async function solarStorm() {
   stop();
   const banner = ui("alert");
   banner.hidden = false;
-  banner.innerHTML = "<b>☢ SOLAR STORM ALERT</b><br>Return to the habitat now. Computing the fastest way…";
+  banner.innerHTML = G.STORM_PENDING;
   voice.say("Solar storm alert. Return to the habitat now.");
-  await returnHome();
-  if (route.kind !== "home") return;
-  const s = G.stormMessage(route, radInfo);
-  banner.innerHTML = `<b>☢ SOLAR STORM ALERT</b><br>Return to the habitat now: ${s.minutes.toFixed(1)} min.` +
-    (s.realUgy != null ? `<br>Dose on the way back: <b>${s.realUgy.toFixed(1)} µGy</b> (real 2025-11-11 event)` : "") +
-    (s.x50Ugy != null ? `, ${s.x50Ugy.toFixed(0)} µGy if 50× stronger (hypothetical).` : "") +
-    `<br><span class="muted">Alarm rule (E12): ${s.rule}.</span>`;
+  if (!(await returnHome())) { banner.innerHTML = G.stormFailedHtml(ui("status").textContent); return; }
+  banner.innerHTML = G.stormHtml(G.stormMessage(route, radInfo));
   walk();
 }
 

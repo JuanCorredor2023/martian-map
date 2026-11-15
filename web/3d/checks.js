@@ -590,6 +590,7 @@ export async function guideCheck({rehearsal}) {
   const out = {check: 'guide'};
   if (!rehearsal.model) return {...out, error: 'no route to rehearse'};
   rehearsal.walkbackOnPause = false;
+  const voiceWas = rehearsal.voice.on;
   rehearsal.voice.set(false);
   rehearsal.enter();
   const m = rehearsal.model, planned = {vertices: rehearsal.guide ? rehearsal.guide.coords.length : 0, end_s: m.end};
@@ -620,7 +621,7 @@ export async function guideCheck({rehearsal}) {
   rehearsal.exit();
   out.after_exit = {end_s: rehearsal.model.end, back_to_plan: rehearsal.model.end === planned.end_s};
   rehearsal.walkbackOnPause = true;
-  rehearsal.voice.set(true);
+  rehearsal.voice.set(voiceWas);                 // as the user had it
   return out;
 }
 

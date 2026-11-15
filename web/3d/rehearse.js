@@ -442,9 +442,12 @@ export class Rehearsal {
 
   _vertex() { return Math.min(this.guide.coords.length - 1, Math.floor(this.state.at + 1e-6)); }
 
-  _limitS() {
-    const m = this.plan && this.plan.properties.max_duration_min;
-    return Number.isFinite(m) && m > 0 ? m * 60 : null;
+  _limitS() { return G.evaLimitS({request: {max_duration_min: this.plan && this.plan.properties.max_duration_min}}); }
+
+  // Clock and energy of the walker now (between vertices, or standing at a stop).
+  _now() {
+    const s = this.state, pr = s && s.profile;
+    return pr && Number.isFinite(pr.used_wh) ? {t: s.time, used: pr.used_wh} : null;
   }
 
   _showGuide() {
@@ -493,9 +496,11 @@ export class Rehearsal {
     if (!this.active || !this.guide) return null;
     this.pause(false);
     this._note('Computing the fastest way home…');
+    const token = ++this._token;               // a later click, a seek or exit drops this answer
     try {
-      const i = this._vertex(), home = await G.returnHome(this.guide, i, this._planRef(), [this.state.x, this.state.y]);
-      if (!this.active) return null;
+      const i = this._vertex();
+      const home = await G.returnHome(this.guide, i, this._planRef(), [this.state.x, this.state.y], this._now());
+      if (token !== this._token || !this.active) return null;
       this._walkRoute(home.route, HOME_LINE, []);
       this._note(home.text);
       this.voice.say(home.speech);
@@ -509,9 +514,11 @@ export class Rehearsal {
     const i = this._vertex(), pt = G.detourPoint(this.guide, i);
     this._note('Off route (25 m) — recalculating…');
     this.voice.say('You are off route. Recalculating.');
+    const token = ++this._token;
     try {
-      const out = await G.rejoin(this.guide, i, pt, this._planRef());
-      if (!this.active || !out) return;
+      const out = await G.rejoin(this.guide, i, pt, this._planRef(), this._now());
+      if (token !== this._token || !this.active) return;
+      if (!out) { this._note('Still within 15 m of the route: no rejoin needed.'); return; }
       this._walkRoute(out.route, REJOIN_LINE, this.guide.kind === 'plan' ? this.plan.points : []);
       this._note(out.text);
       this.voice.say('New route found.');
@@ -522,19 +529,18 @@ export class Rehearsal {
     if (!this.active || !this.guide) return;
     const alert = el('rh-alert');
     alert.hidden = false;
-    alert.innerHTML = '<b>☢ SOLAR STORM ALERT</b> · Return to the habitat now. Computing the fastest way…';
+    alert.innerHTML = G.STORM_PENDING;
     this.voice.say('Solar storm alert. Return to the habitat now.');
     if (this._radInfo === undefined) {
       try { const res = await fetch('/radiation'); this._radInfo = res.ok ? await res.json() : null; }
       catch { this._radInfo = null; }
     }
     const home = await this.returnHome();
-    if (!home) return;
-    const s = G.stormMessage(home.route, this._radInfo);
-    alert.innerHTML = `<b>☢ SOLAR STORM ALERT</b> · Return now: ${s.minutes.toFixed(1)} min.` +
-      (s.realUgy != null ? ` Dose on the way back: <b>${s.realUgy.toFixed(1)} µGy</b> (real 2025-11-11 event)` : '') +
-      (s.x50Ugy != null ? `, ${s.x50Ugy.toFixed(0)} µGy if 50× stronger (hypothetical).` : '') +
-      ` <span class="muted">Alarm rule (E12): ${s.rule}.</span>`;
+    if (!home) {
+      if (this.active) alert.innerHTML = G.stormFailedHtml(el('rh-note').textContent);
+      return;
+    }
+    alert.innerHTML = G.stormHtml(G.stormMessage(home.route, this._radInfo));
     this.play();
   }
 

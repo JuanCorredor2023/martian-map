@@ -196,10 +196,12 @@ const planLimits = saved => ({habitat: saved.plan.properties.habitat,
                               human_cost: saved.plan.properties.human_cost !== false});
 
 // Fastest way home from vertex i (POST /guide/return_home), as a route of kind "home".
-// The EVA clock and the energy keep counting from where the walker was.
-export async function returnHome(r, i, saved, here = r.coords[i]) {
+// The EVA clock and the energy keep counting from where the walker was. now: {t, used}
+// of the walker when it is between vertices or standing at a stop (else vertex i's).
+export async function returnHome(r, i, saved, here = r.coords[i], now = null) {
   const out = await post("/guide/return_home", {position: here, ...planLimits(saved)});
-  const f = out.features[0], p = f.properties, t0 = r.t[i], u0 = r.used[i];
+  const f = out.features[0], p = f.properties;
+  const t0 = now ? now.t : r.t[i], u0 = now ? now.used : r.used[i];
   // On the way home, what returning still needs is what is left of this path.
   const route = prepareRoute({coords: f.geometry.coordinates, t: p.t_s.map(v => v + t0),
                               used: p.used_wh.map(v => v + u0), rv: p.used_wh.map(v => p.energy_wh - v),
@@ -210,13 +212,17 @@ export async function returnHome(r, i, saved, here = r.coords[i]) {
           speech: `Returning home. ${Math.round(p.time_s / 60)} minutes.`};
 }
 
-export function nearestOnRoute(r, pt) {
-  let best = 0, bestD = Infinity;
-  for (let k = 0; k < r.coords.length; k++) {
-    const dd = Math.hypot(r.coords[k][0] - pt[0], r.coords[k][1] - pt[1]);
-    if (dd < bestD) { bestD = dd; best = k; }
-  }
-  return {k: best, dist: bestD};
+// Where pt meets the route, searching from vertex `from` on. dist: the smallest distance.
+// k: the FIRST vertex ahead within NEAR_TIE_M of that distance, so on a round trip with
+// parallel legs a walker on the way out rejoins the way out and does not skip the goal.
+export const NEAR_TIE_M = 10;
+export function nearestOnRoute(r, pt, from = 0) {
+  const dd = k => Math.hypot(r.coords[k][0] - pt[0], r.coords[k][1] - pt[1]);
+  let bestD = Infinity;
+  for (let k = from; k < r.coords.length; k++) bestD = Math.min(bestD, dd(k));
+  let k = from;
+  while (k < r.coords.length - 1 && dd(k) > bestD + NEAR_TIE_M) k++;
+  return {k, dist: bestD};
 }
 
 // Demo: a point 25 m to the left of the walking direction at vertex i.
@@ -229,14 +235,14 @@ export function detourPoint(r, i) {
 // Off route at pt while at vertex i: null if within OFF_ROUTE_M, else the new route
 // (least-energy path back to the route a little ahead, then the rest of the plan with
 // its clock and energy shifted), from POST /guide/rejoin.
-export async function rejoin(r, i, pt, saved) {
-  const near = nearestOnRoute(r, pt);
+export async function rejoin(r, i, pt, saved, now = null) {
+  const near = nearestOnRoute(r, pt, i);
   if (near.dist <= OFF_ROUTE_M) return null;
-  let j = Math.max(near.k, i);
-  while (j < r.coords.length - 1 && r.d[j] - r.d[Math.max(near.k, i)] < REJOIN_AHEAD_M) j++;
+  let j = near.k;
+  while (j < r.coords.length - 1 && r.d[j] - r.d[near.k] < REJOIN_AHEAD_M) j++;
   const out = await post("/guide/rejoin", {position: pt, target: r.coords[j], ...planLimits(saved)});
   const p = out.features[0].properties, rc = out.features[0].geometry.coordinates;
-  const t0 = r.t[i], u0 = r.used[i];
+  const t0 = now ? now.t : r.t[i], u0 = now ? now.used : r.used[i];
   const dt = t0 + p.time_s - r.t[j], du = u0 + p.energy_wh - r.used[j];
   const tail = k => k > j;
   const route = prepareRoute({...r,
@@ -259,3 +265,14 @@ export function stormMessage(homeRoute, radInfo) {
           realUgy: real ? tH * real.rate_ugy_h : null, x50Ugy: x50 ? tH * x50.rate_ugy_h : null,
           rule: "RAD rate above 1.5× its 3-day median, 2 readings in a row"};
 }
+
+// The alert both views show once the way home is known (HTML), and while it is computed.
+export function stormHtml(s) {
+  return `<b>☢ SOLAR STORM ALERT</b> · Return to the habitat now: ${s.minutes.toFixed(1)} min.` +
+    (s.realUgy != null ? ` Dose on the way back: <b>${s.realUgy.toFixed(1)} µGy</b> (real 2025-11-11 event)` : "") +
+    (s.x50Ugy != null ? `, ${s.x50Ugy.toFixed(0)} µGy if 50× stronger (hypothetical).` : ".") +
+    ` <span class="muted">Alarm rule (E12): ${s.rule}.</span>`;
+}
+export const STORM_PENDING = "<b>☢ SOLAR STORM ALERT</b> · Return to the habitat now. Computing the fastest way…";
+export const stormFailedHtml = why =>
+  `<b>☢ SOLAR STORM ALERT</b> · Return to the habitat now. The way home could not be computed: ${why}`;
