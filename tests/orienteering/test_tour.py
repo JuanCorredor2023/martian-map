@@ -132,3 +132,99 @@ def test_more_stations_than_the_dp_use_cpsat():
     p = features(fc, "route")[0]["properties"]
     assert p["method"] == "cpsat" and p["exact"] and p["gap"] == 0.0 and p["feasible"]
     assert p["prize"] == 21.0 and sorted(p["order"][1:-1]) == sorted(s["id"] for s in sts)
+
+
+# --- #119 A4/A5: structured diagnosis and the smallest return margin ----------------------
+
+from orienteering import diagnose  # noqa: E402
+
+
+def test_no_tour_names_the_resource_and_the_closest_station():
+    graph = grid_graph(3, 8)
+    sts = [station(graph, "far", 1, 7, 5), station(graph, "mid", 1, 4, 2)]
+    with pytest.raises(NoFeasibleRoute) as err:           # still a NoFeasibleRoute for /plan
+        plan_tour(request(graph, sts, 3.0), graph)
+    d = err.value.diagnosis
+    assert isinstance(err.value, diagnose.NoTourFound)
+    assert d["code"] == "insufficient_resources" and d["exact"] and d["limiting"] == ["energy"]
+    assert d["closest"]["id"] == "mid"                    # 8 J round trip against 3 J
+    assert d["closest"]["needs"]["energy_wh"] == pytest.approx(8.0 / WH, abs=1e-3)
+    assert d["closest"]["available"]["energy_wh"] == pytest.approx(3.0 / WH, abs=1e-3)
+    assert "mid" in str(err.value) and "energy" in str(err.value)
+    assert d["actions"] and "energy budget" in d["actions"][0]
+
+
+def test_no_tour_by_o2_and_by_duration():
+    graph = grid_graph(3, 8)
+    sts = [station(graph, "A", 1, 3, 5)]
+    with pytest.raises(diagnose.NoTourFound) as err:
+        plan_tour(request(graph, sts, 100.0, o2_budget_l=1.0 / 20100.0), graph)
+    d = err.value.diagnosis
+    assert d["limiting"] == ["energy", "o2"] or d["limiting"] == ["o2"]
+    assert "o2" in d["limiting"] and d["exact"]
+    with pytest.raises(diagnose.NoTourFound) as err:
+        plan_tour(request(graph, sts, 100.0, max_duration_min=1.0 / 60.0), graph)
+    d = err.value.diagnosis
+    assert d["limiting"] == ["duration"] and d["exact"] is False   # legs follow least energy, not time
+    assert d["closest"]["needs"]["duration_min"] == pytest.approx(6.0 / 60.0, abs=1e-2)
+
+
+def test_raising_the_budget_as_advised_makes_the_station_fit():
+    graph = grid_graph(3, 8)
+    sts = [station(graph, "A", 1, 5, 5)]
+    req = request(graph, sts, 3.0)
+    req.margin = 0.2
+    with pytest.raises(diagnose.NoTourFound) as err:
+        plan_tour(req, graph)
+    need_wh = err.value.diagnosis["closest"]["needs"]["energy_wh"] / 0.8
+    req.energy_budget_wh = need_wh * 1.001
+    fc, _ = plan_tour(req, graph)
+    assert features(fc, "route")[0]["properties"]["order"] == ["habitat", "A", "habitat"]
+
+
+def test_input_errors_carry_the_field():
+    graph = grid_graph(3, 8)
+    with pytest.raises(ValueError) as err:
+        plan_tour(request(graph, [], 100.0), graph)
+    assert err.value.diagnosis == {"code": "invalid_input", "exact": True, "field": "stations",
+                                   "message": "add a station to plan an E5 tour"}
+    outside = station(graph, "out", 1, 3, 1)
+    outside["x"] += 1000.0
+    with pytest.raises(ValueError) as err:
+        plan_tour(request(graph, [station(graph, "A", 1, 3, 1), outside], 100.0), graph)
+    assert err.value.diagnosis["field"] == "stations[1]"
+
+
+def test_search_incomplete_is_not_reported_as_no_fit():
+    from orienteering.problem import Problem, Solution
+    problem = Problem(energy=np.array([[0, 1.0], [1.0, 0]]), prize=np.array([0.0, 1.0]), budget=10.0)
+    lim = diagnose.limits(10.0, None, None, 0.0)
+    timed_out = Solution([], 0.0, 0.0, "cpsat", 30.0, bound=None, optimal=False)
+    d = diagnose.no_tour(problem, ["habitat", "A"], lim, timed_out, "cpsat", 30.0)
+    assert d["code"] == "search_incomplete" and d["exact"] is False and d["fits_alone"] == ["A"]
+    unreach = Problem(energy=np.array([[0, np.inf], [np.inf, 0]]), prize=np.array([0.0, 1.0]), budget=10.0)
+    d = diagnose.no_tour(unreach, ["habitat", "A"], lim, timed_out, "cpsat", 30.0)
+    assert d["code"] == "unreachable" and d["exact"]
+
+
+def test_skipped_reasons_and_smallest_margin():
+    graph = grid_graph(3, 8)
+    sts = [station(graph, "near", 1, 2, 1), station(graph, "far", 1, 7, 5), station(graph, "mid", 1, 4, 1)]
+    fc, info = plan_tour(request(graph, sts, 9.0), graph)
+    p = features(fc, "route")[0]["properties"]
+    assert sorted(p["order"][1:-1]) == ["mid", "near"]     # 2 + 2 + 4 J = 8 J of 9
+    r = info["skipped_reasons"]
+    assert r["far"]["fits_alone"] is False and r["far"]["short"] == ["energy"]
+    assert p["min_slack_wh"] == pytest.approx(min(p["slack_wh"]), abs=1e-3)
+    assert p["slack_wh"][p["min_slack_index"]] == pytest.approx(p["min_slack_wh"], abs=1e-3)
+    assert p["diagnosis"] is None and info["diagnosis"] is None
+
+
+def test_skipped_station_that_fits_alone_is_flagged_as_combined():
+    graph = grid_graph(3, 8)
+    sts = [station(graph, "left", 0, 4, 3), station(graph, "right", 2, 4, 3)]
+    fc, info = plan_tour(request(graph, sts, 9.0), graph)
+    p = features(fc, "route")[0]["properties"]
+    assert len(p["order"]) == 3                           # 4 + 2 + 4 J for both > 9 J
+    (sid, reason), = info["skipped_reasons"].items()
+    assert reason["fits_alone"] and reason["exact"] and "together" in reason["reason"]

@@ -8,7 +8,9 @@ req is api.plan.PlanRequest (start, stations[id, x, y, type, score, service_time
 energy_budget_wh, margin, service_energy_wh_per_min, max_duration_min, o2_budget_l);
 graph is the grafos Graph /plan already built (api.planner.graph, with the user's cell
 block). Raises ValueError (bad input) or grafos.labels.NoFeasibleRoute (no station fits),
-the same exceptions /plan already turns into 422.
+the same exceptions /plan already turns into 422. Both carry a structured reason in
+.diagnosis (diagnose.TourInputError and diagnose.NoTourFound, #119 A4): code, exact,
+message, and the limiting station, resource, need and availability when they can be computed.
 
 Hook in api/planner.plan (Sebas's file), before the E4 single-goal round trip:
     if req.stations and req.goal is None:
@@ -23,15 +25,17 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from grafos.build_rv import SERVICE_POWER_W  # noqa: E402
-from grafos.labels import KJ_PER_LITER_O2, NoFeasibleRoute  # noqa: E402
+from grafos.labels import KJ_PER_LITER_O2  # noqa: E402
 from grafos.walkback import J_PER_WH  # noqa: E402
 
+from orienteering import diagnose  # noqa: E402
 from orienteering.data_io import Stations  # noqa: E402
 from orienteering.network import route_path, station_matrices  # noqa: E402
 from orienteering.problem import Problem, evaluate_route  # noqa: E402
 from orienteering.safety import (return_costs, solve_with_walkback, stop_energy,  # noqa: E402
                                  tour_walkback)
 from orienteering.solvers import EXACT, MAX_STATIONS, SOLVERS, pick  # noqa: E402
+from orienteering.solvers.cpsat import TIME_LIMIT_S as CPSAT_TIME_LIMIT_S  # noqa: E402
 
 J_PER_LITER_O2 = KJ_PER_LITER_O2 * 1000.0
 
@@ -49,10 +53,13 @@ Returns (FeatureCollection, info):
         rv_wh, slack_wh, t_s, rv_time_s, o2_used_l, same order as the coordinates; used
         and t include service and waits), totals, prize, order (station ids), stop_index
         (position of each stop in the coordinates), feasible (walkback), exact (optimum
-        proven and no walkback re-plan)
+        proven and no walkback re-plan), min_slack_wh and min_slack_index (smallest
+        return margin along the line, service and waits included, and its vertex),
+        diagnosis (only when feasible is False: diagnose.walkback_failure)
     start point (kind "start") and one point per stop (kind "stop") in visiting order
     info: habitat_moved_m, goal_moved_m (0), goal_station (None), service_power_w,
-        prize, order, skipped (station ids not visited), walkback_retries, warnings
+        prize, order, skipped (station ids not visited), skipped_reasons (per skipped id:
+        diagnose.skipped), walkback_retries, warnings, diagnosis (as in the route)
 """
 def plan_tour(req, graph, solver="auto"):
     usable_j = req.energy_budget_wh * (1 - req.margin) * J_PER_WH
@@ -63,14 +70,15 @@ def plan_tour(req, graph, solver="auto"):
                  else SERVICE_POWER_W)
     max_duration_s = req.max_duration_min * 60.0 if req.max_duration_min is not None else None
     if not req.stations:
-        raise ValueError("add a station to plan an E5 tour")
+        raise diagnose.TourInputError("add a station to plan an E5 tour", "stations")
     if solver == "auto":
         solver = pick(len(req.stations) + 1)
     if len(req.stations) + 1 > MAX_STATIONS[solver]:
-        raise ValueError(f"{len(req.stations)} stations: the E5 {solver} supports up to "
-                         f"{MAX_STATIONS[solver] - 1} plus the habitat")
+        raise diagnose.TourInputError(f"{len(req.stations)} stations: the E5 {solver} supports up to "
+                                      f"{MAX_STATIONS[solver] - 1} plus the habitat", "stations")
 
     stations, moved, requested = place_stations(req, graph)
+    lim = diagnose.limits(usable_j, req.o2_budget_l, max_duration_s, req.margin)
     dis, tim = station_matrices(graph, stations)
     service_j = stations.service_s * service_w
     problem = Problem(energy=dis, prize=stations.prize, budget=energy_limit_j, time=tim,
@@ -89,7 +97,9 @@ def plan_tour(req, graph, solver="auto"):
 
     solution, walkback, retries = solve_with_walkback(problem, SOLVERS[solver], check)
     if not solution.route or len(set(solution.route)) == 1:
-        raise NoFeasibleRoute("no station fits in the energy, duration and O2 limits")
+        raise diagnose.NoTourFound(diagnose.no_tour(
+            problem, stations.id, lim, solution, solver,
+            CPSAT_TIME_LIMIT_S if solver == "cpsat" else None))
 
     route = solution.route
     path, stop_index = checked[tuple(route)]
@@ -109,6 +119,10 @@ def plan_tour(req, graph, solver="auto"):
     order = [str(stations.id[k]) for k in route]
     visited = set(route)
     skipped = [str(stations.id[k]) for k in range(1, len(stations)) if k not in visited]
+
+    exact = retries == 0 and (solver in EXACT or bool(solution.optimal))
+    diagnosis = None if walkback["feasible"] else diagnose.walkback_failure(walkback, retries, lim)
+    skipped_reasons = diagnose.skipped(problem, stations.id, lim, route, exact)
 
     warnings = []
     if req.o2_budget_l is not None and energy_limit_j < usable_j:
@@ -134,7 +148,7 @@ def plan_tour(req, graph, solver="auto"):
                 "length_m": round(float(walkback["length_m"][-1]), 1),
                 "o2_l": round(float(o2_l[-1]), 2),
                 "method": solution.solver,
-                "exact": retries == 0 and (solver in EXACT or bool(solution.optimal)),
+                "exact": exact,
                 "gap": (round((solution.bound - solution.prize) / solution.bound, 4)
                         if solution.bound else None),
                 "usable_wh": round(energy_limit_j / J_PER_WH, 3),
@@ -143,6 +157,9 @@ def plan_tour(req, graph, solver="auto"):
                 "service_power_w": float(service_w),
                 "used_wh": wh(walkback["used_j"]), "rv_wh": wh(walkback["rv_j"]),
                 "slack_wh": wh(walkback["slack_j"]),
+                "min_slack_wh": round(float(walkback["min_slack_j"]) / J_PER_WH, 4),
+                "min_slack_index": int(np.argmin(walkback["slack_j"])),
+                "diagnosis": diagnosis,
                 "t_s": [round(float(v), 1) for v in t_s],
                 "rv_time_s": [round(float(v), 1) for v in rv_time_s],
                 "o2_used_l": [round(float(v), 3) for v in o2_l],
@@ -177,8 +194,8 @@ def plan_tour(req, graph, solver="auto"):
           "features": [line, start] + stops}
     info = {"habitat_moved_m": moved[0], "goal_moved_m": 0.0, "goal_station": None,
             "service_power_w": float(service_w), "prize": float(solution.prize),
-            "order": order, "skipped": skipped, "walkback_retries": retries,
-            "warnings": warnings}
+            "order": order, "skipped": skipped, "skipped_reasons": skipped_reasons,
+            "walkback_retries": retries, "warnings": warnings, "diagnosis": diagnosis}
     return fc, info
 
 
@@ -191,8 +208,11 @@ def place_stations(req, graph):
     points += [(s.id, s.type or "", s.x, s.y, s.score, s.service_time_min * 60.0)
                for s in req.stations]
     ids, types, xs, ys, rows, cols, prizes, service, moved, requested = ([] for _ in range(10))
-    for sid, stype, x, y, score, service_s in points:
-        r, c, m = graph.place(x, y, label="habitat" if sid == "habitat" else f"station {sid}")
+    for k, (sid, stype, x, y, score, service_s) in enumerate(points):
+        try:
+            r, c, m = graph.place(x, y, label="habitat" if sid == "habitat" else f"station {sid}")
+        except ValueError as err:
+            raise diagnose.TourInputError(str(err), "start" if k == 0 else f"stations[{k - 1}]") from err
         cx, cy = graph.cell_to_xy(r, c)
         ids.append(sid), types.append(stype), xs.append(float(cx)), ys.append(float(cy))
         rows.append(r), cols.append(c), prizes.append(float(score)), service.append(float(service_s))

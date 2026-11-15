@@ -1,6 +1,6 @@
 # E5 · Station selection and order (orienteering)
 
-Owner: Diana (`@dianagrz`) · Issues: #9, #111 · PRs: #37, #78, #83, #111's PR (time windows from the light) · Status: done (in `main` since #37: `/plan` plans the multi-station tour through `plan_tour`; DP up to 20 nodes, CP-SAT above; E8 stations v0 integrated; a v1 is not committed (JB, #9) and would only need a rerun; time windows now come from the light, #111) · Last update: 2026-11-15
+Owner: Diana (`@dianagrz`) · Issues: #9, #111, #119 · PRs: #37, #78, #83, #114 (time windows from the light), #119's PR (diagnosis and guarantee scope) · Status: done (in `main` since #37: `/plan` plans the multi-station tour through `plan_tour`; DP up to 20 nodes, CP-SAT above; E8 stations v0 integrated; a v1 is not committed (JB, #9) and would only need a rerun; time windows now come from the light, #111) · Last update: 2026-11-15
 
 ## Question
 Given N science stations with a value, which subset should the astronaut visit, and in what order, to collect the most value without breaking the energy budget, the EVA duration, the stations' time windows or the walkback rule (always able to walk home)?
@@ -40,7 +40,16 @@ Given N science stations with a value, which subset should the astronaut visit, 
     - The resulting OPTW is solved with the same solver (DP up to 20 nodes, CP-SAT above), for every departure from 05:00 to 19:00 every 15 min. The recommended departure has the most points; ties go as in P6: the larger sunlit share of the walk, then the higher lowest Sun, then the earliest.
     - Walking between stations is not limited by the light; its sunlit share is reported. Waiting for a window costs 0 W by default, and also 205 W (the service power) as an upper bound until a resting power is agreed with Sebas (E3 has none).
     - `run.py --light-sol 4711` sweeps the departures, plans the best one and writes it as usual (walkback check and route GeoPackage).
-14. **Tried and dropped:**
+14. **Why there is no tour** (#119, A4; `src/orienteering/diagnose.py`). `plan_tour` raises the same exceptions as before (a `ValueError` for bad input, E4's `NoFeasibleRoute` when nothing fits), and each now carries a structured `.diagnosis` with a `code`, whether it is `exact`, and a one-line `message`:
+    - `invalid_input`: the field at fault (`stations`, `start`, `stations[i]` outside the study box).
+    - `unreachable`: no station has a walkable path from the habitat and back.
+    - `insufficient_resources`: no station fits even on its own (habitat > station > habitat). Any tour that visits a station walks at least those two legs and does its service, so this is a proof that no tour exists, not a guess. It names the station closest to fitting, the resources it is short of (energy, O2, duration), what it needs and what is available, and what would let that station fit (for energy: the budget it needs at the request's margin). The actions are worded for that station only: raising a budget does not promise a larger tour.
+    - `search_incomplete`: some station fits alone but CP-SAT stopped at its 30 s limit without a tour; this is not a proof, so `exact` is false.
+    - `walkback`: every re-planned tour still fails the walkback; it gives the vertex, the deficit in Wh and the number of re-plans. It is set on the route (`diagnosis`) and `api/tour.py` already refuses such a tour.
+    - Energy and O2 shortfalls are exact on the graph (the legs are the least-energy paths). A duration shortfall is flagged `exact = false`: E5 times each leg along its least-energy path and does not search for a faster, costlier one.
+    - For a tour that leaves stations out, `info["skipped_reasons"]` says, per station, whether it does not fit even alone (and why) or fits alone but not together with the chosen ones.
+    - The route also reports its smallest return margin (`min_slack_wh`) and the vertex where it occurs (`min_slack_index`), service and waiting included (#119, A5).
+15. **Tried and dropped:**
     - The first DP pruned a state whenever going straight to the end was already over budget. That is only valid when the cost matrix satisfies the triangle inequality. Dijkstra matrices do, but the random test matrices did not, and the DP disagreed with brute force on some of them. It now prunes only on the energy already spent.
     - Splitting each station's service cost into half on its incoming and half on its outgoing edges, a common way to turn station costs into edge costs, was considered and dropped. It gives the same totals here but wrong partial totals, which the walkback and windows need.
     - Caching each station's whole Dijkstra result (about 48 MB per station) was dropped for caching only the station-to-station values.
@@ -142,10 +151,19 @@ Numbers from `src/orienteering/paper_light_windows.py` → `data/e5/light_window
 ![Time windows from the light](../figures/e5_fig6_light_windows.png)
 *Figure 6. Left: points collected against the departure time on sol 4711 with time windows from the light (solid), and ignoring the light (dashed); dots mark the recommended departure. Right: overlap (Jaccard) of the stations chosen with the light and ignoring it. Waiting costs 0 W.*
 
+## Diagnosis and the scope of the guarantee (#119)
+Numbers from `src/orienteering/paper_diagnosis.py` → `data/e5/diagnosis.json`. The scenario is written in the file: habitat at the box centre, the 13 manual stations, the plain E3 graph, margin 0.1, service at 205 W, O2 as energy / 20.1 kJ/L, the automatic solver, and `plan_tour` as `/plan` calls it. The script plans for energy budgets of 1000, 600, 300, 100 and 40 Wh, each with no duration limit and with 120, 60 and 20 min.
+
+- **Every one of the 16 tours found passes the walkback and is a proven optimum** (DP). On each, the smallest return margin along the line equals the energy left on arriving home. It is first reached on the way home after the last stop: the margin never shrinks below that before. The tightest is 3.6 Wh, for 600 Wh with no duration limit (44 points, 10 stations); the nominal tour keeps 176.4 Wh.
+- **At 40 Wh no tour exists, and the diagnosis says why:** `insufficient_resources`, exact, short of energy. The closest station is C1, which alone needs 56.4 Wh against 36.0 Wh usable. The advice is a budget of at least 62.7 Wh at margin 0.1, and planning again at 62.78 Wh gives the tour to C1 (4 points) with 0.06 Wh to spare.
+- **With an O2 budget of 1 L** the limit is O2 (C1 needs 10.11 L). **With 5 min** it is the duration (C1 needs 13.95 min), flagged as an estimate. **A station 5 km east** of the habitat is rejected as `invalid_input` on `stations[13]`.
+- **Skipped stations:** with a 20 min limit, the tour visits C1 and Q1 is left out although it fits alone; the 11 others do not fit even alone. At 1000 Wh and 120 min, the 5 stations left out all fit alone, but not together with the 8 chosen ones.
+- **What the guarantee covers.** A tour from `/plan` holds, at every vertex of its line, energy used (walking, service and waiting) + R(v) ≤ usable energy, and its totals respect the duration and O2 limits. This is conditional on the model and its data: E3's energy and time on the 1 m DEM (no rocks below its resolution), the service placeholder (10 min, 205 W), and O2 as a transformation of energy, not an independent resource with its own consumption or leaks. It does not cover uncertainty in those costs (#101 learns a factor on E3's cost while walking; #120). Nor does it cover a time-to-return rule along the way: the duration is checked on the whole tour, and a contingency return limit belongs to the walkback and the guide (#119, A2).
+
 ## Checks
 - **Brute force.** The DP matches exhaustive enumeration of every ordered subset on 500 random instances of 2–7 nodes with asymmetric costs and random start and end: 100/100 with energy only, with service, with time windows, with a maximum duration, and with windows plus a waiting cost (`dp_vs_brute`). The random windows and limits are tight enough to change the best answer in many of those cases.
 - **OR-Tools against the DP:** see the results section above (`vs_dp_manual_14`, `vs_dp_random`); every CP-SAT tour is re-checked with `evaluate_route` before it is returned.
-- **Unit tests:** `pytest tests/orienteering` passes 735 tests (E6's metaheuristics, P6 and the light windows included). Besides the brute-force cases, they cover:
+- **Unit tests:** `pytest tests/orienteering` passes 742 tests (E6's metaheuristics, P6, the light windows and the diagnosis included). Besides the brute-force cases, they cover:
   - `solve_many` against separate solves and brute force, for several rubrics at once
   - a named toy problem with a known optimum: 10 stations on a circle around the habitat, where the best tour is a run of neighbours of predictable length and energy
   - service changing which stations are picked, waiting energy changing them too, and the habitat served once
@@ -155,9 +173,10 @@ Numbers from `src/orienteering/paper_light_windows.py` → `data/e5/light_window
   - the route GeoPackage read back, and `plan_tour` with the real `/plan` request model
   - both OR-Tools solvers against the DP on 30 small random instances each (CP-SAT also proves each optimum), windows, a maximum duration, unreachable legs, and CP-SAT on 30 stations on a circle (beyond the DP) with a known optimum
   - reading the manual and E8 files together without repeated ids or cells, and `plan_tour` switching to CP-SAT for 21 stations
+  - the diagnosis (#119): the code, resource and closest station for energy, O2 and duration shortfalls; raising the budget as advised makes the station fit; input errors name the field; a CP-SAT timeout is not reported as "nothing fits"; unreachable stations; reasons for skipped stations; the smallest margin and its vertex
   - time windows from the light: light profiles to windows (the longest stretch with room for the service; stations without one dropped), a hand-made instance where an afternoon shadow fixes the order, the DP against brute force on 60 random instances with windows made from random light profiles, and, on the real terrain, every stop worked in sunlight at 06:00, 11:00 and 16:00 (P6's rule, sampled every 30 s), the morning shadows changing the stations and the evening ones the order
 - **Same cost as `/plan`:** with `human=True`, E5's station matrix equals the one built by `api.planner.graph(base, 30.0, human=True)` (maximum relative difference 0.0 on the 13 stations).
-- **`/plan` integration:** in `main`, `/plan` delegates to `plan_tour` (#64) and refuses a tour that still fails the walkback after the re-plans (#68). The tour and plan tests of `tests/api` pass (17 tests).
+- **`/plan` integration:** in `main`, `/plan` delegates to `plan_tour` (#64) and refuses a tour that still fails the walkback after the re-plans (#68). The tour and plan tests of `tests/api` pass (20 tests), unchanged by the diagnosis: its exceptions are subclasses of the ones `/plan` already catches.
 - **Route against solver:** the energy of the written route, recomputed cell by cell with E4's `Graph.path_cost`, equals the solver's energy.
 - **Visual check** (Figure 1): the routes pass through every visited station in the reported order, and stay off the steep scarp in the south-west of the map.
 
@@ -166,15 +185,16 @@ Numbers from `src/orienteering/paper_light_windows.py` → `data/e5/light_window
 - **Service is a placeholder:** 10 min per station and 205 W are not agreed values (proposed on #2, never confirmed). Service is most of the cost, and from 0.7 × the nominal duration upwards 1.5 × the service time changes the plan more than any fixed rubric does.
 - **Time windows come from the light only.** No source gives other windows (operations, temperature); REMS has only each sol's minimum and maximum temperature, not the hour. The light is geometry: no dust, no refraction, no rocks below the 1 m DEM's resolution (as in P6). One window per station: a station lit, shadowed and lit again keeps only its longest stretch. Walking in the shadow or the dark between stations is allowed and reported, not forbidden. Waiting at 205 W is an upper bound, not an agreed resting power.
 - **Pareto labels can grow** with many binding windows. Measured up to 18 nodes with random windows (6.3 s); denser binding windows could be slower; CP-SAT is the fallback.
-- **Walkback never binds for round trips.** For a tour that starts and ends at the habitat and fits the budget, R(v) is never more than the rest of the planned tour, so the check always passes. It only matters for routes that end elsewhere. It covers energy only, not return time; the HUD shows the 30 min return separately.
+- **Walkback never binds for round trips.** For a tour that starts and ends at the habitat and fits the budget, R(v) is never more than the rest of the planned tour, so the check always passes. It only matters for routes that end elsewhere. It covers energy only, not return time; the HUD shows the 30 min return separately. On the 16 real tours of the diagnosis section the smallest margin is always the one on arriving home.
 - **Costs come from the DEM-based E3 model**, with the same limits as E4: no rocks (E9), and the DEM does not resolve the boxwork ridges ([base grid note](base_grid.md)). The human cost adds only sand, and it does not change the chosen stations here.
 - **The sensitivity uses one habitat** (the box centre) and the 13 manual stations; the tie pattern depends on both.
 - **E8 scores are not on the rubric's scale.** They grow with hollow size and hollow density (1–5, continuous), while the manual stations use the 5/4/4/3 rubric, so adding them mixes two scales. With 20 min of service each, E8 adds 4.47 points to the nominal tour and none under 120 min. The HUD makes the other choice: its *Load E8 contact stations* button (#79) scores them by the rubric as contacts (4 points), so a `/plan` tour over the 28 stations is not this section's tour ([product note](product_api_hud.md)).
+- **The diagnosis explains the first reason only.** When no station fits alone it is exact. When some fit alone but the solver finds no tour, which only CP-SAT's time limit can cause, it says so and does not guess. It does not yet reach the HUD as structured fields: `/plan` returns the message text until the API passes `.diagnosis` on (Sebas's files, #119).
 - **No radio constraint.** E11 ([E11 note](E11_comms.md)) finds stretches of a tour without a direct radio link to the habitat. E5 does not limit them; the team left that for after the hackathon (#76).
 - **CP-SAT has no waiting energy** and is only exact up to the rounding (costs up, limits down; 10⁻⁶ of the budget, 1 ms). It was proven optimal on every instance here, but a larger or harder instance could hit its time limit; it then returns its best tour, the bound and `optimal = false`.
 
 ## What other pieces can use
-- **API/HUD (Sebas):** `/plan` delegates the multi-station tour to `tour.plan_tour(req, graph)` (#64). It applies the energy, duration and `o2_budget_l` limits, re-plans on a walkback failure, and switches to CP-SAT above 19 stations (output `method = "cpsat"`, `exact` true only if the optimum is proven, `gap` from the bound). Its signature and output keys are kept stable. `api/tour.py` keeps a fallback on E5's primitives (`Stations`, `station_matrices`, `Problem`, `SOLVERS["dp"]`, `route_path`), so those names stay stable too. `station_matrices` caches pairs, so repeated `/plan` requests with the same stations skip the Dijkstras. The HUD can add the E8 stations to a plan (#79).
+- **API/HUD (Sebas):** `/plan` delegates the multi-station tour to `tour.plan_tour(req, graph)` (#64). It applies the energy, duration and `o2_budget_l` limits, re-plans on a walkback failure, and switches to CP-SAT above 19 stations (output `method = "cpsat"`, `exact` true only if the optimum is proven, `gap` from the bound). Its signature and output keys are kept stable. Since #119 it adds `min_slack_wh`, `min_slack_index` and `diagnosis` to the route, `skipped_reasons` and `diagnosis` to `info`, and a `.diagnosis` dict on its exceptions, for structured `/plan` errors and HUD actions. `api/tour.py` keeps a fallback on E5's primitives (`Stations`, `station_matrices`, `Problem`, `SOLVERS["dp"]`, `route_path`), so those names stay stable too. `station_matrices` caches pairs, so repeated `/plan` requests with the same stations skip the Dijkstras. The HUD can add the E8 stations to a plan (#79).
 - **Rubric (Sebas):** the sensitivity results answer the proposal in `docs/research/station_value_rubric.md`: stable from the full-tour budget, and the contact/hollow tie of S1 is what makes it ambiguous below.
 - **E4 and baselines (Aaron):** the station matrices and `evaluate_route` can score any visiting order, including the baselines.
 - **E12 (Juan):** the route GeoPackage (`data/e5/e5_route.gpkg`, layers `route` and `stops`) and the `/plan` output have arrival and departure times per stop for the dose timeline.
@@ -198,6 +218,7 @@ python src/orienteering/run.py --habitat 8143537.99 -284463.58 --stations data/s
 python src/orienteering/paper_ortools.py
 python src/orienteering/run.py --habitat 8143537.99 -284463.58 --light-sol 4711
 python src/orienteering/paper_light_windows.py   # about 4 min
+python src/orienteering/paper_diagnosis.py       # about 1 min
 python -m pytest tests/orienteering
 ```
 
@@ -207,5 +228,6 @@ python -m pytest tests/orienteering
 - `paper/figures/e5_fig1_tour_map.png`, `e5_fig2_prize_vs_budget.png`, `e5_fig3_dp_runtime.png`, `e5_fig4_rubric_sensitivity.png`.
 - With the E8 stations, separately: `data/e5/summary_ortools.json`, `data/e5/e5_route_ortools_28.gpkg` and `e5_route_ortools_28_120min.gpkg` (from `paper_ortools.py`, about 4 min, most of it the routing heuristic's comparison runs), `paper/figures/e5_fig5_ortools_28.png`.
 - Time windows from the light: `data/e5/light_windows.json` (from `paper_light_windows.py`), `paper/figures/e5_fig6_light_windows.png`.
+- Diagnosis and guarantee scope: `data/e5/diagnosis.json` (from `paper_diagnosis.py`).
 
 `data/` is not in git; regenerate with the commands above.
