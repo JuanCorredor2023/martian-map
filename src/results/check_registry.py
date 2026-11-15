@@ -317,7 +317,15 @@ def check_docs(rows, root: Path, report: Report, patterns=DOCS):
     tagged = set()
     for doc in doc_files(root, patterns):
         rel = doc.relative_to(root).as_posix()
+        fenced = False
         for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), start=1):
+            if line.lstrip().startswith(("```", "~~~")):
+                fenced = not fenced
+                continue
+            if fenced:
+                continue
+            # A tag shown as an example in `code` is not a citation.
+            line = re.sub(r"`[^`]*`", lambda m: " " * len(m.group(0)), line)
             for m in TAG.finditer(line):
                 rid = m.group(1)
                 where = f"{rel}:{lineno}"

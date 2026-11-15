@@ -164,7 +164,9 @@ def test_doc_tags(repo):
         "Spanish: 4,7 %<!-- r:x2-ruin -->\n"
         "Too precise: 4.70 %<!-- r:x2-ruin -->\n"
         "Unknown: 3 <!-- r:nope -->\n"
-        "Bare tag <!-- r:x2-ruin -->\n", encoding="utf-8")
+        "Bare tag <!-- r:x2-ruin -->\n"
+        "Example in code: `9 %<!-- r:other -->`\n"
+        "```\n8 <!-- r:other -->\n```\n", encoding="utf-8")
     (repo / "paper" / "notes" / "_template.md").write_text("9 <!-- r:x2-ruin -->", encoding="utf-8")
     write_registry(repo, [row()])
     report = cr.run(repo / "results" / "registry.csv", repo)
