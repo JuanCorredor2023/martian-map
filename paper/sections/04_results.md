@@ -18,7 +18,7 @@ A terrain-aware 30 min line also beats the classic fixed radius: 36 % of what th
 
 **Exact solvers are fast enough.** The exact solvers reach the optimum on every instance, with a median time within 0.12 s of the fastest metaheuristic. ILS misses the optimum in about a quarter of the instances, with gaps up to 37.5 % with time windows. GA is the best metaheuristic (97 % optimal on the random instances). All methods find the optimum on the real E5 instances.
 
-**What the terrain explains.** DEM features explain the choice of valley (AUC 0.73 over the whole box) but not the path inside the boxwork (0.53 in a 50 m corridor). Learned DEM prices are zero. Only orthophoto sand earns a small price (factor 1.0–1.115). With it, the route to Nevado Sajama moves up to 23 m and costs 1.8 % more, and the 120 min tour visits the same stations.
+**What the terrain explains.** DEM features explain the choice of valley (AUC 0.73 over the whole box) but not the path within it (0.53 in a 50 m corridor, about chance; 0.47–0.50 in the three mostly boxwork blocks). Learned DEM prices are zero or near zero (at most 4 % of the price of a metre), and none beats distance alone on held-out drives. Only orthophoto sand earns a small price (factor 1.0–1.115). With it, the route to Nevado Sajama moves up to 23 m and costs 1.8 % more, and the 120 min tour visits the same stations.
 
 **Boulders.**
 - **Detection:** BoulderNet finds 8,380 boulders in the box (2,525 with score ≥ 0.5).
