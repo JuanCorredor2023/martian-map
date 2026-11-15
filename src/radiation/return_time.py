@@ -3,7 +3,8 @@
 Team decision (board, 2026-11-14): the habitat is a USER INPUT, the same one E4
 receives. E12 never picks its own: it takes --habitat X Y (metres, DEM CRS), or
 the habitat point that comes inside the route file (the "start" point of /plan,
-a "base" point, or a point with type/tipo "habitat"). Without one it stops.
+a "base" point, a point with type/tipo "habitat", or the habitat stop of an E5
+tour GeoPackage). Without one it stops.
 
 Return time R_T(v), the minimum walking time from v back to the habitat:
 - official source: E4's rv_time_s.tif (Aaron, src/grafos/build_rv.py), passed
@@ -54,7 +55,11 @@ def resolve_habitat(habitat_arg, route_path=None):
         x, y = habitat_arg
         return (float(x), float(y)), "--habitat"
     if route_path is not None:
-        fc = json.loads(Path(route_path).read_text(encoding="utf-8"))
+        if Path(route_path).suffix.lower() == ".gpkg":       # E5 tour: the habitat stop
+            import geopandas as gpd
+            fc = json.loads(gpd.read_file(route_path, layer="stops").to_json())
+        else:
+            fc = json.loads(Path(route_path).read_text(encoding="utf-8"))
         found = habitat_from_features(fc)
         if found:
             return (found[0], found[1]), found[2]

@@ -96,6 +96,44 @@ After those fixes the same method was run on the three walk views, each in an is
 
 **Detector.** After the fixes it reports only the striped meter track and the hatch swatch (`repeating-gradient stripes`). Both are semantic, marking a limit and steep cells, not decoration. The checks were scripted in headless Edge at 1366 × 768, 800 × 1280 and 412 × 900, muted, with no JavaScript errors. The reports are archived in `.impeccable/critique/` (local).
 
+### Effective plan parameters (#119 A1, contract proposed in #2)
+An audit found that `/plan` accepted `gravity_m_s2` and `apollo_speed_uses_signed_slope` but never used them. `planner.graph` is always built for g = 3.71 m/s² with the signed slope, its cache key ignores both fields, and the same graph serves `/walkback`, the guide and the E5 tour. `max_cell_slope_deg = 0` also meant opposite things: in `/plan` and the tour it blocked every non-flat cell, while `/walkback`, `/walkback/update`, `/guide/return_home` and `/guide/rejoin` turned it into "no limit" (`if x else None`).
+
+Now:
+- **Unsupported values are rejected, not ignored.** Any other gravity or the unsigned speed rule gives a 422 with the reason. Every client (HUD, 3D `web/3d/api.js`, `src/viz3d/make_tour_fixture.py`) already sends the supported values, so their behaviour does not change.
+- **One meaning for the slope limit.** In every request model (`api/plan.py` `SlopeLimit`, also `api/adaptive.py`), the limit is either `null` (no block) or 0 < x ≤ 90; 0 is a 422. The HUD sends `null` or 15–60.
+- **`/plan` reports what it used.** `properties.effective` holds `gravity_m_s2`, `apollo_speed_uses_signed_slope`, `max_cell_slope_deg`, `human_cost`, `cost_model`, `margin` and `service_power_w`. This is the E4 round trip, the E5 tour and the fixed test route; the fixed route has `cost_model` and `service_power_w` null.
+- Tests: `tests/api/test_effective_params.py`, 34 cases:
+  - every model rejects 0, negative and > 90 limits and accepts `null` and 0.5–90;
+  - gravity and speed rule;
+  - `effective` on the live and fixed plans;
+  - each endpoint returns 422 instead of silently changing meaning;
+  - `null` still means no block in `/walkback`.
+
+### Contingencies checked on one path (#119 A2)
+Before, `/guide/return_home` gave the fastest path home and `/guide/rejoin` the least-energy connector, and neither checked them against what the astronaut had left. A path existing, or each resource fitting on its own minimum path, does not prove that one path fits them all.
+
+Both requests now accept what is left: `energy_remaining_wh`, `time_remaining_s` and `o2_remaining_l`, plus `energy_reserve_wh` and `o2_leak_lpm`. With none of them, the output is the same as before, with `feasible: null`. O2 is not treated as an independent resource: it is the same energy at 20.1 kJ/L (`fisica.metabolic`), plus a leak only if one is declared.
+- **Return home** (`api/guide.py`): energy (× k), time and O2 are checked on the same path. The fastest path is kept if it fits. Otherwise the server tries paths that minimise (1 − w)·time + w·energy for w ∈ {0.1, 0.25, 0.5, 0.75, 0.9, 1}, fastest first, and returns the first that fits (`choice` `tradeoff` or `least_energy`). If none fits, it returns the least-energy path with `feasible: false` and `diagnosis` `{code: insufficient_resources, limiting, exact}`. The fastest path is never presented as safe.
+  - `exact` is true when a resource fails even at its own minimum: energy (or O2 without a leak) on the least-energy path, time on the fastest path.
+  - Otherwise the result is "not proven": only the candidate paths in between were checked.
+  - `fastest` always summarises the fastest path and what it fails.
+- **Rejoin**: two checks.
+  - The walkback rule at every vertex of the connector: used so far + way home + reserve must fit. `first_violation_index` gives the first vertex where it does not.
+  - The connector plus the rest of the plan from the target (`continuation`: energy and time to the end of the plan) against what is left.
+
+  If either fails, `feasible: false` with `action: return_home`.
+- **Guide** (`web/guide_core.js`, `web/guide.html`): it sends what is left, computed from the plan (usable energy minus used; maximum EVA duration minus the clock; O2 budget minus the O2 of that energy).
+  - A way home that does not fit says so on screen and by voice (alert priority), even during a storm.
+  - A slower way home says why it is slower.
+  - A rejoin that no longer fits sends the walker home instead of splicing the plan back in.
+
+  `G.rejoin` keeps its return shape and adds `goHome`, so the 3D rehearsal keeps working unchanged.
+- Tests:
+  - `tests/api/test_contingency_feasibility.py` (14): same output without resources; fastest kept when it fits; fast but too costly picks a feasible alternative; energy, time, O2 and reserve shortfalls are proven and never called safe; k scales energy; already at home; rejoin with the rest of the plan that does not fit, and with the way home that already does not fit; the endpoints.
+  - `tests/web/guide_core.test.mjs`: 4 new tests.
+- On the Nevado Sajama position the candidates differ only a little (852–855 s, 70.4–70.6 Wh), because speed and energy follow the same slopes. The trade-off matters near the limits, not as a different route.
+
 ### Multi-station tour (E5 on E4, `api/tour.py`)
 With stations and no explicit goal, `/plan` delegates to E5's `orienteering.tour.plan_tour(req, graph)` (Diana, in `main` since #37; #64 here). It passes the same shared E4 graph (E3 or human cost) and only renames the output for the HUD and the guide (the habitat is dropped from the visiting order).
 - E5 solves the tour exactly: a bitmask DP up to 20 nodes, CP-SAT (OR-Tools) above. Its limits are energy, service time, maximum EVA duration and O2. E4 gives the legs and the walkback is checked at every vertex; E5 re-plans if it fails.

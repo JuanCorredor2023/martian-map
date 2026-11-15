@@ -9,7 +9,7 @@ The boxwork of Gale crater, a network of mineralised ridges a few metres wide en
 We contribute:
 
 1. a planner on a 1 m grid with directed metabolic costs under Mars gravity (Section 3.3), an exact return-energy layer and walkback-safe round trips (3.4), and a station tour solved exactly (3.5);
-2. a validation against Curiosity's traverse, with a learned terrain price that turns out to be small (3.2), and layers mapped from the 0.25 m orthophoto: sand (3.1) and boulders (3.6);
+2. a test against Curiosity's traverse, with a learned terrain price that turns out to be small (3.2), and layers mapped from the 0.25 m orthophoto: sand (3.1) and boulders (3.6);
 3. operational layers: radiation dose and a solar-storm alert (3.7), radio line of sight and an adaptive walkback that learns the astronaut's consumption (3.8), and the best time to leave (3.9);
 4. a product that runs offline: an API, a planning HUD, an arm-tablet guide and a 3D rehearsal (3.10).
 
