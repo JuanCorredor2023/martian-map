@@ -72,16 +72,34 @@ Two numbers from `docs/demo.md` were left out because the notes disagree:
 2. **Links into the landing page** (files owned by Sebas, asked on the board): a link to `/home/` from the HUD, the guide and the 3D view; the demo script (`docs/demo.md`). If the landing page later takes `/`, also "← 2D planner" in `web/3d/index.html`, "Planner" in `web/guide.html`, the deploy guard (`api/public_mode.py`, PR #152) and the README. The wrist card's QR points to `/guide.html` and stays.
 3. **Deploy (#122, PR #152):** its guard treats `/`, `.html`, `.js`, `.css`, `/tiles/`, `/vendor/` and `/3d/` as static; the `.webp` images under `/home/assets/` would count as computational requests. Needs `.webp` (or `/home/`) in that list.
 4. **One name per view (#124).** The 3D view is "3D view" in the HUD, "Open in 3D" on the photo card and here, and "Same walk in 3D" in the guide.
-5. **3D screenshots** (`hero-3d`, `poster-3d`, `rehearse-3d`, `photo-3d`, `step-rehearse`) are still from the mock. #124 did not change the 3D view; retake them if it does. The 2D and tablet ones were retaken after #157/#158 (below).
+5. **`photo-3d`** (the Navcam photo laid over the terrain) is still the mock's: it needs the rover photo catalogue (`data/tiles/3d/photos/`), which only Juan's machine has. Rerun `node docs/landing/capture.mjs … photo-3d` and `python docs/landing/make_webp.py … photo-3d` there. With the catalogue, `hero-3d` gets its photo pins back and `step-rehearse`'s station card shows the nearest photo; rerun those two as well and restore their alt text.
 6. Add "HiRISE: NASA/JPL-Caltech/University of Arizona" to `paper/references.md`. It is the usual HiRISE credit and is used here.
 
 ## How the app screenshots were made
 
-**2D planner and tablet guide (retaken 2026-11-15, after #157 and #158).**
-- **Setup:** the real app from `main` at `32ecc4a`, with every release, including REMS, minerals, THEMIS and E9 boulders. The HUD's source chip reads "7 data types from 4 missions". Driven by headless Edge through the DevTools protocol, with `?tips=off`.
-- **Sizes:** 1440×900 at 2× for the HUD and 592×1180 at 2× for the tablet guide. Saved as WebP (quality 80) in the same three widths as before.
-- **Stations:** the `stations-v1` release (13 stations, rubric 5/4/4/3), copied in for the captures. The laptop's own saved stations (28, with an edited rubric) were backed up and restored byte for byte.
-- **Plan:** the default 120 min plan (1,000 Wh, 10 % reserve, 30°, sand cost). It gives the numbers on the pages: 8 of 13 stations, 111 of 120 min, 448 of 900 Wh, 1.39 km, 41 % of the walk without direct radio. Sol 4711: −74 to −4 °C, 11.9 h of daylight.
-- `data/plans/last_plan.json` was backed up and restored; its hash is unchanged. No stations or walks were saved.
+All 15 are taken by a script, so they can be retaken after any UI change (#173). Retaken 2026-11-15 on Diana's machine, from `main` at `caeb21a` (after #157, #158, #168, #169, #177 and #182); `photo-3d` was not (see "Still open").
 
-**3D view (from the mock, Juan's Claude).** The real app from `main` (e422e69), headless Edge; 1440×900 at 2×, and 1600×900 for the hero.
+```
+python -m uvicorn api.main:app --port 8000
+chrome --headless=new --remote-debugging-port=9222 --window-size=1440,900 about:blank
+node docs/landing/capture.mjs http://localhost:8000 9222 <png-dir> [shot,shot,…]
+python docs/landing/make_webp.py <png-dir> [shot,shot,…]
+```
+
+- **What it does:** `capture.mjs` drives the real app over the DevTools protocol at 2× and writes one PNG per image. `make_webp.py` writes the WebP files in the widths the pages use, at quality 80.
+- **Data:** every release. The HUD's source chip reads "7 data types from 4 missions". The `stations-v1` release must be in `data/stations/` (13 stations, rubric 5/4/4/3); the numbers on the pages come from it. Back up your own stations first and put them back after.
+- **The plan:** the script plans the default walk (120 min, 1,000 Wh, 10 % reserve, 30°, sand cost), so it **replaces `data/plans/last_plan.json`**: back it up first. It gives 8 of 13 stations, 111 of 120 min, 448 of 900 Wh, 1.39 km and 41 % of the walk without direct radio. It saves no stations and no walks.
+- **Sizes:**
+  - 1440×900 for the 2D planner and the eye-height rehearsal;
+  - 1600×900 for the 3D overview, the hero and the chase view;
+  - 592×1180 for the tablet guide.
+- **What each shot shows:**
+  - **Steps 1–4** (terrain, walking cost, steep cells at 20°, stations): taken before planning, so no route.
+  - **Plan, radio:** after planning, with the radio layer from the Plan tab's "Show on the map".
+  - **Walk, storm:** the astronaut 6.5 min into the rehearsal; the storm is the HUD's default scenario.
+  - **Weather:** sol 4711.
+  - **Tablet:** walking until the radio warning, then about 6 min from home for the storm.
+  - **3D:**
+    - the opening view and the hero, with the panel folded;
+    - the chase view at R2;
+    - the eye-height view at H0, with its station card.
