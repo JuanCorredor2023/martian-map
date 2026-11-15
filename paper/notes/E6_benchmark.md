@@ -1,6 +1,6 @@
 # E6 · Exact solvers against metaheuristics for station selection
 
-Owner: Diana (`@dianagrz`) · Issues: #14, #91 · PRs: #81 · Status: done for ILS and SA (in `main`); ACO and GA added in #91 (in review) · Last update: 2026-11-15
+Owner: Diana (`@dianagrz`) · Issues: #14, #91 · PRs: #81 (ILS and SA), #94 (ACO and GA) · Status: done (all in `main`) · Last update: 2026-11-15
 
 ## Question
 For the station-selection problem of E5 (which stations to visit, and in what order, within an energy budget, time windows and a maximum duration), how far from the optimum, and how fast, are four standard metaheuristics compared with the exact solvers? Is there a size of the problem in this project where a metaheuristic should replace the exact answer?
@@ -102,7 +102,7 @@ All numbers from `src/orienteering/e6_benchmark.py` → `data/e6/e6_results.json
 
 ## What other pieces can use
 - **Results table (Juan):** `data/e6/e6_table.csv` has one row per instance set and method (optimum share, mean and max gap, median and max time), ready to merge into the team's results table.
-- **E5 and `/plan` (Diana, Sebas):** the answer to the plan's E6 question is that at E5's sizes (≤ 27 nodes) the exact solvers are the right choice. A metaheuristic should not be presented as the solution (`docs/enfoques.md`). `/plan` keeps the DP up to 20 nodes and CP-SAT above.
+- **E5 and `/plan` (Diana, Sebas):** the answer to the plan's E6 question is that at E5's sizes (≤ 27 nodes) the exact solvers are the right choice. A metaheuristic should not be presented as the solution (`docs/enfoques.md`). `/plan` keeps the DP up to 20 nodes and CP-SAT above. If CP-SAT ever stopped at its time limit without a tour, `/plan` says so (`search_incomplete`, not a proof that nothing fits; #119), and that would be the case to try a metaheuristic.
 - **Solvers:** `SOLVERS["ils"]`, `SOLVERS["sa"]`, `SOLVERS["aco"]` and `SOLVERS["ga"]` take the same `Problem` as the DP; GA is the one to try first, for anyone who needs a fast answer on a much larger instance.
 
 ## Reproduce
