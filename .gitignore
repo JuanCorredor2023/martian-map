@@ -10,3 +10,6 @@ data/*
 
 .DS_Store
 __pycache__/
+
+# Private Python environment made by `make setup`
+.venv/
