@@ -46,6 +46,8 @@
   .map-key { position: absolute; left: 8px; bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px 10px; max-width: calc(100% - 80px);
              padding: 6px 10px; border-radius: 10px; background: rgba(17,21,27,.9); font-size: 13px; color: var(--muted); }
   .map-key i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; border: 1px solid #000; }
+  #status .retry { margin-left: 8px; min-height: 44px; padding: 0 16px; }
+  #alert details.more { margin-top: 4px; font-size: 14px; }
   .map-key i.line { width: 18px; height: 4px; border: 0; border-radius: 2px; vertical-align: 3px; }
 
   /* meters: every bar is "how much is left", with a state word */
@@ -148,7 +150,7 @@
       <button id="recentre" aria-label="Follow me again" hidden></button>
     </div>
     <div class="map-key" aria-hidden="true">
-      <span><i class="line" style="background:#36d1ff"></i>to walk</span>
+      <span id="key-ahead"><i class="line" style="background:#36d1ff"></i>to walk</span>
       <span><i class="line" style="background:#8c8c8c"></i>walked</span>
       <span><i style="background:#fff"></i>you</span>
       <span><i style="background:#ffd60a"></i>next stations</span>
@@ -310,6 +312,8 @@ function layers() {
   if (route) {
     const walked = route.coords.slice(0, idx + 1), todo = route.coords.slice(idx);
     const color = route.kind === "home" ? [255, 81, 71] : [54, 209, 255];
+    ui("key-ahead").innerHTML = route.kind === "home" ? '<i class="line" style="background:#ff5147"></i>way home'
+                                                      : '<i class="line" style="background:#36d1ff"></i>to walk';
     out.push(new PathLayer({id: "todo-casing", data: [todo], getPath: p => p.map(c => toWorld(...c)),
       getColor: [0, 0, 0, 200], getWidth: 10, widthUnits: "pixels", capRounded: true, jointRounded: true}));
     out.push(new PathLayer({id: "todo", data: [todo], getPath: p => p.map(c => toWorld(...c)),
@@ -376,9 +380,11 @@ function update(i) {
     ui("man-dist").textContent = distText === "now" ? "Now" : distText.replace(/^in /, "");
     ui("man-text").textContent = next.text;
   } else {
+    // Storm: still where to go first (arrow and distance), with the live time home.
     const leftS = Math.max(0, r.t[r.t.length - 1] - r.t[i]);
-    ui("man-dist").textContent = `${(leftS / 60).toFixed(1)} min`;
-    ui("man-text").textContent = `Return now · ${next.text.toLowerCase()} ${distText}`;
+    ui("arrow").innerHTML = icon(ARROW_ICON[next.arrow] || "up");
+    ui("man-dist").textContent = distText === "now" ? "Now" : distText.replace(/^in /, "");
+    ui("man-text").textContent = `${next.text} · home in ${(leftS / 60).toFixed(1)} min`;   // same format as the meter
   }
   for (const text of G.announcements(r, i, spoken)) voice.say(text);
   for (const text of G.radioAnnouncements(r, i, spoken)) {
@@ -468,8 +474,8 @@ function walk() {
 function friendly(err) {
   const m = String(err && err.message || err);
   if (/no walkable path|unreachable|no path/i.test(m)) return "No walkable way from here. Retrace your steps to the route.";
-  if (/Failed to fetch|NetworkError/i.test(m)) return "The planner did not answer. Keep walking the planned route.";
-  return "The way home could not be computed. Follow the planned route back.";
+  if (/Failed to fetch|NetworkError/i.test(m)) return "The planner did not answer. Retrace the grey line (where you walked) back to the habitat.";
+  return "The way home could not be computed. Retrace the grey line (where you walked) back to the habitat.";
 }
 
 async function returnHome() {
@@ -488,7 +494,17 @@ async function returnHome() {
     voice.say(home.speech, {priority: storm && home.feasible !== false ? "normal" : "alert"});
     update(0);
     return true;
-  } catch (err) { ui("status").textContent = friendly(err); return false; }
+  } catch (err) {
+    showRetry(friendly(err), () => { if (storm) { storm = false; solarStorm(); } else returnHome().then(ok => ok && walk()); });
+    return false;
+  }
+}
+
+// A failed call says what to do now and offers to try again.
+function showRetry(text, again) {
+  ui("status").innerHTML = `${esc(text)} <button id="retry-btn" class="retry">Retry</button>`;
+  voice.say(text, {priority: "alert"});
+  ui("retry-btn").addEventListener("click", () => { ui("status").textContent = "Trying again…"; again(); }, {once: true});
 }
 
 // --- off route -> recalculating ---------------------------------------------
@@ -543,7 +559,7 @@ async function solarStorm() {
   banner.innerHTML = G.STORM_PENDING;
   G.logEvent(walkLog, "storm", "solar storm alert: return home", route, idx);
   voice.say("Solar storm alert. Return to the habitat now.", {priority: "alert"});
-  if (!(await returnHome())) { banner.innerHTML = G.stormFailedHtml(esc(ui("status").textContent)); return; }
+  if (!(await returnHome())) { banner.innerHTML = G.stormFailedHtml("retrace the grey line (where you walked) back to the habitat"); return; }
   const s = G.stormMessage(route, radInfo);
   banner.innerHTML = G.stormHtml(s);
   voice.say(`${Math.round(s.minutes)} minutes to the habitat.`, {priority: "alert"});

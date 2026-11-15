@@ -1539,28 +1539,38 @@ async function simulateSEP() {
   // Use the rehearsal position when there is a plan; otherwise ask for a point.
   if (!astronaut && routeProf) { astronaut = routeProf.coords[routeIdx]; }
   if (!astronaut) { ui("sep-info").innerHTML = `<div class="warn">${icon("warn")} Plan a walk or place the astronaut first (step 4, Walk).</div>`; return; }
-  if (!wbFC) await requestWalkback();
+  if (playTimer) togglePlay();             // the alert is about this moment: stop the rehearsal here
+  // Always from where the astronaut is now: a walkback from an earlier point gave a
+  // stale time (0.0 min in the alert against 9.5 min on the walk card, #124).
+  await requestWalkback();
   if (!wbFC) return;
-  // Draw the fastest way home on the map, so the alert is seen where the astronaut is.
+  // Draw the way home on the map, so the alert is seen where the astronaut is. It also
+  // checks the energy left on that same path (#119 A2).
+  sepPath = null;
   try {
     const res = await fetch("/guide/return_home", {method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({position: astronaut, habitat: habitatXY(), max_cell_slope_deg: blockLimit(),
-                            human_cost: ui("human-cost").checked})});
+                            human_cost: ui("human-cost").checked,
+                            energy_remaining_wh: Math.max(0, Number(ui("wb-energy").value) || 0)})});
     if (res.ok) { sepPath = (await res.json()).features[0]; redraw(); }
   } catch { /* the alert below still works without the path */ }
   const sc = radInfo.scenarios.find(s => s.id === ui("sep-scenario").value);
-  const p = wbFC.properties, tH = p.return_time_s / 3600;
+  const p = wbFC.properties, home = sepPath ? sepPath.properties : null;
+  const backS = home ? home.time_s : p.return_time_s, tH = backS / 3600;
+  const short = home && home.feasible === false;
+  const beyond = backS > 1800;
   const doseBack = tH * sc.rate_ugy_h, doseCalm = tH * radInfo.background_ugy_h;
   const ev = radInfo.real_event, rule = radInfo.sep_rule;
-  ui("storm-text").innerHTML = `Fastest way home: <b>${(p.return_time_s / 60).toFixed(1)} min</b>` +
-    `${p.contingency_ok ? "" : " (beyond the 30 min line)"}, the amber dashed line. ` +
+  ui("storm-text").innerHTML = `Way home: <b>${(backS / 60).toFixed(1)} min</b>` +
+    `${beyond ? " (beyond the 30 min line)" : ""}, the amber dashed line. ` +
+    (short ? `<b>Not enough energy for it.</b> ` : "") +
     `Radiation on the way back: ${doseBack.toFixed(1)} µGy.`;
   ui("storm-banner").hidden = false;
   if (sepPath) fitStorm();
   renderLegend();
   ui("sep-info").innerHTML = `<div class="alert">${icon("warn")} <b>Solar storm alert · return to the habitat now</b><br>
-    The amber dashed line on the map is the fastest way home.<br>
-    Fastest way back: ${(p.return_time_s / 60).toFixed(1)} min${p.contingency_ok ? "" : " (beyond the 30 min line)"}.<br>
+    The amber dashed line on the map is the way home.<br>
+    Way back: ${(backS / 60).toFixed(1)} min${beyond ? " (beyond the 30 min line)" : ""}.${short ? " Not enough energy for it." : ""}<br>
     Dose on the way back: <b>${doseBack.toFixed(1)} µGy</b> (${doseCalm.toFixed(1)} µGy without the storm).<br>
     <span class="muted">${sc.measured ? "Measured event" : "Hypothetical scaling of the real event"} ·
     alarm rule: rate &gt; ${rule.k_on}× the ${rule.baseline}, ${rule.n_on} observations in a row
@@ -1633,7 +1643,7 @@ function showRouteIdx(i, settle) {
   const free = Math.max(0, usable - used - rv);
   const pct = v => `${Math.max(0, 100 * v / usable)}%`;
   ui("bar-used").style.width = pct(used); ui("bar-rv").style.width = pct(rv); ui("bar-free").style.width = pct(free);
-  const t = r.t_s[i], mm = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+  const t = r.t_s[i], mm = s => { const r = Math.round(s); return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, "0")}`; };
   const dose = radInfo ? (t / 3600) * radInfo.background_ugy_h : null;
   ui("profile-info").innerHTML =
     `<b style="color:var(--text)">${mm(t)}</b> of ${mm(r.t_s[r.t_s.length - 1])} · used ${used.toFixed(0)} Wh, ` +

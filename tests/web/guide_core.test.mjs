@@ -150,7 +150,8 @@ test('return home while standing at a stop keeps the real clock and energy', asy
 
 test('storm alert text is shared by both views', () => {
   const html = G.stormHtml({minutes: 11, realUgy: 2.2, x50Ugy: 54, rule: 'r'});
-  assert.ok(html.includes('11.0 min') && html.includes('2.2 µGy') && html.includes('54 µGy'));
+  assert.ok(html.includes('go home now') && html.includes('2.2 µGy') && html.includes('54 µGy'));
+  assert.ok(!html.includes('11.0 min'));                 // no frozen time: the live one is on the card
   assert.ok(G.stormFailedHtml('no path').includes('no path'));
 });
 
