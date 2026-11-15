@@ -84,3 +84,13 @@ This follows the guide's demo script (zero-to-hero REV3, section 51). The sideba
 - [ ] The browser was reloaded with Ctrl+F5 after the last `git pull` (it caches the JavaScript modules).
 - [ ] Every piece's paper note is up to date (`paper/notes/`, AGENTS.md rule 7).
 - [ ] Rehearse the walkthrough above twice with the timer, speakers on (guide voice).
+
+## 6. Best time to leave (P6)
+
+After planning, run on the saved plan:
+
+```powershell
+python src/orienteering/departure.py --plan data/plans/last_plan.json --sol 4711
+```
+
+It replays the plan's own clock at each departure time (every 15 min) and says how much of the walk is in sunlight, in the shadow of the terrain (1 m DEM) or in the dark, and recommends one. For the 120 min tour on sol 4711: the whole walk is in sunlight for departures from 06:45 to 15:15 local true solar time, best 11:00 (10:22 on the mission clock); terrain shadows cut 15–45 min off that window. Details and checks: `paper/notes/P6_departure_time.md`.

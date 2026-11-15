@@ -37,3 +37,4 @@ Besides the demo, the team will submit a scientific paper. This folder collects 
 | E12 · radiation dose and SEP alert | [notes/E12_radiation_dose.md](notes/E12_radiation_dose.md) | Juan |
 | Product: API, HUD, manual stations, guide mode (P2), data types (P4), E11 radio in the UI | [notes/product_api_hud.md](notes/product_api_hud.md) | Sebas |
 | P1 · 3D map of the box and route rehearsal | [notes/P1_3d_map.md](notes/P1_3d_map.md) | Juan |
+| P6 · best time to leave; working without Earth | [notes/P6_departure_time.md](notes/P6_departure_time.md) | Diana |

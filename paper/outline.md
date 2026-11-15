@@ -27,6 +27,7 @@ Why EVA planning on Mars needs terrain-aware, energy-aware routes; the boxwork a
 - 3.8 Boulder density (BoulderNet, distillation) → *E9 note*
 - 3.9 Radiation dose along the EVA timeline → *E12 note*
 - 3.10 Product: API and HUD; manual stations and their rubric; guide mode shared by the arm tablet and the 3D rehearsal; context data (REMS, CRISM/OMEGA, THEMIS) and radio (E11) in the UI → [product](notes/product_api_hud.md)
+- 3.11 Best time to leave (Sun and terrain shadows along the planned EVA) → [P6](notes/P6_departure_time.md)
 
 ## 4. Results
 - MVP route versus the three baselines → *E4/E5 notes, results table*
