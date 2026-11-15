@@ -406,7 +406,7 @@ async function main() {
   if (check) {
     const {CHECKS} = await import('./checks.js');
     await planReady;
-    const result = CHECKS[check] ? CHECKS[check](window.viz3d) : {error: `unknown check: ${check}`};
+    const result = CHECKS[check] ? await CHECKS[check](window.viz3d) : {error: `unknown check: ${check}`};   // guide is async
     window.viz3d.checkResult = result;
     console.log(JSON.stringify(result));
     const plain = new URLSearchParams(params);

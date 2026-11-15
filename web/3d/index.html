@@ -95,6 +95,20 @@
   #rh-energy-text, #rh-note { margin-top: 4px; font-variant-numeric: tabular-nums; }
   #rh-note:empty { display: none; }
   .wb-ok { color: #4cd964; } .wb-bad { color: #ff3b30; }
+  /* Guide (web/guide_core.js, shared with the arm-tablet guide): next maneuver, the
+     three "can I make it back?" meters, and the guide's buttons. */
+  #rh-man { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+  #rh-man-arrow { font-size: 30px; line-height: 1; width: 36px; text-align: center; }
+  #rh-man-text { font-size: 15px; font-weight: 600; }
+  #rh-meters { display: grid; grid-template-columns: auto 1fr auto; gap: 3px 8px; align-items: center;
+               margin-top: 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  #rh-meters .track { height: 8px; background: #222a33; border-radius: 4px; overflow: hidden; }
+  #rh-meters .fill { height: 100%; border-radius: 4px; }
+  .rh-guide button { font-size: 12px; }
+  #rh-man[hidden], #rh-meters[hidden], #rh-meters [hidden] { display: none; }
+  #rh-alert { margin-top: 6px; padding: 6px 8px; border-radius: 6px; background: rgba(255,59,48,0.15);
+              border: 1px solid rgba(255,59,48,0.6); }
+  #rh-alert b { color: #ff6b61; }
   /* While rehearsing: the readout moves to the top (the player takes the bottom) and the
      "reset the view" button goes away (the rehearsal owns the camera). */
   body.rehearsing #home { display: none; }
@@ -217,6 +231,8 @@
 <!-- Player of the route rehearsal (rehearse.js): the same speeds, energy bar and wording
      as the route profile of the 2D planner. -->
 <div id="player" class="panel" hidden>
+  <div id="rh-man" aria-live="polite"><div id="rh-man-arrow">↑</div>
+    <div><div id="rh-man-text"></div><div id="rh-man-dist" class="muted"></div></div></div>
   <div class="player-row">
     <button id="rh-play">▶ Play</button>
     <select id="rh-speed" aria-label="Playback speed">
@@ -225,6 +241,12 @@
     <button id="rh-chase" aria-pressed="false" title="See the walker from behind and above">Chase view</button>
     <button id="rh-recentre" title="Look forward again (or double-click the view)">Recentre</button>
     <button id="rh-exit" title="Back to free flight, as it was">Exit</button>
+  </div>
+  <div class="player-row rh-guide" style="margin-top:6px">
+    <button id="rh-voice" aria-pressed="true" title="Spoken maneuvers and arrivals, as in guide mode">🔊 Voice on</button>
+    <button id="rh-detour" title="Demo: step 25 m off the route, then rejoin it">↪ Detour</button>
+    <button id="rh-storm" title="Demo: solar storm alert, automatic way home with the dose">☢ Solar storm</button>
+    <button id="rh-home" title="Fastest way home from here">🏠 Return home</button>
   </div>
   <input type="range" id="rh-scrub" min="0" max="1" step="any" value="0" aria-label="Position in the rehearsal">
   <div id="rh-progress"></div>
@@ -236,6 +258,12 @@
       <span><i class="seg-free"></i>free</span></div>
     <div id="rh-energy-text" class="muted"></div>
   </div>
+  <div id="rh-meters" hidden>
+    <span>Energy left after returning</span><div class="track"><div id="rh-m-energy" class="fill"></div></div><span id="rh-v-energy"></span>
+    <span>Time back (limit 30 min)</span><div class="track"><div id="rh-m-back" class="fill"></div></div><span id="rh-v-back"></span>
+    <span id="rh-eva-label">EVA time left</span><div class="track" id="rh-eva-track"><div id="rh-m-eva" class="fill"></div></div><span id="rh-v-eva"></span>
+  </div>
+  <div id="rh-alert" hidden></div>
   <div id="rh-note" class="muted"></div>
 </div>
 <div id="message" class="panel" hidden></div>

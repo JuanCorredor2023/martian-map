@@ -56,6 +56,10 @@
       <div class="meter-label"><span>Time back to the habitat (limit 30 min)</span><span id="t-val"></span></div>
       <div class="track"><div id="t-fill" class="fill"></div></div>
     </div>
+    <div class="meter" id="eva-meter" hidden>
+      <div class="meter-label"><span>EVA time left (max duration)</span><span id="v-val"></span></div>
+      <div class="track"><div id="v-fill" class="fill"></div></div>
+    </div>
   </div>
   <div id="controls">
     <button id="walk-btn">▶ Walk</button>
@@ -68,7 +72,7 @@
   <div id="alert" hidden></div>
   <div id="status"></div>
   <div class="note">Simulated walk: there is no GPS on Mars. A real suit would locate itself with
-    habitat/rover beacons and motion sensors.</div>
+    habitat/rover beacons and motion sensors. <a href="/3d/" style="color:var(--accent)">Same walk in 3D</a></div>
 </div>
 
 <div id="station-card" hidden>
@@ -78,80 +82,26 @@
   <button id="st-done" style="width:100%">Done, continue</button>
 </div>
 
-<script>
+<script type="module">
 // ---------------------------------------------------------------------------
 // Guide mode (#43). Loads the last plan saved by the HUD, walks it (simulated),
 // announces the next maneuver by voice, shows whether there is enough energy
-// and time to get back, and gives the fastest way home on demand.
+// and time to get back and how much EVA time is left, and gives the fastest way
+// home on demand. The logic is in guide_core.js, shared with the 3D rehearsal, so
+// both views of the walk behave the same; this page only draws the 2D map.
 // Same coordinate convention as the HUD: 1 world unit = tile_z0_m / 256 m.
 // ---------------------------------------------------------------------------
+import * as G from "/guide_core.js";
+
 const {Deck, OrthographicView, TileLayer, BitmapLayer, PathLayer, ScatterplotLayer} = deck;
 const ui = id => document.getElementById(id);
-let S, X0, Y0, deckgl, tiles, plan, rubric = {};
-let route = null;          // {coords, t, used, rv, rvTime, usable, events, kind}
-let idx = 0, timer = null, speed = 60, voiceOn = true, cardOpen = false, offRoute = null;
-let radInfo = null;
-const OFF_ROUTE_M = 15, REJOIN_AHEAD_M = 30;
+let S, X0, Y0, deckgl, tiles, plan, rubric = {}, radInfo = null, limitS = null;
+let route = null, idx = 0, timer = null, speed = 60, cardOpen = false, offRoute = null;
+let request = 0;           // answers to an older click are dropped
+const voice = G.createVoice();
 const spoken = new Set(), visited = new Set();
 const toWorld = (x, y) => [(x - X0) / S, (Y0 - y) / S];
-
-const TASKS = {
-  ridge: ["Photograph the ridge wall and its central fracture", "Sample the ridge cement (clays + Fe oxides)"],
-  hollow: ["Image the hollow floor", "Sample bedrock under the sand (siderite)", "Watch your footing: loose sand"],
-  contact: ["Photograph both sides of the contact", "Sample each unit near the contact"],
-  curiosity: ["Find and photograph Curiosity's drill hole", "Compare the rock with the rover's data"],
-};
-
-function say(text) {
-  if (!voiceOn || !("speechSynthesis" in window)) return;
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text); u.lang = "en-US"; u.rate = 1.0;
-  speechSynthesis.speak(u);
-}
-
-// --- maneuvers from the route geometry -------------------------------------
-function cumulativeDistance(c) {
-  const d = [0];
-  for (let i = 1; i < c.length; i++) d.push(d[i - 1] + Math.hypot(c[i][0] - c[i - 1][0], c[i][1] - c[i - 1][1]));
-  return d;
-}
-
-function headingAt(c, d, i, span) {
-  // Heading (rad, east = 0, counter-clockwise) over +-span metres, robust to 1 m staircases.
-  let a = i, b = i;
-  while (a > 0 && d[i] - d[a] < span) a--;
-  while (b < c.length - 1 && d[b] - d[i] < span) b++;
-  return Math.atan2(c[b][1] - c[a][1], c[b][0] - c[a][0]);
-}
-
-function buildEvents(c, d, turnIndex, goalName, endText, stops) {
-  // stops: [{i, name}] for a multi-station tour (E5); otherwise the single goal at turnIndex.
-  const stopIdx = (stops || []).map(s => s.i).concat(turnIndex != null ? [turnIndex] : []);
-  const ev = [];
-  let last = -1e9;
-  for (let i = 0; i < c.length; i++) {
-    if (d[i] - last < 25 || d[i] < 10 || d[d.length - 1] - d[i] < 10) continue;
-    // turnarounds at stations are announced as arrivals, not as sharp turns
-    if (stopIdx.some(k => Math.abs(d[i] - d[k]) < 25)) continue;
-    let ahead = i; while (ahead < c.length - 1 && d[ahead] - d[i] < 15) ahead++;
-    let behind = i; while (behind > 0 && d[i] - d[behind] < 15) behind--;
-    const hin = headingAt(c, d, behind, 8), hout = headingAt(c, d, ahead, 8);
-    let delta = (hout - hin) * 180 / Math.PI;
-    delta = ((delta + 540) % 360) - 180;                     // -180..180, + = left
-    if (Math.abs(delta) < 40) continue;
-    const side = delta > 0 ? "left" : "right";
-    const kind = Math.abs(delta) > 135 ? "Sharp " + side : Math.abs(delta) > 70 ? "Turn " + side : "Bear " + side;
-    const arrow = Math.abs(delta) > 135 ? (delta > 0 ? "↶" : "↷") : delta > 0 ? (Math.abs(delta) > 70 ? "←" : "↖") : (Math.abs(delta) > 70 ? "→" : "↗");
-    ev.push({i, dist: d[i], text: kind, arrow}); last = d[i];
-  }
-  if (stops && stops.length) {
-    for (const s of stops) ev.push({i: s.i, dist: d[s.i], text: `Arrive at station ${s.name}`, arrow: "⚑", goal: true});
-  } else if (turnIndex != null && turnIndex > 0 && turnIndex < c.length - 1) {
-    ev.push({i: turnIndex, dist: d[turnIndex], text: goalName, arrow: "⚑", goal: true});
-  }
-  ev.push({i: c.length - 1, dist: d[c.length - 1], text: endText, arrow: "⌂", end: true});
-  return ev.sort((a, b) => a.dist - b.dist);
-}
+const stations = () => plan.plan.features.filter(f => f.properties.kind === "station");
 
 // --- loading ---------------------------------------------------------------
 async function init() {
@@ -162,24 +112,16 @@ async function init() {
   const res = await fetch("/plan/last");
   if (!res.ok) { ui("man-text").textContent = "No plan yet"; ui("man-dist").textContent = "Plan an EVA in the HUD first."; return; }
   plan = await res.json();
-  const f = plan.plan.features.find(x => x.properties.kind === "route");
-  const goalSt = plan.plan.features.find(x => x.properties.kind === "goal");
-  const goalName = goalSt && goalSt.properties.station ? `Arrive at station ${goalSt.properties.station}` : "Arrive at the goal";
-  const p = f.properties;
-  const stops = (p.stop_index || []).map((i, k) => ({i, name: p.visit_order[k]}));
-  setRoute({coords: f.geometry.coordinates, t: p.t_s, used: p.used_wh, rv: p.rv_wh, rvTime: p.rv_time_s,
-            usable: p.usable_wh, turnIndex: p.turn_index, goalName, kind: "plan", stops});
+  limitS = G.evaLimitS(plan);
+  ui("eva-meter").hidden = !limitS;
+  setRoute(G.routeFromPlan(plan));
   deckgl = new Deck({parent: ui("map"), views: new OrthographicView({flipY: true}),
                      initialViewState: {target: [...toWorld(...route.coords[0]), 0], zoom: 4.5},
                      controller: true, layers: layers()});
   update(0);
 }
 
-function setRoute(r) {
-  r.d = cumulativeDistance(r.coords);
-  r.events = buildEvents(r.coords, r.d, r.turnIndex, r.goalName, "Arrive at the habitat", r.stops);
-  route = r; idx = 0; spoken.clear();
-}
+function setRoute(r) { route = r; idx = 0; spoken.clear(); }
 
 // --- drawing ---------------------------------------------------------------
 function tileLayer(id, url, maxZoom) {
@@ -190,7 +132,6 @@ function tileLayer(id, url, maxZoom) {
 }
 
 function layers() {
-  const stations = plan.plan.features.filter(f => f.properties.kind === "station");
   const out = [tileLayer("ortho", "/" + tiles.layers.ortho.url, 5)];
   if (route) {
     const done = route.coords.slice(0, idx + 1), todo = route.coords.slice(idx);
@@ -203,7 +144,7 @@ function layers() {
       getFillColor: [255, 255, 255], getLineColor: [0, 0, 0], stroked: true, lineWidthUnits: "pixels", getLineWidth: 3,
       getRadius: 10, radiusUnits: "pixels"}));
   }
-  out.push(new ScatterplotLayer({id: "stations", data: stations, getPosition: f => toWorld(...f.geometry.coordinates),
+  out.push(new ScatterplotLayer({id: "stations", data: stations(), getPosition: f => toWorld(...f.geometry.coordinates),
     getFillColor: [255, 214, 10], getRadius: 7, radiusUnits: "pixels", stroked: true,
     getLineColor: [0, 0, 0], lineWidthUnits: "pixels", getLineWidth: 2}));
   return out;
@@ -218,49 +159,34 @@ function meter(fillId, valId, frac, text, good) {
 function update(i) {
   idx = i;
   const r = route, here = r.coords[i];
-  // next maneuver
-  const next = r.events.find(e => e.dist > r.d[i] + 1) || r.events[r.events.length - 1];
-  const togo = Math.max(0, next.dist - r.d[i]);
+  const {event: next, distText} = G.nextManeuver(r, i);
   ui("arrow").textContent = next.arrow;
   ui("man-text").textContent = next.text;
-  ui("man-dist").textContent = togo < 5 ? "now" : `in ${Math.round(togo / 10) * 10} m`;
-  for (const th of [80, 20]) {
-    const key = `${r.kind}-${next.i}-${th}`;
-    if (togo <= th && togo > (th === 80 ? 20 : 0) && !spoken.has(key)) {
-      spoken.add(key);
-      say(th === 80 ? `In ${Math.round(togo / 10) * 10} meters, ${next.text.toLowerCase()}` : next.text);
-    }
-  }
-  // can I make it back?
-  const used = r.used[i], need = r.rv ? r.rv[i] : 0, left = r.usable - used - need;
-  meter("e-fill", "e-val", left / r.usable, `${left.toFixed(0)} of ${r.usable.toFixed(0)} Wh`, left > 0.25 * r.usable);
-  const back = r.rvTime ? r.rvTime[i] : r.t[r.t.length - 1] - r.t[i];
-  meter("t-fill", "t-val", 1 - back / 1800, `${(back / 60).toFixed(1)} min`, back <= 1500);
-  // station arrival card
-  for (const f of plan.plan.features.filter(f => f.properties.kind === "station")) {
-    const id = f.properties.id, [sx, sy] = f.geometry.coordinates;
-    if (f.properties.visited === false) continue;              // not in the E5 tour
-    if (!visited.has(id) && Math.hypot(sx - here[0], sy - here[1]) < 12 && r.kind === "plan") {
-      visited.add(id); openStationCard(f.properties); break;
-    }
-  }
+  ui("man-dist").textContent = distText;
+  for (const text of G.announcements(r, i, spoken)) voice.say(text);
+  const m = G.meters(r, i, limitS);
+  meter("e-fill", "e-val", m.energy.frac, m.energy.text, m.energy.good);
+  meter("t-fill", "t-val", m.back.frac, m.back.text, m.back.good);
+  if (m.eva) meter("v-fill", "v-val", m.eva.frac, m.eva.text, m.eva.good);
+  const arrived = G.arrivals(r, i, stations(), visited);
+  if (arrived.length) openStationCard(arrived[0]);
   if (deckgl) deckgl.setProps({layers: layers(),
     viewState: {target: [...toWorld(...here), 0], zoom: deckgl.viewState?.zoom ?? 4.5}});
   if (i >= r.coords.length - 1) {
     stop();
     ui("status").textContent = "Arrived at the habitat.";
-    say("You have arrived at the habitat.");
+    voice.say("You have arrived at the habitat.");
   }
 }
 
 function openStationCard(p) {
   stop(); cardOpen = true;
-  const type = (Object.entries(rubric).find(([k]) => k === p.type) || [])[1];
-  ui("st-title").textContent = `Station ${p.id}${type ? " · " + type.label : ""} · ${p.service_time_min ?? 10} min`;
-  ui("st-why").textContent = type ? type.why : "";
-  ui("st-tasks").innerHTML = (TASKS[p.type] || ["Document the site"]).map(t => `<li>${t}</li>`).join("");
+  const c = G.stationCard(p, rubric);
+  ui("st-title").textContent = c.title;
+  ui("st-why").textContent = c.why;
+  ui("st-tasks").innerHTML = c.tasks.map(t => `<li>${t}</li>`).join("");
   ui("station-card").hidden = false;
-  say(`Arrived at station ${p.id}. ${type ? type.label : ""}.`);
+  voice.say(c.speech);
 }
 
 // --- simulated walk ----------------------------------------------------------
@@ -270,83 +196,49 @@ function walk() {
   if (timer) { stop(); return; }
   if (cardOpen) return;
   ui("walk-btn").textContent = "❚❚ Pause";
-  timer = setInterval(() => {
-    const target = route.t[idx] + speed * 0.2;
-    let i = idx; while (i < route.t.length - 1 && route.t[i] < target) i++;
-    update(i);
-  }, 200);
+  timer = setInterval(() => update(G.advance(route, idx, speed * 0.2)), 200);
 }
 
 async function returnHome() {
   stop();
   ui("status").textContent = "Computing the fastest way home…";
-  const here = route.coords[idx], usedSoFar = route.used[idx], usable = route.usable;
-  const res = await fetch("/guide/return_home", {method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({position: here, habitat: plan.plan.properties.habitat,
-                          max_cell_slope_deg: plan.plan.properties.max_cell_slope_deg,
-                          human_cost: plan.plan.properties.human_cost !== false})});
-  const out = await res.json();
-  if (!res.ok) { ui("status").textContent = `Error: ${out.detail}`; return; }
-  const f = out.features[0], p = f.properties;
-  setRoute({coords: f.geometry.coordinates, t: p.t_s, used: p.used_wh.map(v => v + usedSoFar),
-            rv: null, rvTime: p.t_s.map(v => p.time_s - v), usable, turnIndex: null, goalName: "", kind: "home"});
-  ui("status").textContent = `Way home: ${(p.time_s / 60).toFixed(1)} min, ${p.length_m.toFixed(0)} m, ${p.energy_wh.toFixed(0)} Wh.`;
-  say(`Returning home. ${Math.round(p.time_s / 60)} minutes.`);
-  update(0);
+  const mine = ++request;
+  try {
+    const home = await G.returnHome(route, idx, plan, offRoute || route.coords[idx]);
+    if (mine !== request) return false;
+    offRoute = null;
+    setRoute(home.route);
+    ui("status").textContent = home.text;
+    voice.say(home.speech);
+    update(0);
+    return true;
+  } catch (err) { ui("status").textContent = `Error: ${err.message}`; return false; }
 }
-
 
 // --- block 2: off route -> recalculating ------------------------------------
-function nearestOnRoute(pt) {
-  let best = 0, bestD = Infinity;
-  for (let k = 0; k < route.coords.length; k++) {
-    const dd = Math.hypot(route.coords[k][0] - pt[0], route.coords[k][1] - pt[1]);
-    if (dd < bestD) { bestD = dd; best = k; }
-  }
-  return {k: best, dist: bestD};
-}
-
 async function checkOffRoute(pt) {
-  const near = nearestOnRoute(pt);
-  if (near.dist <= OFF_ROUTE_M) return;
+  const near = G.nearestOnRoute(route, pt, idx);
+  if (near.dist <= G.OFF_ROUTE_M) return;
   stop();
   ui("status").textContent = `Off route (${near.dist.toFixed(0)} m) — recalculating…`;
-  say("You are off route. Recalculating.");
-  // Rejoin the planned route a little ahead of the nearest point, like a car navigator.
-  let j = Math.max(near.k, idx);
-  while (j < route.coords.length - 1 && route.d[j] - route.d[Math.max(near.k, idx)] < REJOIN_AHEAD_M) j++;
-  const res = await fetch("/guide/rejoin", {method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({position: pt, target: route.coords[j], habitat: plan.plan.properties.habitat,
-                          max_cell_slope_deg: plan.plan.properties.max_cell_slope_deg,
-                          human_cost: plan.plan.properties.human_cost !== false})});
-  const out = await res.json();
-  if (!res.ok) { ui("status").textContent = `Error: ${out.detail}`; return; }
-  const p = out.features[0].properties, rc = out.features[0].geometry.coordinates, r = route;
-  // Splice: rejoin path, then the rest of the plan after j, with times and energy shifted.
-  const t0 = r.t[idx], u0 = r.used[idx];
-  const dt = t0 + p.time_s - r.t[j], du = u0 + p.energy_wh - r.used[j];
-  const tail = k => k > j;
-  const coords = rc.concat(r.coords.filter((_, k) => tail(k)));
-  const t = p.t_s.map(v => v + t0).concat(r.t.filter((_, k) => tail(k)).map(v => v + dt));
-  const used = p.used_wh.map(v => v + u0).concat(r.used.filter((_, k) => tail(k)).map(v => v + du));
-  const rv = r.rv ? p.rv_wh.concat(r.rv.filter((_, k) => tail(k))) : null;
-  const rvTime = r.rvTime ? p.rv_time_s.concat(r.rvTime.filter((_, k) => tail(k))) : null;
-  const turnIndex = r.turnIndex != null && r.turnIndex > j ? r.turnIndex - (j + 1) + rc.length : null;
-  const stops = (r.stops || []).filter(s => s.i > j).map(s => ({...s, i: s.i - (j + 1) + rc.length}));
-  offRoute = null;
-  setRoute({...r, coords, t, used, rv, rvTime, turnIndex, stops});
-  ui("status").textContent = `Back on track: ${p.time_s.toFixed(0)} s to rejoin the route.`;
-  say("New route found.");
-  update(0);
+  voice.say("You are off route. Recalculating.");
+  const mine = ++request;
+  try {
+    const out = await G.rejoin(route, idx, pt, plan);
+    if (mine !== request) return;
+    if (!out) { ui("status").textContent = "Still within 15 m of the route: no rejoin needed."; return; }
+    offRoute = null;
+    setRoute(out.route);
+    ui("status").textContent = out.text;
+    voice.say("New route found.");
+    update(0);
+  } catch (err) { ui("status").textContent = `Error: ${err.message}`; }
 }
 
 function simulateDetour() {
   // Demo only: push the astronaut 25 m to the left of the walking direction.
   stop();
-  const c = route.coords, i = Math.min(idx, c.length - 2);
-  const j = Math.min(c.length - 1, i + 10);
-  const hx = c[j][0] - c[i][0], hy = c[j][1] - c[i][1], n = Math.hypot(hx, hy) || 1;
-  offRoute = [c[i][0] - 25 * hy / n, c[i][1] + 25 * hx / n];
+  offRoute = G.detourPoint(route, idx);
   if (deckgl) deckgl.setProps({layers: layers()});
   checkOffRoute(offRoute);
 }
@@ -356,17 +248,10 @@ async function solarStorm() {
   stop();
   const banner = ui("alert");
   banner.hidden = false;
-  banner.innerHTML = "<b>☢ SOLAR STORM ALERT</b><br>Return to the habitat now. Computing the fastest way…";
-  say("Solar storm alert. Return to the habitat now.");
-  await returnHome();
-  if (route.kind !== "home") return;
-  const tH = (route.t[route.t.length - 1]) / 3600;
-  const sc = radInfo ? radInfo.scenarios : [];
-  const real = sc.find(s => s.id === "real"), x50 = sc.find(s => s.id === "x50");
-  banner.innerHTML = `<b>☢ SOLAR STORM ALERT</b><br>Return to the habitat now: ${(tH * 60).toFixed(1)} min.` +
-    (real ? `<br>Dose on the way back: <b>${(tH * real.rate_ugy_h).toFixed(1)} µGy</b> (real 2025-11-11 event)` : "") +
-    (x50 ? `, ${(tH * x50.rate_ugy_h).toFixed(0)} µGy if 50× stronger (hypothetical).` : "") +
-    `<br><span class="muted">Alarm rule (E12): RAD rate above 1.5× its 3-day median, 2 readings in a row.</span>`;
+  banner.innerHTML = G.STORM_PENDING;
+  voice.say("Solar storm alert. Return to the habitat now.");
+  if (!(await returnHome())) { banner.innerHTML = G.stormFailedHtml(ui("status").textContent); return; }
+  banner.innerHTML = G.stormHtml(G.stormMessage(route, radInfo));
   walk();
 }
 
@@ -376,7 +261,7 @@ ui("sep-btn").addEventListener("click", solarStorm);
 ui("speed-btn").addEventListener("click", () => {
   speed = speed === 30 ? 60 : speed === 60 ? 180 : 30; ui("speed-btn").textContent = `×${speed}`; });
 ui("voice-btn").addEventListener("click", () => {
-  voiceOn = !voiceOn; ui("voice-btn").textContent = voiceOn ? "🔊 On" : "🔇 Off"; if (!voiceOn) speechSynthesis.cancel(); });
+  ui("voice-btn").textContent = voice.toggle() ? "🔊 On" : "🔇 Off"; });
 ui("home-btn").addEventListener("click", returnHome);
 ui("st-done").addEventListener("click", () => { ui("station-card").hidden = true; cardOpen = false; walk(); });
 

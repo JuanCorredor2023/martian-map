@@ -580,5 +580,50 @@ export function shadowsCheck({terrain, scene, renderer, sun, sunView, shadows, s
   return out;
 }
 
+// ?check=guide : does the rehearsal carry the arm-tablet guide (web/guide_core.js)?
+// Enters the rehearsal and reads the maneuver banner and the three meters at the start,
+// in the middle and at the end; then asks the server, as the buttons do, for a way home
+// from the middle, a demo detour that rejoins the route, and the solar storm; then exits
+// and checks that the planned route is back. Voice is switched off (no sound).
+export async function guideCheck({rehearsal}) {
+  const el = id => document.getElementById(id);
+  const out = {check: 'guide'};
+  if (!rehearsal.model) return {...out, error: 'no route to rehearse'};
+  rehearsal.walkbackOnPause = false;
+  const voiceWas = rehearsal.voice.on;
+  rehearsal.voice.set(false);
+  rehearsal.enter();
+  const m = rehearsal.model, planned = {vertices: rehearsal.guide ? rehearsal.guide.coords.length : 0, end_s: m.end};
+  const read = () => ({maneuver: `${el('rh-man-arrow').textContent} ${el('rh-man-text').textContent} ${el('rh-man-dist').textContent}`,
+                       energy: el('rh-v-energy').textContent, back: el('rh-v-back').textContent,
+                       eva: el('rh-eva-track').hidden ? null : el('rh-v-eva').textContent,
+                       banner_shown: !el('rh-man').hidden, meters_shown: !el('rh-meters').hidden});
+  out.has_guide = Boolean(rehearsal.guide);
+  out.events = rehearsal.guide ? rehearsal.guide.events.length : 0;
+  out.start = read();
+  rehearsal.seek((m.start + m.end) / 2); out.middle = read();
+  rehearsal.seek(m.end); out.end = read();
+  rehearsal.seek((m.start + m.end) / 2);
+  const home = await rehearsal.returnHome();
+  out.return_home = home ? {vertices: rehearsal.guide.coords.length, kind: rehearsal.guide.kind,
+                            starts_at_s: Math.round(rehearsal.model.start), text: home.text,
+                            drawn: rehearsal._extra.length === 1, now: read()} : el('rh-note').textContent;
+  rehearsal.exit(); rehearsal.enter();
+  rehearsal.seek((m.start + m.end) / 3);
+  await rehearsal.detour();
+  out.detour = {kind: rehearsal.guide.kind, vertices: rehearsal.guide.coords.length, note: el('rh-note').textContent,
+                drawn: rehearsal._extra.length === 1};
+  rehearsal.exit(); rehearsal.enter();
+  rehearsal.seek((m.start + m.end) / 2);
+  await rehearsal.solarStorm();
+  rehearsal.pause(false);
+  out.storm = {alert: el('rh-alert').textContent.replace(/\s+/g, ' ').trim(), kind: rehearsal.guide.kind};
+  rehearsal.exit();
+  out.after_exit = {end_s: rehearsal.model.end, back_to_plan: rehearsal.model.end === planned.end_s};
+  rehearsal.walkbackOnPause = true;
+  rehearsal.voice.set(voiceWas);                 // as the user had it
+  return out;
+}
+
 export const CHECKS = {shading: shadingCheck, route: routeCheck, rehearse: rehearseCheck, sun: sunCheck,
-                       shadows: shadowsCheck};
+                       shadows: shadowsCheck, guide: guideCheck};

@@ -38,6 +38,12 @@ or press "Reload plan". With no saved plan the terrain still works.
   and makes the server plan and save (it replaces the last plan of the 2D planner).
 - **Pins**: click one for its card; "Fly here" views it from 60 m. Stations a tour did not
   visit are dimmed.
+- **Guide** (the arm tablet's logic, shared in `web/guide_core.js`): the next maneuver
+  with its distance, voice on/off, the three meters (energy left after returning, time
+  back against the 30 min line, EVA time left against the plan's maximum duration),
+  station tasks with "Done, continue", "Return home", "Detour" (demo: 25 m off the route,
+  then rejoin) and "Solar storm" (demo: automatic way home with the dose). A way home is
+  drawn red and a rejoin orange; it replaces the walked route until "Exit".
 - **Rehearsal**: play / pause (space bar), ×1 to ×180, scrubber, "Chase view", drag to look
   around, double-click or "Recentre" to look forward, "Exit". It pauses at every stop with
   the station's card; on pause it draws the walkback lines from there (red: 30 min return,
@@ -78,6 +84,7 @@ from the server and leave the page as they found it.
 | `route` | is the route 0.3 m above the drawn ground at relief ×1, ×3 and ×5, as long as the plan says, with the pins where the plan puts them? |
 | `rehearse` | the whole walk in steps of 0.1 s: eye height, turns, distance from the route, pauses at the stops; does leaving put everything back? |
 | `sun` | is the light where the Sun of Mars is at five times of the sol; morning against afternoon; does the Sun follow the rehearsal? |
+| `guide` | does the rehearsal carry the arm-tablet guide? banner and meters at start, middle and end; Return home, detour and solar storm (asks the server); the plan is back after exit |
 | `shadows` | rendered shadows against a ray march over the mesh, 07:00, 15:00 and 17:00 at ×1 and ×5 (about 12 s; 7 s in the low preset) |
 
 From the console, `viz3d` gives the page's objects, and `viz3d.showPlan({fc})` draws any
