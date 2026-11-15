@@ -9,9 +9,11 @@
 //   lt=15:00        local true solar time at the box centre (default 15:00)
 //   light=az,el     debug: a fixed light direction in degrees (azimuth from north towards
 //                   east, elevation) instead of the Sun of Mars
+//   shadows=0       start without cast shadows (the Sun section has the switch; shadows.js)
 //   fps=1           render every frame and show frames per second
 //   spin=1          slowly orbit the camera (to measure fps without touching anything)
-//   check=shading   run a check from checks.js (shading, route, rehearse, sun) and show its result as JSON
+//   check=shading   run a check from checks.js (shading, route, rehearse, sun, shadows) and show its
+//                   result as JSON
 //   drag=pan        map-style mouse: drag moves, right-drag rotates (default: drag rotates)
 import * as THREE from 'three';
 import { loadLastPlan, loadRubric, requestDefaultPlan } from './api.js';
@@ -21,6 +23,7 @@ import { MarkerLayer } from './markers.js';
 import { GroundLines, RouteOverlay } from './overlays.js';
 import { mainRoute, parsePlan, planMarkers } from './plan_model.js';
 import { Rehearsal } from './rehearse.js';
+import { Shadows } from './shadows.js';
 import { SunView } from './sun.js';
 import { parseClock, parseSol } from './sun_model.js';
 import { Terrain, BUILD_HINT } from './terrain.js';
@@ -153,6 +156,11 @@ async function main() {
     ui('compass-needle').setAttribute('transform', `rotate(${-THREE.MathUtils.radToDeg(heading)})`);
   }
 
+  // Shadows cast by the relief and the habitat dome from the sun light (shadows.js).
+  // Its map is drawn again only when the Sun, the relief or the plan change.
+  const shadows = new Shadows({renderer, scene, sun, terrain, enabled: params.get('shadows') !== '0',
+                               onChange: () => { dirty = true; }});
+
   // Relief slider. The shown height is DEM + (k - 1) * local relief, so everything
   // that stands on the ground is placed again: route, markers and the camera's floor.
   // The rehearsal locks it at true scale (reliefLock is the reason shown) and gives the
@@ -164,6 +172,7 @@ async function main() {
     markers.refresh();
     walkbackLines.refresh();
     controls.refresh();
+    shadows.invalidate();                      // what casts and receives changed shape
     ui('relief').value = k;
     ui('relief').disabled = Boolean(reliefLock);
     ui('relief-label').textContent = reliefLock || (k === 1 ? 'Relief at true scale' : `Local relief ×${k} (exaggerated)`);
@@ -247,6 +256,7 @@ async function main() {
     hideCard();
     overlays.setPlan(model);
     markers.set(model ? planMarkers(model, got.stationTypes || {}) : []);
+    shadows.invalidate();                      // the habitat dome casts one
     window.viz3d.plan = {...got, model};
 
     const route = model && mainRoute(model), facts = [], warnings = ui('plan-warnings');
@@ -326,7 +336,7 @@ async function main() {
 
   // Handle for the manual checks listed in the PR and for later blocks.
   // `plan` is {fc, source, error, missing, stationTypes, model} once a plan was asked for.
-  window.viz3d = {terrain, scene, camera, controls, renderer, sun, sunDirection, sunView, overlays, markers,
+  window.viz3d = {terrain, scene, camera, controls, renderer, sun, sunDirection, sunView, shadows, overlays, markers,
                   rehearsal, walkbackLines, plan: null, showPlan, reloadPlan, planDefault, setRelief,
                   get fps() { return fps; }, redraw() { dirty = true; }};
   // The terrain is usable while the plan loads. ?plan=default is the user asking.

@@ -65,8 +65,9 @@ export function sunVector(azimuthDeg, elevationDeg) {
 }
 
 // Light levels for a Sun elevation. sun: the directional light, zero at and below the
-// horizon (there are no cast shadows yet, so a Sun under the horizon must not light
-// anything). sky: the hemisphere light. day: 0 at night to 1 by day, for the sky colour.
+// horizon (the planet itself casts no shadow in the scene, so a Sun under the horizon
+// must not light anything). sky: the hemisphere light. day: 0 at night to 1 by day, for
+// the sky colour.
 export function lightLevels(elevationDeg) {
   const day = smoothstep(-DUSK_DEG, DUSK_DEG, elevationDeg);
   return {sun: SUN_FULL * smoothstep(0, SUN_FADE_DEG, elevationDeg),

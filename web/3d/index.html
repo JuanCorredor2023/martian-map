@@ -159,6 +159,9 @@
     <div class="muted" id="sun-note"></div>
     <label class="check muted" title="Plain grey ground: judge the light without the photo's own shadows">
       <input type="checkbox" id="relief-only">Relief only (hide the photo)</label>
+    <!-- Cast shadows of the sun light (shadows.js). -->
+    <label class="check muted" title="Shadows cast by the relief as shown and by the habitat">
+      <input type="checkbox" id="shadows" checked>Shadows</label>
   </details>
   <details id="about" open>
     <summary class="muted">About this view</summary>
@@ -173,7 +176,8 @@
     <div class="muted">The boxwork network is seen in the HiRISE photo (0.25 m). The relief (1 m DEM)
       shows the hillside, knolls and scarps; it does not resolve the 1–2 m ridges.
       The photo has its own light (HiRISE takes its images in mid-afternoon); the 3D Sun is added
-      on top.</div>
+      on top. Shadows are drawn for the relief as shown (true only at ×1) and they show knolls and
+      scarps, not the 1–2 m boxwork ridges.</div>
     <hr>
     <div class="muted" id="quality-label"></div>
   </details>
