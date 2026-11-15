@@ -1,6 +1,6 @@
 # E5 · Station selection and order (orienteering)
 
-Owner: Diana (`@dianagrz`) · Issue: #9 · PRs: #37 · Status: in progress (MVP planner done; `/plan` delegates to it through Sebas's #64, active once #37 merges; CP-SAT for more than 20 nodes; real time windows pending) · Last update: 2026-11-15
+Owner: Diana (`@dianagrz`) · Issue: #9 · PRs: #37 · Status: done (in `main` since #37: `/plan` plans the multi-station tour through `plan_tour`; DP up to 20 nodes, CP-SAT above; E8 stations v0 integrated, v1 not released and to be rerun if it lands; real time windows have no source) · Last update: 2026-11-15
 
 ## Question
 Given N science stations with a value, which subset should the astronaut visit, and in what order, to collect the most value without breaking the energy budget, the EVA duration, the stations' time windows or the walkback rule (always able to walk home)?
