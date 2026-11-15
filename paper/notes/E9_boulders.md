@@ -1,6 +1,6 @@
 # E9 · Boulders: BoulderNet as teacher, distilled to a light CNN (`rocas.tif`)
 
-Owner: Aaron (`@aahg1105`) · Issue: #12 · PRs: (this PR) · Status: done (first version) · Last update: 2026-11-15
+Owner: Aaron (`@aahg1105`) · Issues: #12, #102 (X1, uncertainty) · PRs: #99, X1 PR · Status: done · Last update: 2026-11-15
 
 ## Question
 Where are the boulders in the 2 × 2 km study box, and can a CNN about 50 times smaller than a published boulder detector reproduce its map well enough to serve as a terrain layer (`rocas.tif`, fraction of each 1 m cell covered by boulders) for route costs and the HUD?
@@ -113,6 +113,85 @@ On the training blocks the values are similar (r = 0.68 per cell, 0.74 at 10 m),
 ![Figure 2](../figures/e9_fig2_student.png)
 *Figure 2. Rock cover at 10 m from (a) the teacher and (b) the student (`rocas.tif`); cyan squares are the validation blocks. (c) Student against teacher on validation blocks only. White cells in (a) and (b) are orthophoto nodata. `src/dl_rocas/paper_figures.py`.*
 
+## Uncertainty layer (X1, issue #102)
+**Question.**
+- Can a Gaussian process (GP) turn the boulder cover into a smoothed mean with a usable uncertainty (`rocks_mean.tif`, `rocks_std.tif`)?
+- Does it beat a plain smoothing?
+- Does pricing the uncertainty change routes?
+
+**Method** (`src/dl_rocas/rocks_gp.py`).
+- **Input:** the teacher's cover (`teacher_cover_1m.tif`), the original signal. The student would add its own imitation error on top of the teacher's.
+- **Blocks:**
+  - The input is averaged over 20 × 20 m blocks (10,000 blocks).
+  - 65.5 % of the blocks have no boulder; the mean is 0.37 % and the 99th percentile 6.3 %. The values are very skewed (skewness 8.1).
+  - The GP therefore models z = √(cover %), which brings the skewness down to 2.9.
+  - It is mapped back exactly: E[z²] = μ² + σ² and Var[z²] = 4μ²σ² + 2σ⁴. Interval bounds are squared (a lower bound below 0 becomes 0).
+- **GP:** kernel C · Matérn(ν = 1.5) + White in scikit-learn [sklearn], `normalize_y`.
+  - The hyperparameters are fitted on about 2,000 training blocks taken from random 320 m windows of contiguous blocks. The GP is then refitted exactly on all training blocks (~8,000) with them fixed.
+- **The std is predictive:** the published and validated std is the spread of the cover the teacher would measure in that block, noise included.
+- **Spatial CV, two schemes:**
+  - **Extrapolation, as asked in #102:** 5 × 5 tiles of 400 m, 5 tiles per fold at random (seed 102).
+  - **Interpolation:** single blocks at random to 5 folds. This is what the final map does, since every block has data around it.
+- **Rivals:** the training mean, and a normalised Gaussian smoothing of the training blocks (σ 1–10 blocks; falls back to the training mean where it reaches no data).
+  - The best σ is picked on the test folds themselves, which favours the rival.
+- **Metrics:** RMSE and MAE in cover %, and for the GP the coverage of its 90 % intervals.
+- **Groups (#120, C5):** errors are also split by box edge (outer 40 m, 784 blocks), blocks touching orthophoto nodata (219) and the interior (9,010).
+- **Tried and dropped:** hyperparameters on a scattered random subsample. Points ~45 m apart hide the 20 m neighbours, the GP learned a length scale of ~80 m and over-smoothed (interpolation RMSE 1.188; `data/e9/rocks_gp_scattered_subsample.json`).
+
+**Results** (`data/e9/rocks_gp.json`). Held-out blocks, cover in %:
+
+| | Extrapolation, 400 m tiles: RMSE / MAE | Interpolation, random blocks: RMSE / MAE |
+|---|---:|---:|
+| Training mean (no spatial information) | 1.315 / 0.562 | 1.310 / 0.557 |
+| Gaussian smoothing, best σ | 1.309 / 0.546 (σ = 100 m) | **1.142 / 0.427** (σ = 20 m) |
+| GP on √cover | **1.280 / 0.544** | 1.154 / 0.466 |
+| GP on raw cover | 1.313 / 0.567 | — |
+| GP coverage of the 90 % interval | 0.93 (empty blocks 0.99, rocky blocks 0.80) | 0.92 (empty 0.98, rocky 0.81) |
+
+- **Fitted kernel** (all blocks): Matérn length scale 40 m, and the noise term (0.52) is about the size of the spatial variance (0.49), both on normalised √cover. Half of the block-to-block variation is noise at this scale.
+- **Negative for the mean:**
+  - Extrapolating into a 400 m tile, the GP beats both rivals, but only by about 2–3 % in RMSE. Far from data every method falls back to the mean.
+  - Interpolating, a 20 m Gaussian smoothing is slightly better than the GP (RMSE 1.142 against 1.154; MAE 0.427 against 0.466). The GP's mean adds nothing over a simple filter.
+- **Partly positive for the uncertainty:**
+  - Overall, the 90 % intervals contain 92–93 % of the held-out blocks, close to nominal.
+  - But they are too narrow where there are boulders: 80–81 % coverage on blocks with any boulder, against 98–99 % on empty blocks. The √ transform makes the std grow with the mean, but not enough for the rocky tail.
+- **By group** (400 m tiles):
+  - Edge blocks behave like the interior: RMSE 1.01 and coverage 0.93, against 1.20 and 0.93 in the interior.
+  - Blocks next to orthophoto nodata are much worse: RMSE 3.51 and coverage 0.69. They are also five times rockier (mean cover 1.65 % against 0.34 %), and only 41 of the 8,380 boulders lie within 2 m of a nodata pixel. The error here is confounded with rockiness, not clearly an edge effect.
+- **Student + GP:**
+  - The same GP on the student's cover, scored against the teacher (400 m tiles), gives RMSE 1.273 and coverage 0.90 (rocky blocks 0.78). That is as good as the GP on the teacher itself.
+  - Cheap student + GP recovers the teacher's block-scale map. This supports the distillation, not the detector.
+- **Drives flagged by E1 (#108):**
+  - **Sol 4544:** the teacher shows no boulder, while the student's cell cover averages 4.2 %. The GP on the student brings it down to 0.47 % ± 0.39 %, close to the GP on the teacher (0.19 % ± 0.27 %). The block-scale GP absorbs the student's halo.
+  - **Sols 4673 and 4680:** the teacher's cell cover averages 10–12 % (max 79 %), while the GP gives 0.55–0.57 % ± 0.55–0.57 % at block scale. These are a few isolated teacher cells, too small for a 40 m correlation to carry. A 20 m layer cannot flag single boulders.
+
+**Effect on routes** (`src/dl_rocas/route_effect.py --layer gp` → `data/e9/route_effect_gp.json`).
+- **Set-up:** same 28 round trips as above, with arc energy E3 × (1 + k · (mean + λ · std)) built by `src/grafos/rock_risk.py`.
+- **Boulders counted on the teacher's cover.** This is why k = 0 differs from the student-based table above.
+
+| k | λ = 0: boulder m² / rocky cells | λ = 1.645: boulder m² / rocky cells | E3 energy vs k = 0, median / max (λ = 1.645) | Length vs k = 0, max |
+|---|---:|---:|---:|---:|
+| 0 (E4) | 31.3 / 57 | 31.3 / 57 | 0 / 0 | 0 m |
+| 1 | 29.4 / 55 | 28.5 / 53 | +0.00 % / +0.01 % | +1 m |
+| 3 | 29.3 / 55 | 21.1 / 32 | +0.00 % / +0.21 % | +9 m |
+| 10 | 20.7 / 33 | 13.7 / 22 | +0.01 % / +0.87 % | +12 m |
+
+- **Pricing the uncertainty pays off:** with the same k, adding one-sided 95 % caution (λ = 1.645) avoids clearly more boulder.
+  - At k = 10 the routes cross 56 % less teacher boulder area than the E4 routes, against 34 % with the mean alone.
+  - The energy cost stays below 1 % and detours below 12 m.
+- **k and λ are assumptions.** E1 found no held-out price for boulders (#108, negative). Both stay at 0 by default, and nothing enters the nominal cost.
+
+![Figure 3](../figures/e9_fig3_gp.png)
+*Figure 3. (a) Teacher boulder cover in 20 m blocks (white: blocks touching orthophoto nodata). (b) GP mean (`rocks_mean.tif`) and (c) GP predictive std (`rocks_std.tif`), on the base grid. The std is highest where the mean is high, because of the √ transform. Every block has data, so it does not mark data gaps. `src/dl_rocas/paper_figures.py`.*
+
+**What the std is and is not** (#120, C5).
+- **What it is:** the GP std covers block-to-block interpolation and the teacher's apparent noise at 20 m.
+- **What it is not:**
+  - **BoulderNet's own bias:** about 4 in 10 labelled boulders are missed on Mars patches (R 0.59, P 0.74). That is a systematic undercount, which a GP on the teacher's output cannot see.
+  - **Unresolved boulders:** boulders below ~1 m are not in the data at all.
+  - **Single boulders:** the layer is a 20 m-scale density, not a cell-level hazard map.
+- **Conclusion:** treat `rocks_std.tif` as the uncertainty of the interpolated orbital density, not as a guarantee about the ground.
+
 ## Checks
 - **Weights:** every stored weight matches the model (the loader stops otherwise).
 - **Teacher against labels:**
@@ -132,12 +211,19 @@ On the training blocks the values are similar (r = 0.68 per cell, 0.74 at 10 m),
   - Longer training improves boulder detection but costs calibration (60 against 30 epochs, Results). A larger student or more pseudo-labels from outside the box, where the teacher can run, are the untested options.
 - **Age of the image:** detail from 2006–2011 imagery; boulders that moved since then are not represented.
 - **Unequal timing:** the teacher's time includes polygonising the masks and covers every pixel about four times (50 % overlap). The student's time is inference on the GPU only. The speed-up compares the two pipelines as used, not the two networks on equal input.
-- **No route cost yet:** `rocas.tif` is not in any route cost. How much a given cover should slow or block a walker has no source here.
+- **No validated route cost:** no boulder layer is in the nominal route cost. The risk term (`src/grafos/rock_risk.py`) exists with k = λ = 0 by default. How much a given cover should slow or block a walker has no source: E1 found no held-out price (#108).
+- **Uncertainty layer (X1):**
+  - Its mean is no better than a 20 m Gaussian smoothing.
+  - Its 90 % intervals under-cover rocky blocks (80 %).
+  - Its std leaves out the detector's bias and unresolved boulders (Uncertainty layer section).
 
 ## What other pieces can use
 - **`data/e9/rocas.tif`** (Juan, Sebas): float32 on the base grid, 1 m, NaN nodata. Values are the fraction of the cell covered by boulders (0–1; median 0.0004, 99th percentile 0.087).
   - As a HUD layer, it reads best at 10 m (Figure 2b).
   - As a cost, it could multiply E3's energy like the E1 sand factor in `api/planner.graph(human=True)`. Its weight is a modelling choice to be stated, not a measured number.
+- **`data/e9/rocks_mean.tif`, `rocks_std.tif`** (Sebas, X1): float32 on the base grid, fraction 0–1, NaN nodata.
+  - These are a 20 m-scale GP mean and predictive std of the teacher's cover, for a HUD uncertainty layer.
+  - For a risk term, use `grafos.rock_risk.rock_factor(mean, std, k, lam)` with `apply_to_energy`. It keeps the same arrival-cell convention as the E1 sand factor; k and λ are assumptions, 0 by default.
 - **`data/e9/boulders_teacher.gpkg`** (layer `boulders`): one polygon per boulder with `score`, `area_m2` and `diameter_m`. Filter by `score` (0.5 is a reasonable default).
 - **E11 (JB):** with the suit radio at 1.7 m, the largest boulders (≥ 3.8 m for the top 5 %) can block line of sight at short range, and the DEM does not see them.
 - **E12 / results table (Juan):** the numbers in Results come from `data/e9/summary.json`.
@@ -165,6 +251,8 @@ python src/dl_rocas/route_effect.py            # effect on E4 round trips, any e
 <env>/python src/dl_rocas/distill.py train --epochs 60     # 90 min on a T1000
 <env>/python src/dl_rocas/distill.py predict --out data/e9/w32_e60/rocas.tif
 <env>/python src/dl_rocas/evaluate_student.py --student data/e9/student.pt --out data/e9/w32_e60/student_classification.json
+python src/dl_rocas/rocks_gp.py                # X1 GP + spatial CV, ~15 min on CPU (scikit-learn)
+python src/dl_rocas/route_effect.py --layer gp # X1 routes with mean + lam * std
 python src/dl_rocas/paper_figures.py           # any env with rasterio, geopandas, matplotlib, torch
 ```
 If GDAL plugin errors show up, the API env's `GDAL_DRIVER_PATH` is leaking into the `bouldernet` env; unset it.
@@ -177,11 +265,12 @@ In `data/e9/` (not in git):
 - `teacher_cover_1m.tif`
 - `student.pt`
 - `student_metrics.json`, `student_classification.json`
-- `route_effect.json`
+- `route_effect.json`, `route_effect_gp.json`
+- `rocks_mean.tif`, `rocks_std.tif`, `rocks_gp.json` (X1), `rocks_gp_scattered_subsample.json` (dropped variant)
 - **`rocas.tif`** and `rocas.json`
 - `summary.json`
 - `w16/`: the dropped student
 - `w32/`: the delivered student (copy of the files above)
 - `w32_e60/`: the 60-epoch student, kept aside
 
-Figures: `paper/figures/e9_fig1_teacher.png`, `paper/figures/e9_fig2_student.png`.
+Figures: `paper/figures/e9_fig1_teacher.png`, `paper/figures/e9_fig2_student.png`, `paper/figures/e9_fig3_gp.png`.
