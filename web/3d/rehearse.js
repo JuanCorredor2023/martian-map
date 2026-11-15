@@ -562,7 +562,7 @@ export class Rehearsal {
     this.pause(false);
     const i = this._vertex(), pt = G.detourPoint(this.guide, i);
     this._note('Off route (25 m) — recalculating…');
-    this.voice.say('You are off route. Recalculating.');
+    this.voice.say('You are off route. Recalculating.', {priority: 'alert'});   // routine lines cannot cut it off
     const token = ++this._token;
     try {
       const out = await G.rejoin(this.guide, i, pt, this._planRef(), this._now());
@@ -581,7 +581,7 @@ export class Rehearsal {
     alert.hidden = false;
     alert.innerHTML = G.STORM_PENDING;
     if (this.walkLog) G.logEvent(this.walkLog, 'storm', 'solar storm alert: return home', this.guide, this._vertex());
-    this.voice.say('Solar storm alert. Return to the habitat now.');
+    this.voice.say('Solar storm alert. Return to the habitat now.', {priority: 'alert'});
     if (this._radInfo === undefined) {
       try { const res = await fetch('/radiation'); this._radInfo = res.ok ? await res.json() : null; }
       catch { this._radInfo = null; }
