@@ -1,6 +1,6 @@
 # X2 · Adaptive (Bayesian) walkback
 
-Owner: JB (`@JavierBonilla2004`) · Issues: #101, part of #45 (P6) · PRs: this PR · Status: backend, simulation and note done; guide indicator by Sebas (handoff) · Last update: 2026-11-15
+Owner: JB (`@JavierBonilla2004`) · Issues: #101, part of #45 (P6); follow-up experiment in #120 (C1) · PRs: #113 (backend, simulation, note), #116 (guide), #118 (3D rehearsal bias) · Status: done · Last update: 2026-11-15
 
 ## Question
 The walkback reserve (E4) trusts a fixed metabolic model (Santee 2001, E3). Measured metabolic rates in prototype suits reached up to twice Apollo's, and in Apollo 17 the return distance was recomputed from the real consumption during the EVA. Can the planner learn during the walk how much this astronaut really uses, and re-check the way home with that? And is that safer than the fixed reserve?
@@ -69,16 +69,17 @@ Source: `src/fisica/adaptive_sim.py` → `data/adaptive/summary.json`, figure [x
 - σ_obs = 0.15 and the prior σ0 = 0.3 are declared assumptions.
 - The budget is artificial (1.25 × the plan) because the box is too small for the real suit budget to bind.
 - One plan and one habitat.
+- Not yet done (follow-up in #120, C1): a third, "conservative" policy (a fixed reserve margin), paired differences with intervals, and correlated noise between segments (here segments are independent).
 - The residual run-outs of the adaptive policy (4.7–7.7 %) come from noise near zero margin. A higher quantile (p95) or a fixed reserve on top of k_p90 would cut them, at the cost of turning back earlier.
 
 ## What other pieces can use
-- **Guide and 3D (Sebas, Juan):** `POST /walkback/update` after each walked segment, sending back the `posterior` it returned. The response gives:
-  - the k indicator: `k.median` and `k.ci90`;
-  - the "return now" alert: `return_now`;
-  - the reserve: `reserve.reserve_needed` and `reserve.margin_after_return`;
-  - the point of no return for the "plan against the walk" summary: `no_return_index`.
+- **Guide (tablet, #116).** `web/guide_core.js` (section "adaptive walkback") calls `POST /walkback/update` every 30 m walked, sending back the `posterior` it returned. The real use is simulated from a `k_true` chosen in the demo drawer ("Use ×1.0 / 1.2 / 1.5 / 0.8"). `web/guide.html` shows:
+  - a "Spare energy, learned use (k p90)" meter with `k.median` and `k.ci90`;
+  - the "RETURN NOW" alert in `#alert`, with voice;
+  - four rows in "plan against the walk": k with its IC90, the real energy, and where "return now" fires at k_p90 and at k = 1.
 
-  To see it in the demo, the simulated walk needs a k_true bias.
+  The alert only shows with a tight budget (about 1.25 × the plan's energy), because the box never uses up 900 Wh.
+- **3D rehearsal (#118).** `buildRehearsal(route, points, {kTrue})` adds `used_real_wh` to each state and exposes `bias.segments` (predicted vs observed per 30 m) for the same endpoint. Without the option the rehearsal is unchanged (`?check=rehearse` identical to main). The k meter and alert in the 3D view are part of bringing the 2D guide to 3D (Juan).
 - **E4 (Aaron):** k is a uniform scale on the energy field. For any R(v) it is k × R(v) with the same paths.
 
 ## Reproduce
