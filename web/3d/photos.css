@@ -1,6 +1,6 @@
 /* Rover photos of the 3D map (photos.js, P3 issue #46): the card's photo and its view
-   buttons, the list of overlapping stops, the photo-view bar and the photo laid over the
-   3D view. Colours and buttons follow index.html (panels, #player, .card-action). */
+   buttons, the list of overlapping stops, the nearest photo on a station's card, the
+   photo-view bar and the photo laid over the 3D view. Colours and buttons follow index.html (panels, #player, .card-action). */
 
 /* Card: the photo, then one button per view of the stop. */
 .photo-media img { display: block; width: 100%; height: auto; border-radius: 4px; background: #1c222b; }
@@ -12,6 +12,15 @@
 .photo-stops button { width: 100%; text-align: left; }
 .photo-stops button span { display: block; font-size: 11px; overflow-wrap: anywhere; }
 #card .card-rows dd { overflow-wrap: anywhere; }       /* photo ids are long */
+
+/* A station's card: its nearest rover photo, small (the card is the station's), then the
+   sentence of where it was taken and the sol and credit (stationPreview). */
+.photo-preview { display: grid; gap: 4px; }
+.photo-preview-img { display: block; max-width: 100%; max-height: 140px; width: auto; height: auto;
+                     border-radius: 4px; background: #1c222b; object-fit: contain; }
+.photo-preview .photo-missing { padding: 10px 8px; }
+.photo-preview-text { font-size: 12px; line-height: 1.35; }
+.photo-preview-meta { font-size: 11px; overflow-wrap: anywhere; }
 
 .photo-views button, .photo-stops button, #photo-bar button {
   padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: #1c222b;
