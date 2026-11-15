@@ -198,13 +198,22 @@ def light_along(xy, t_s, sol, start_ltst, horizon, lat_pg, lon_east):
     sun = sun_position(utc0 + np.asarray(t_s, dtype=float) * 1000.0, lat_pg, lon_east,
                        tt=tt_minus_utc(utc0))
     elev, az = sun["elevation"], sun["azimuth"]
-    state = np.full(len(elev), 2)
-    if horizon is not None:
-        b = np.floor(np.mod(az + 180.0 / horizon.shape[1], 360) / (360.0 / horizon.shape[1])).astype(int)
-        b = np.mod(b, horizon.shape[1])
-        state[elev < horizon[np.arange(len(elev)), b]] = 1
+    return elev, az, light_state(elev, az, horizon), float(sun["ltst"][-1]), float(sun["lmst"][0])
+
+
+def light_state(elev, az, horizon_rows=None):
+    """0 dark (Sun below a smooth horizon), 1 shadowed (Sun below the terrain horizon in
+    its direction, nearest bin), 2 sunlit, for Sun positions elev/az (degrees). Row k of
+    horizon_rows is the terrain horizon (horizon_table) seen from where sample k is taken;
+    None for a smooth planet."""
+    elev, az = np.asarray(elev, dtype=float), np.asarray(az, dtype=float)
+    state = np.full(elev.shape, 2)
+    if horizon_rows is not None:
+        bins = horizon_rows.shape[1]
+        b = np.mod(np.floor(np.mod(az + 180.0 / bins, 360) / (360.0 / bins)).astype(int), bins)
+        state[elev < horizon_rows[np.arange(len(elev)), b]] = 1
     state[elev <= 0] = 0
-    return elev, az, state, float(sun["ltst"][-1]), float(sun["lmst"][0])
+    return state
 
 
 def score_departures(xy, t_s, sol, starts_ltst, horizon=None):

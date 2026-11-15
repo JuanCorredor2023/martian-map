@@ -95,3 +95,11 @@ python src/orienteering/departure.py --plan data/plans/last_plan.json --sol 4711
 ```
 
 It replays the plan's own clock at each departure time (every 15 min) and says how much of the walk is in sunlight, in the shadow of the terrain (1 m DEM) or in the dark, and recommends one. For the 120 min tour on sol 4711: the whole walk is in sunlight for departures from 06:45 to 15:15 local true solar time, best 11:00 (10:22 on the mission clock); terrain shadows cut 15–45 min off that window. Details and checks: `paper/notes/P6_departure_time.md`.
+
+**The light also chooses the stations (#111).** Not in the HUD: from the command line, each station is served only while it is in sunlight and out of the terrain's shadow, and the planner sweeps the departure time:
+
+```powershell
+python src/orienteering/run.py --habitat 8143537.99 -284463.58 --light-sol 4711
+```
+
+For the nominal tour, leaving between 05:00 and 14:45 still collects all 56 points; leaving at 16:00 the evening shadows leave 37, and from 17:45 nothing. At 06:00 the 120 min tour keeps its 37 points with a different set of stations. Details: `paper/notes/E5_orienteering.md`, *Results with time windows from the light*.
