@@ -53,18 +53,26 @@ def _pixel_of(x, y):
 
 
 def layer_png(path, bbox, size=500):
-    """The tile resampled (nearest) onto the box, gray, as a PNG over bbox
-    (xmin, ymin, xmax, ymax in DEM metres). Its blocky 81 m pixels are kept on purpose."""
+    """The tile over the box as a PNG (bbox: xmin, ymin, xmax, ymax in DEM metres).
+    Interpolated smoothly (cubic) between the 81 m pixel centres, so the layer shows the
+    broad warm/cool pattern instead of blocks; it adds no detail the data does not have.
+    Colours: a warm sequential ramp (dark = cooler at night, bright = holds heat)."""
+    from matplotlib import colormaps
+    from scipy.ndimage import gaussian_filter, map_coordinates
     dn, ok = _tile(path)
     xmin, ymin, xmax, ymax = bbox
     xs = xmin + (np.arange(size) + 0.5) * (xmax - xmin) / size
     ys = ymax - (np.arange(size) + 0.5) * (ymax - ymin) / size
-    px, py = _pixel_of(*np.meshgrid(xs, ys))
-    px, py = np.clip(px, 0, 255), np.clip(py, 0, 255)
-    v = dn[py, px]
+    X, Y = np.meshgrid(xs, ys)
+    lon, lat = np.degrees(X / R_MARS), np.degrees(Y / R_MARS)
+    # fractional pixel coordinates, pixel centres at integer + 0.5
+    fx = (lon - TILE_WEST) / TILE_W_DEG * 256 - 0.5
+    fy = (TILE_NORTH - lat) / TILE_H_DEG * 256 - 0.5
+    v = map_coordinates(gaussian_filter(dn, 0.6), [fy, fx], order=3, mode="nearest")
     lo, hi = np.percentile(v, [2, 98])                     # stretch to the box's own range
-    g = (np.clip((v - lo) / max(hi - lo, 1), 0, 1) * 255).astype(np.uint8)
-    rgba = np.dstack([g, g, g, np.where(ok[py, px], 230, 0).astype(np.uint8)])
+    f = np.clip((v - lo) / max(hi - lo, 1), 0, 1)
+    rgba = (colormaps["inferno"](0.15 + 0.8 * f) * 255).astype(np.uint8)
+    rgba[..., 3] = np.where(map_coordinates(ok.astype(float), [fy, fx], order=0, mode="nearest") > 0, 200, 0)
     buf = io.BytesIO()
     Image.fromarray(rgba, "RGBA").save(buf, format="PNG", optimize=True)
     return buf.getvalue()
