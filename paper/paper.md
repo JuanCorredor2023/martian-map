@@ -44,7 +44,7 @@ The terrain comes from the 1 m digital elevation model (DEM) of Gale crater prod
 
 The rover's traverse comes from the PLACES database (Position Localization and Attitude Correction Estimate Storage) of the Planetary Data System, which gives Curiosity's localised position after each drive, reconciled with orbital imagery [@PLACES]. We use the interpolated poses as the closest available record of where a vehicle actually moved through this terrain. For boulder detection we use BoulderNet, a published detector trained on boulders labelled by humans in high-resolution planetary images, with its authors' weights [@Prieur2023].
 
-Three further datasets describe the conditions of a walk. The Radiation Assessment Detector (RAD) on Curiosity measures the dose rate at the surface; we use 57,843 observations from January 2025 to November 2026 [@RAD-L2]. The rover's navigation cameras (Navcam) provide ground-level photographs taken in the area between sols 4450 and 4848, which we place in the 3D rehearsal [@MSL-raw]. Weather from the Rover Environmental Monitoring Station (REMS) [@REMS-feed], night-time infrared from the Thermal Emission Imaging System (THEMIS) on Mars Odyssey [@THEMIS-night] and orbital mineral detections from CRISM and OMEGA are used only as context and do not enter any cost.
+Three further datasets describe the conditions of a walk. The Radiation Assessment Detector (RAD) on Curiosity measures the dose rate at the surface; we use 57,843 observations from January 2025 to November 2026 [@RAD-L2]. The rover's navigation cameras (Navcam) provide ground-level photographs taken in the area between sols 4450 and 4848, which we place in the 3D rehearsal [@MSL-raw]. Weather from the Rover Environmental Monitoring Station (REMS) [@REMS-feed], night-time infrared from the Thermal Emission Imaging System (THEMIS) on Mars Odyssey [@THEMIS-night] and orbital detections of hydrated minerals from the Compact Reconnaissance Imaging Spectrometer for Mars (CRISM, on the Mars Reconnaissance Orbiter) and the OMEGA spectrometer (on Mars Express) are used only as context and do not enter any cost. The infrared and mineral layers were obtained through NASA's Mars Trek portal [@MarsTrek].
 
 **Table 2. Data.**
 
@@ -56,7 +56,8 @@ Three further datasets describe the conditions of a walk. The Radiation Assessme
 | BoulderNet detector [@Prieur2023] | published weights | boulder detection |
 | RAD dosimetry [@RAD-L2] | 57,843 observations, 2025-01-01 – 2026-11-11 | dose and solar-storm alert |
 | Navcam images [@MSL-raw] | sols 4450–4848 | photographs in the 3D rehearsal |
-| REMS, THEMIS night infrared, CRISM and OMEGA [@REMS-feed; @THEMIS-night] | — | context only |
+| REMS weather [@REMS-feed] | one record per sol | context only |
+| THEMIS night infrared, CRISM and OMEGA mineral detections [@THEMIS-night; @MarsTrek] | 100 m mosaic; point detections | context only |
 
 ![The DEM does not resolve the boxwork: a 250 × 250 m window of the hillshade and DEM residual (smooth blobs) against the 0.25 m orthophoto (bright ridges enclosing 5–15 m cells, dark sand in the troughs).](figures/grid_fig4_detail.png){#fig:detail}
 
@@ -552,7 +553,7 @@ Radio line of sight, light and an adaptive reserve are cheap to compute on the s
 
 ## Data and code availability
 
-The code of the planner, the analysis scripts and the figures are available in the project repository (https://github.com/JuanCorredor2023/martian-map). Every number reported here is recorded in a results registry in the same repository, together with the script and output file it comes from, the code version, the version of the input data and a checksum of the output; a checker reads each number back from its output file. The derived data products are published as versioned releases of the repository. The source data are public: the Gale DEM and orthophoto mosaics from the USGS Astrogeology Science Center [@Parker2016; @HiRISE-Gale], and the PLACES localisations, RAD, REMS and Navcam data from the NASA Planetary Data System [@PLACES; @RAD-L2; @REMS-feed; @MSL-raw]. The BoulderNet weights are available from their authors [@Prieur2023].
+The code of the planner, the analysis scripts and the figures are available in the project repository (https://github.com/JuanCorredor2023/martian-map). Every number reported here is recorded in a results registry in the same repository, together with the script and output file it comes from, the code version, the version of the input data and a checksum of the output; a checker reads each number back from its output file. The derived data products are published as versioned releases of the repository. The source data are public, and each is listed with its download address in the references: the Gale DEM and orthophoto mosaics from the USGS Astrogeology Science Center [@Parker2016; @HiRISE-Gale]; Curiosity's PLACES localisations from the NASA Planetary Data System [@PLACES]; the RAD dosimetry from NASA's Space Physics Data Facility [@RAD-L2]; the REMS weather feed and the Navcam raw images from NASA's public Mars Science Laboratory archives [@REMS-feed; @MSL-raw]; the THEMIS, CRISM and OMEGA context layers from NASA's Mars Trek portal [@THEMIS-night; @MarsTrek]; and the BoulderNet weights and labels from their authors' Zenodo record [@Prieur2023].
 
 ## References
 
@@ -614,7 +615,9 @@ Olofsson, P., Foody, G. M., Herold, M., Stehman, S. V., Woodcock, C. E. and Wuld
 
 Pandolf, K. B., Givoni, B. and Goldman, R. F. (1977). Predicting energy expenditure with loads while standing or walking very slowly. *Journal of Applied Physiology* 43(4), 577–581.
 
-Parker, T. J. and Calef, F. J. (2016). MSL Gale crater DEM mosaic, 1 m/pixel, version 3 (HRSC, CTX and HiRISE tied to MOLA). USGS Astrogeology Science Center.
+NASA Solar System Treks. Mars Trek portal: THEMIS night-time infrared mosaic tiles and the "Aqueous Mineral Distribution" and "Hydrous Mineral Detections OMEGA/CRISM" layers, accessed 13 November 2026. https://trek.nasa.gov/mars/
+
+Parker, T. J. and Calef, F. J. (2016). MSL Gale crater DEM mosaic, 1 m/pixel, version 3 (HRSC, CTX and HiRISE tied to MOLA). USGS Astrogeology Science Center. https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/Mars/MSL/MSL_Gale_DEM_Mosaic_1m_v3.tif
 
 Paszke, A. et al. (2019). PyTorch: an imperative style, high-performance deep learning library. *Advances in Neural Information Processing Systems* 32 (NeurIPS 2019).
 
@@ -640,7 +643,7 @@ Tan, M. and Le, Q. V. (2019). EfficientNet: rethinking model scaling for convolu
 
 Tasgetiren, M. F. and Smith, A. E. (2000). A genetic algorithm for the orienteering problem. *Proceedings of the 2000 Congress on Evolutionary Computation*, vol. 2, 910–915.
 
-THEMIS team, Mars Odyssey. THEMIS night-time infrared controlled mosaic, 100 m, version 2 (October 2018). NASA Mars Trek.
+THEMIS team, Mars Odyssey. THEMIS night-time infrared controlled mosaic, 100 m, version 2 (October 2018). Accessed through NASA Mars Trek, https://trek.nasa.gov/mars/
 
 Tsiligirides, T. (1984). Heuristic methods applied to orienteering. *Journal of the Operational Research Society* 35(9), 797–809.
 
