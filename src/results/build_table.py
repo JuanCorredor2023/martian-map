@@ -90,8 +90,9 @@ def validate(rows: list[dict[str, str]]) -> list[str]:
         for col in ("negative", "confirmed"):
             if row[col] not in YES_NO:
                 problems.append(f"{where}: {col} must be yes or no")
-        if not (HEX.match(row["commit"]) and len(row["commit"]) >= 7):
-            problems.append(f"{where}: commit must be a short hash (7+ hex characters)")
+        commit = row["commit"]
+        if commit != PENDING and not (HEX.match(commit) and len(commit) >= 7):
+            problems.append(f"{where}: commit must be a short hash (7+ hex characters) or '{PENDING}'")
         sha = row["sha256"]
         if sha != PENDING and not (HEX.match(sha) and len(sha) == 12):
             problems.append(f"{where}: sha256 must be 12 hex characters or '{PENDING}'")
@@ -126,7 +127,8 @@ def _kind(row: dict[str, str]) -> str:
 
 
 def _source(row: dict[str, str]) -> str:
-    return f"`{row['script']}` → `{row['output']}` @ {row['commit']}"
+    commit = "commit pending" if row["commit"] == PENDING else row["commit"]
+    return f"`{row['script']}` → `{row['output']}` @ {commit}"
 
 
 def render(rows: list[dict[str, str]]) -> str:
@@ -174,13 +176,14 @@ def render(rows: list[dict[str, str]]) -> str:
     out += ["", "## Provenance still pending", "",
             "Fields that the owner still has to give (`pending` in the registry). Part C3 of #120 "
             "checks the rest against the output files.", "",
-            "| Owner | Rows | Not confirmed | No output file | No checksum | No data version | No output field |",
-            "|---|---|---|---|---|---|---|"]
+            "| Owner | Rows | Not confirmed | No commit in main | No output file | No checksum | No data version "
+            "| No output field |",
+            "|---|---|---|---|---|---|---|---|"]
     for owner in owners:
         mine = [row for row in rows if row["owner"] == owner]
         counts = [len(mine), sum(r["confirmed"] == "no" for r in mine)]
         counts += [sum(PENDING in r[col].split("; ") for r in mine)
-                   for col in ("output", "sha256", "data_version", "field")]
+                   for col in ("commit", "output", "sha256", "data_version", "field")]
         out.append(f"| {owner} | " + " | ".join(str(c) for c in counts) + " |")
     return "\n".join(out) + "\n"
 

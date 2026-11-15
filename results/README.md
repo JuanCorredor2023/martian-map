@@ -24,7 +24,7 @@ UTF-8, comma-separated, decimal point, **no empty cells**. Use `none` (interval,
 | `negative` | `yes` for a negative result. They are kept on purpose |
 | `script`, `output` | The command that writes the output file (under `src/` or `api/`), and that file (`data/…`, or `paper/…` for a figure's JSON). `pending` while a number has no output file yet |
 | `field` | Where the number is inside the output (JSON path or CSV column), or `pending` |
-| `commit` | Short hash of the code that produced the output |
+| `commit` | Short hash of the code that produced the output, or `pending` while that code is in a PR not yet merged (the owner fills it in after the merge) |
 | `data_version` | Input data releases (`base-grid-v2; e8-v0`), or `pending` |
 | `sha256` | First 12 characters of the sha256 of the output file, or `pending` |
 | `confirmed` | `yes` once the owner confirmed the row |

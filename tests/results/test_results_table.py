@@ -83,8 +83,10 @@ def test_validate_flags_bad_values(column, bad):
 
 def test_validate_accepts_a_good_row():
     rows = [_row(), _row(id="e0-other", sha256="0123456789ab"),
-            _row(id="e0-api", script="api/planner.py (/plan)", output="pending")]
+            _row(id="e0-api", script="api/planner.py (/plan)", output="pending"),
+            _row(id="e0-unmerged", commit="pending")]
     assert build_table.validate(rows) == []
+    assert "@ commit pending" in build_table.render(rows)
 
 
 def test_load_rejects_a_wrong_header(tmp_path):
@@ -102,7 +104,7 @@ def test_load_and_render_a_small_registry(tmp_path):
     assert "| E0 (Juan) | An example number | 1.5 Wh |" in text
     assert "1.5 Wh (95% CI 1–2)" in text
     assert "## Negative results" in text
-    assert "| Juan | 2 | 2 | 0 | 1 | 2 | 2 |" in text
+    assert "| Juan | 2 | 2 | 0 | 0 | 1 | 2 | 2 |" in text
 
 
 def test_pieces_follow_the_order_and_pending_notes_disappear():
