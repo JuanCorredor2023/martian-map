@@ -242,6 +242,13 @@ Within 300 km there are 27 distinct detections, after removing the repeated poin
 
 It stays a context layer and is not a cost term (`tests/api/test_api.py::test_thermal_themis_layer_and_sand_check`).
 
+**Boulders (E9, Aaron's `rocas.tif`, release `e9-rocks-v1`; `api/raster_layers.rocks_layer`, `GET /layers/rocks.png`, `GET /layers/rocks`).** E9 gives the fraction of each 1 m cell covered by boulders (BoulderNet distilled to a small U-Net; see `paper/notes/E9_boulders.md`). The HUD draws it as a halftone, following the release README's advice that it reads best at 10 m:
+- one dot per 10 m square, with dot area proportional to the square's boulder cover;
+- the largest dot at 10 % cover or more, and no dot below 1 % (noise);
+- cool-white dots with a dark ring, a texture that no station type, line or fill uses.
+
+Boulders cover 0.39 % of the box. 8.4 % of the 10 m squares get a dot, and 1.4 % are over 5 % boulders (`GET /layers/rocks`; `tests/api/test_api.py::test_rocks_layer`). In the HUD the fields show mostly along the scarp edges. The detector does not see boulders under about 1 m. The layer is context only and is not a cost term; whether to price boulders in E4 is Aaron's analysis (`route_effect.json` in the release).
+
 ## Results
 **Key results for the paper** (each detailed above or below):
 - **A fixed radius over-promises.** About a third (36 %) of what the classic 1.35 km or Apollo 1.7 km circle calls safe cannot get back in 30 min. The red line follows the terrain.

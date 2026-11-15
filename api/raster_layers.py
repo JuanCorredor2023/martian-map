@@ -87,3 +87,37 @@ def sand_layer(e8_dir):
     rgba[..., :3] = SAND_RGB
     rgba[..., 3] = (np.clip(frac, 0, 1) * 220).astype(np.uint8)
     return _png(rgba), {"share_of_box_with_sand_pct": float((frac > 0.5).mean() * 100)}
+
+
+ROCK_RGB = (232, 236, 255)          # cool white dots with a dark ring: a texture, not a fill
+ROCK_BLOCK_M = 10                   # E9 reads best averaged to 10 m (README of e9-rocks-v1)
+ROCK_FULL = 0.10                    # 10 % of a 10 m square under boulders draws the largest dot
+ROCK_MIN = 0.01                     # below 1 % no dot is drawn (noise)
+
+
+@lru_cache(maxsize=1)
+def rocks_layer(e9_dir):
+    """E9 boulder cover (rocas.tif, 1 m, fraction 0-1) as a halftone PNG: one dot per
+    10 m square, dot AREA proportional to the share of the square covered by boulders
+    (capped at ROCK_FULL). Boulders under ~1 m are not detected. Display only."""
+    from PIL import ImageDraw
+    with rasterio.open(Path(e9_dir) / "rocas.tif") as src:
+        cover = src.read(1).astype(np.float64)
+    b = ROCK_BLOCK_M
+    h, w = (cover.shape[0] // b) * b, (cover.shape[1] // b) * b
+    blocks = np.nanmean(cover[:h, :w].reshape(h // b, b, w // b, b), axis=(1, 3))
+    img = Image.new("RGBA", cover.shape[::-1], (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    rmax = b * 0.48
+    for (i, j), c in np.ndenumerate(np.nan_to_num(blocks)):
+        if c < ROCK_MIN:
+            continue
+        r = max(1.2, rmax * np.sqrt(min(1.0, c / ROCK_FULL)))
+        cx, cy = j * b + b / 2, i * b + b / 2
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=ROCK_RGB + (235,), outline=(10, 12, 16, 220), width=1)
+    valid = blocks[~np.isnan(blocks)]
+    info = {"block_m": b, "mean_cover_pct": float(np.nanmean(cover) * 100),
+            "share_of_squares_with_dots_pct": float((valid >= ROCK_MIN).mean() * 100),
+            "share_of_squares_over_5pct_pct": float((valid >= 0.05).mean() * 100),
+            "full_dot_cover_pct": ROCK_FULL * 100}
+    return _png(np.asarray(img)), info
