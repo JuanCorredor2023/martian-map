@@ -96,6 +96,20 @@ After those fixes the same method was run on the three walk views, each in an is
 
 **Detector.** After the fixes it reports only the striped meter track and the hatch swatch (`repeating-gradient stripes`). Both are semantic, marking a limit and steep cells, not decoration. The checks were scripted in headless Edge at 1366 × 768, 800 × 1280 and 412 × 900, muted, with no JavaScript errors. The reports are archived in `.impeccable/critique/` (local).
 
+### Effective plan parameters (#119 A1, contract proposed in #2)
+An audit found that `/plan` accepted `gravity_m_s2` and `apollo_speed_uses_signed_slope` but never used them. `planner.graph` is always built for g = 3.71 m/s² with the signed slope, its cache key ignores both fields, and the same graph serves `/walkback`, the guide and the E5 tour. `max_cell_slope_deg = 0` also meant opposite things: in `/plan` and the tour it blocked every non-flat cell, while `/walkback`, `/walkback/update`, `/guide/return_home` and `/guide/rejoin` turned it into "no limit" (`if x else None`).
+
+Now:
+- **Unsupported values are rejected, not ignored.** Any other gravity or the unsigned speed rule gives a 422 with the reason. Every client (HUD, 3D `web/3d/api.js`, `src/viz3d/make_tour_fixture.py`) already sends the supported values, so their behaviour does not change.
+- **One meaning for the slope limit.** In every request model (`api/plan.py` `SlopeLimit`, also `api/adaptive.py`), the limit is either `null` (no block) or 0 < x ≤ 90; 0 is a 422. The HUD sends `null` or 15–60.
+- **`/plan` reports what it used.** `properties.effective` holds `gravity_m_s2`, `apollo_speed_uses_signed_slope`, `max_cell_slope_deg`, `human_cost`, `cost_model`, `margin` and `service_power_w`. This is the E4 round trip, the E5 tour and the fixed test route; the fixed route has `cost_model` and `service_power_w` null.
+- Tests: `tests/api/test_effective_params.py`, 34 cases:
+  - every model rejects 0, negative and > 90 limits and accepts `null` and 0.5–90;
+  - gravity and speed rule;
+  - `effective` on the live and fixed plans;
+  - each endpoint returns 422 instead of silently changing meaning;
+  - `null` still means no block in `/walkback`.
+
 ### Multi-station tour (E5 on E4, `api/tour.py`)
 With stations and no explicit goal, `/plan` delegates to E5's `orienteering.tour.plan_tour(req, graph)` (Diana, in `main` since #37; #64 here). It passes the same shared E4 graph (E3 or human cost) and only renames the output for the HUD and the guide (the habitat is dropped from the visiting order).
 - E5 solves the tour exactly: a bitmask DP up to 20 nodes, CP-SAT (OR-Tools) above. Its limits are energy, service time, maximum EVA duration and O2. E4 gives the legs and the walkback is checked at every vertex; E5 re-plans if it fails.

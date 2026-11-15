@@ -283,7 +283,7 @@ def plan_departure(sol: int = Query(weather.DEFAULT_SOL, ge=1)):
 def return_home(req: ReturnHomeRequest):
     """Fastest way back to the habitat from the astronaut's position (E4 reversed
     Dijkstra on time, no new planning)."""
-    limit = req.max_cell_slope_deg if req.max_cell_slope_deg else None
+    limit = req.max_cell_slope_deg
     try:
         out = guide.return_home(str(BASE), limit, req.position, req.habitat, req.human_cost,
                                 req.k)
@@ -299,7 +299,7 @@ def return_home(req: ReturnHomeRequest):
 def rejoin(req: RejoinRequest):
     """Off route: least-energy path back onto the planned route, with the per-vertex
     profile (t_s, used_wh, rv_wh, rv_time_s) so the guide can splice it in."""
-    limit = req.max_cell_slope_deg if req.max_cell_slope_deg else None
+    limit = req.max_cell_slope_deg
     try:
         out = guide.rejoin(str(BASE), limit, req.position, req.target, req.habitat,
                            req.human_cost)
@@ -321,7 +321,7 @@ def walkback(req: WalkbackRequest):
     """Red line R_T = threshold (cached per base) and the energy-safe boundary
     F_E(p, v) + R_E(v) = E_remaining (recomputed for each position and energy).
     Also compares the red line with the fixed-radius rules (guide section 15.2)."""
-    limit = req.max_cell_slope_deg if req.max_cell_slope_deg else None
+    limit = req.max_cell_slope_deg
     base_xy = req.base or _box_centre()
     try:
         g = wb.grid(str(BASE), limit, req.human_cost)
@@ -372,7 +372,7 @@ def walkback_update(req: adaptive.UpdateRequest):
     ret = req.return_predicted
     warnings = []
     if ret is None:
-        limit = req.max_cell_slope_deg if req.max_cell_slope_deg else None
+        limit = req.max_cell_slope_deg
         habitat = req.habitat
         if habitat is None:
             saved = guide.load_plan(PLANS)
@@ -444,6 +444,7 @@ def _plan_tour(req):
         energy_budget_wh=req.energy_budget_wh, energy_usable_wh=p["usable_wh"],
         feasible=p["feasible"], max_cell_slope_deg=req.max_cell_slope_deg,
         max_duration_min=req.max_duration_min, o2_budget_l=req.o2_budget_l,
+        effective=req.effective(info["cost_model"], service_w),
         warnings=warnings)
     guide.save_plan(PLANS, req.model_dump(), fc)
     return fc
@@ -482,6 +483,7 @@ def _plan_live(req):
         energy_budget_wh=req.energy_budget_wh, energy_usable_wh=p["usable_wh"],
         feasible=p["feasible"], max_cell_slope_deg=req.max_cell_slope_deg,
         max_duration_min=req.max_duration_min, o2_budget_l=req.o2_budget_l,
+        effective=req.effective(info["cost_model"], info["service_power_w"]),
         warnings=warnings)
     guide.save_plan(PLANS, req.model_dump(), fc)        # the guide screen loads it
     return fc
@@ -526,6 +528,7 @@ def plan(req: PlanRequest):
         energy_budget_wh=req.energy_budget_wh,
         energy_usable_wh=req.energy_usable_j / 3600.0,
         max_cell_slope_deg=req.max_cell_slope_deg,
+        effective=req.effective(None, None),
         feasible=None, warnings=warnings)
 
 

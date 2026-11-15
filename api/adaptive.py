@@ -21,6 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from fisica import adaptive_k as ak  # noqa: E402
 
+from .plan import SlopeLimit  # noqa: E402
+
 WH_PER_L_O2 = 20.1 / 3.6       # 20.1 kJ/L (fisica.metabolic.KJ_PER_LITER_O2) in Wh/L
 
 
@@ -47,7 +49,7 @@ class UpdateRequest(BaseModel):
     return_predicted: Optional[float] = Field(default=None, ge=0)
     position: Optional[Tuple[float, float]] = None
     habitat: Optional[Tuple[float, float]] = None
-    max_cell_slope_deg: Optional[float] = Field(default=30.0, ge=0, le=90)
+    max_cell_slope_deg: SlopeLimit = 30.0                 # null = no block (api/plan.py)
     human_cost: bool = True
     # Rest of the planned route from the current vertex (k = 1, same unit, absolute
     # used and return need per vertex), to find the point of no return with k_p90.
