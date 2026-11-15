@@ -24,6 +24,7 @@
 // Nothing is rendered here: update(dt) says whether the view changed, and main.js draws.
 import * as THREE from 'three';
 import { requestWalkback, walkbackRequest } from './api.js';
+import { createAstronaut, disposeAstronaut, poseAstronaut } from './astronaut.js';
 import * as M from './camera_math.js';
 import { hideCard, showCard, stationCard } from './card.js';
 import { TYPE_COLORS, mainRoute } from './plan_model.js';
@@ -43,7 +44,7 @@ const CHASE_PITCH = [5 * DEG, 80 * DEG];   // the chase camera stays above the w
 const CHASE_FLOOR = 2;             // m: the chase camera stays this far above the ground
 const VIEW_EASE = 6;               // 1/s: how fast the view follows a change of heading
 const MAX_FRAME = 0.1;             // s: a frame never counts for more (tab in the background)
-const WALKER_COLOR = 0xff40c8;     // the astronaut dot of the 2D planner
+const STRIDE = {period: 1, swing: 0.3};    // the astronaut's legs: one stride per second of screen time
 const RED_LINE = [255, 59, 48], SAFE_LINE = [54, 209, 255];       // the 2D planner's walkback colours
 const HOME_LINE = [255, 69, 58], REJOIN_LINE = [255, 140, 58];     // guide: way home, rejoining path
 const METER = {good: '#3ddc84', warn: '#ffcc00', bad: '#ff453a'};  // guide.html's meter colours
@@ -135,11 +136,11 @@ export class Rehearsal {
     camera.fov = FOV;
     camera.updateProjectionMatrix();
 
-    // The walker, seen only in the chase view: a capsule as tall as the eye.
-    this.walker = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, EYE_HEIGHT - 0.44, 4, 12),
-                                 new THREE.MeshBasicMaterial({color: WALKER_COLOR}));     // unlit: a marker, readable in shade
-    this.walker.name = 'walker';
+    // The walker, seen only in the chase view: the astronaut (astronaut.js), its origin
+    // where the old capsule had its centre, half the eye height above the ground.
+    this.walker = createAstronaut();
     this.walker.visible = false;
+    this._stride = 0;
     this.scene.add(this.walker);
 
     this._listen(this.canvas, 'pointerdown', e => this._down(e));
@@ -192,9 +193,7 @@ export class Rehearsal {
     for (const [target, type, handler] of this._listeners) target.removeEventListener(type, handler);
     this._listeners = [];
     this._drag = null;
-    this.scene.remove(this.walker);
-    this.walker.geometry.dispose();
-    this.walker.material.dispose();
+    disposeAstronaut(this.walker);             // out of the scene, buffers freed
     this.walker = null;
     this.active = false;
     this.state = null;
@@ -376,6 +375,12 @@ export class Rehearsal {
 
     this.walker.visible = this.chase;
     this.walker.position.set(X, ground + EYE_HEIGHT / 2, Z);
+    // It faces the way it walks and swings its legs while playing, at a steady pace on
+    // screen whatever the playback speed (at x60 a pace per metre would only flicker).
+    const walking = this.playing && !s.standing;
+    if (walking) this._stride = (this._stride + step / STRIDE.period) % 1;
+    poseAstronaut(this.walker, {yaw: this.view.heading,
+                                swing: walking ? STRIDE.swing * Math.sin(2 * Math.PI * this._stride) : 0});
     this._show();
     this._showGuide();
     this.onTime(s.time - this._evaStart);
