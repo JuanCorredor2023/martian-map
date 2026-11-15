@@ -1031,7 +1031,8 @@ async function layersCheck(viz) {
     }
 
     // Two sources, one set of cells: the slope tiles steeper than the limit, against the
-    // cells blocked.png draws (it counts the steepest slope in each cell, the tiles a mean one).
+    // cells blocked.png draws. Both come from slope_deg.tif; cells just over the limit (up
+    // to ~0.07° at 30°) are blocked but their 8-bit tile colour reads as the limit itself.
     if (masks.slope && masks.steep) {
       const a = M.maskAgreement(crop(masks.slope), crop(masks.steep));
       const s = M.bestShift(maskImage(masks.slope), maskImage(masks.steep), W, W, {max: 3, region});
