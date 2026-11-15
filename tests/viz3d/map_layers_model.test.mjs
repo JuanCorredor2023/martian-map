@@ -3,7 +3,8 @@
 //
 // Every legend string, colour and URL that mirrors the 2D HUD is asserted twice: against
 // the literal copied here, and as text found in web/index.html, so a change on either
-// side is noticed. The slope tile colours are checked against SLOPE_RAMP of
+// side is noticed. The layer names and hover texts are the HUD's words without its project
+// codes (#124), checked the same way. The slope tile colours are checked against SLOPE_RAMP of
 // src/gis/tiles.py. Fixture: fixtures/tiles_meta.json, the tiles.json of the tiles
 // release (data/tiles/tiles.json), as served in GET /layers.
 import assert from 'node:assert/strict';
@@ -47,8 +48,8 @@ function noise(seed) {
 
 test('six layers in drawing order, with the labels, sources and default sliders of the spec', () => {
   assert.deepEqual(L.LAYERS.map(l => l.id), ['radio', 'slope', 'steep', 'sand', 'cost', 'rocks']);
-  assert.deepEqual(L.LAYERS.map(l => l.label), ['Radio coverage (E11)', 'Slope', 'Too steep to cross',
-                                                'Sand (E8)', 'Walking cost (E3)', 'Boulders (E9)']);
+  assert.deepEqual(L.LAYERS.map(l => l.label), ['Radio coverage', 'Slope', 'Too steep to cross',
+                                                'Sand detected', 'Walking cost', 'Boulders']);
   assert.deepEqual(L.LAYERS.map(l => l.source), ['png', 'tiles', 'png', 'png', 'png', 'png']);
   assert.deepEqual(L.LAYERS.map(l => l.slider), [1, 0.5, 1, 1, 0.75, 1]);
   for (const l of L.LAYERS) {
@@ -88,10 +89,32 @@ test('legend data copied from the HUD, literally', () => {
     dots: [4, 7, 10], text: 'Boulders (bigger dot, more cover)',
     caption: 'bigger dot, more of the 10 m square under boulders (largest: 10 % or more)', ticks: [], unit: null,
     note: 'Boulders larger than about 1 m. Shown for context: the route cost does not use them.'});
-  assert.equal(L.layerById('radio').title, 'E11: line of sight from the habitat antenna to a suit radio');
-  assert.equal(L.layerById('sand').title, 'E8: sand detected on the orbital photo by a neural network');
-  assert.equal(L.layerById('cost').title, 'E3: energy to cross each 1 m cell (Santee 2001, Mars gravity)');
-  assert.equal(L.layerById('rocks').title, 'E9: boulders found on the orbital photo by a neural network (BoulderNet, distilled)');
+  assert.equal(L.layerById('radio').title, 'Line of sight from the habitat antenna to a suit radio');
+  assert.equal(L.layerById('sand').title, 'Sand detected on the orbital photo by a neural network');
+  assert.equal(L.layerById('cost').title, 'Energy to cross each 1 m cell (Santee 2001, Mars gravity)');
+  assert.equal(L.layerById('rocks').title, 'Boulders found on the orbital photo by a neural network');
+  assert.equal(L.layerById('slope').title, null);
+  assert.equal(L.layerById('steep').title, null);
+});
+
+test('layer names and hover texts: the HUD\'s words, without its project codes', () => {
+  // <label title="E8: sand detected on …"><input type="checkbox" id="show-sand"> Sand detected</label>
+  for (const id of ['radio', 'slope', 'sand', 'cost', 'rocks']) {
+    const layer = L.layerById(id);
+    const hud = new RegExp(`<label(?: title="([^"]*)")?><input type="checkbox" id="show-${id}"[^>]*>\\s*([^<]+?)\\s*</label>`).exec(HUD);
+    assert.ok(hud, `web/index.html has no "${id}" checkbox any more`);
+    assert.equal(layer.label, hud[2], `${id}: the HUD names it "${hud[2]}"`);
+    // The HUD's hover text less its code ("E8: "); the 3D's may stop before a closing note.
+    const words = (hud[1] ?? '').replace(/^E\d+:\s*/, '');
+    if (layer.title) assert.ok(words.toLowerCase().startsWith(layer.title.toLowerCase()), `${id}: the HUD says "${hud[1]}"`);
+    else assert.equal(hud[1], undefined, `${id}: the HUD has a hover text now, "${hud[1]}"`);
+  }
+  // The steep layer is named as the HUD's map legend names it.
+  inHud(`<i class="hatch"></i>${L.layerById('steep').label} (over \${blockLimit()}°)`);
+  for (const l of L.LAYERS) {
+    assert.doesNotMatch(`${l.label} | ${l.title ?? ''}`, /\bE\d{1,2}\b|BoulderNet|distilled|src\//,
+                        `${l.id}: a project code or an engine name on screen`);
+  }
 });
 
 test('the copied legend strings are still in web/index.html', () => {
@@ -119,7 +142,6 @@ test('the copied legend strings are still in web/index.html', () => {
   inHud('<i style="width:4px;height:4px"></i><i style="width:7px;height:7px"></i><i style="width:10px;height:10px"></i>');
   inHud(`<span>${L.layerById('rocks').legend.caption}</span>`);
   inHud(`<span id="rocks-note">${L.layerById('rocks').legend.note}</span>`);
-  for (const id of ['radio', 'sand', 'cost', 'rocks']) inHud(`title="${L.layerById(id).title}"`);
 });
 
 test('sliderToOpacity is the 2D mapping, value ** 2.2, kept inside 0..1', () => {

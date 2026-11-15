@@ -51,10 +51,13 @@ const legend = fields => ({kind: 'fill', css: null, sidebar: null, border: null,
 // Layer descriptors in drawing order. slider: the default value of the opacity slider
 // (0..1, mapped with sliderToOpacity). Radio, steep, sand and rocks carry their alpha in
 // the PNG and the 2D draws them at opacity 1; cost is 0.75 and slope 0.5 as in the 2D.
-// title: the HUD's hover text of the layer's checkbox, or null.
+// label: the name of the HUD's checkbox (the steep one: its map legend). title: the HUD's
+// hover text of that checkbox, or null. Both in plain words: the HUD's hover texts start
+// with the project code (E11 radio, E8 sand, E3 cost, E9 boulders) and the boulders one
+// names the network; the 3D leaves those out (#124).
 export const LAYERS = [
-  {id: 'radio', label: 'Radio coverage (E11)', source: 'png', slider: 1,
-   title: 'E11: line of sight from the habitat antenna to a suit radio',
+  {id: 'radio', label: 'Radio coverage', source: 'png', slider: 1,
+   title: 'Line of sight from the habitat antenna to a suit radio',
    legend: legend({kind: 'fill', css: 'rgba(42,120,214,0.75)', sidebar: 'rgba(42,120,214,0.7)',
                    text: 'Habitat antenna in sight', caption: 'the habitat antenna is in sight',
                    note: 'Line of sight on the 1 m terrain model (cautious).'})},
@@ -66,22 +69,22 @@ export const LAYERS = [
    legend: legend({kind: 'hatch', css: HATCH, sidebar: HATCH, border: '1px solid rgba(255,255,255,.25)',
                    text: 'Too steep to cross (over {limit}°)', caption: 'Never cross cells steeper than {limit}°',
                    unit: '°'})},
-  {id: 'sand', label: 'Sand (E8)', source: 'png', slider: 1,
-   title: 'E8: sand detected on the orbital photo by a neural network',
+  {id: 'sand', label: 'Sand detected', source: 'png', slider: 1,
+   title: 'Sand detected on the orbital photo by a neural network',
    legend: legend({kind: 'gradient', css: 'rgb(250,246,235)',
                    sidebar: 'linear-gradient(90deg, rgba(250,246,235,0), rgb(250,246,235))',
                    text: 'Sand detected', ticks: ['0', 'sand fraction per 1 m cell', '1'],
                    unit: 'sand fraction per 1 m cell',
                    caption: 'A cautious detector: when it marks sand it is right about 91 % of the time, ' +
                             'but it misses a lot of sand.'})},
-  {id: 'cost', label: 'Walking cost (E3)', source: 'png', slider: 0.75,
-   title: 'E3: energy to cross each 1 m cell (Santee 2001, Mars gravity)',
+  {id: 'cost', label: 'Walking cost', source: 'png', slider: 0.75,
+   title: 'Energy to cross each 1 m cell (Santee 2001, Mars gravity)',
    legend: legend({kind: 'gradient', css: 'linear-gradient(90deg,#000004,#8c2981,#fe9f6d,#fcfdbf)',
                    sidebar: 'linear-gradient(90deg, #000004, #3b0f70, #8c2981, #de4968, #fe9f6d, #fcfdbf)',
                    text: 'Walking cost, low to high', ticks: ['', 'Wh per 1 m cell', ''],
                    unit: 'Wh per 1 m cell'})},
-  {id: 'rocks', label: 'Boulders (E9)', source: 'png', slider: 1,
-   title: 'E9: boulders found on the orbital photo by a neural network (BoulderNet, distilled)',
+  {id: 'rocks', label: 'Boulders', source: 'png', slider: 1,
+   title: 'Boulders found on the orbital photo by a neural network',
    legend: legend({kind: 'dots', css: 'rgb(232, 236, 255)', border: '1px solid #0a0c10', dots: [4, 7, 10],
                    text: 'Boulders (bigger dot, more cover)',
                    caption: 'bigger dot, more of the 10 m square under boulders (largest: 10 % or more)',

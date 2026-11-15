@@ -230,6 +230,45 @@ test('malformed optional fields are dropped and reported, not fatal', () => {
   }
 });
 
+test('plan messages of the three real answers, in plain words, as the panel shows them', () => {
+  assert.deepEqual(P.planMessages(P.parsePlan(TOUR).warnings), [
+    {text: '8 of 13 stations visited · science value 37 · order R3 → R2 → H2 → H4 → H0 → R0 → R4 → R1', warn: false},
+    {text: 'Left out, they do not fit in the limits: Q1, C1, C2, H1, H3', warn: false},
+    {text: "Power used at the stations: 205 W (the planner's default)", warn: false}]);
+  assert.deepEqual(P.planMessages(P.parsePlan(E4).warnings), [
+    {text: 'Round trip to R0 (highest science value)', warn: false},
+    {text: "Power used at the stations: 205 W (the planner's default)", warn: false}]);
+  // The fixed route is not a plan, and its energy cannot be judged: both stay warnings.
+  assert.deepEqual(P.planMessages(P.parsePlan(FIXED).warnings), [
+    {text: "Sample route (Curiosity's path), not a plan: add stations in the 2D planner to plan a walk", warn: true},
+    {text: 'The energy for the work at the stations is not given, so the plan cannot be called energy-feasible',
+     warn: true}]);
+  assert.deepEqual(P.planMessages(P.parsePlan(tourPlan()).warnings), [{text: '2 of 3 stations visited', warn: false}]);
+});
+
+test('plan messages keep every number, and lose the codes, the engines and the "prize"', () => {
+  const made = ['O2 budget is the tighter limit: 820 Wh of 900 usable',
+                'walkback: re-planned 1 time(s) with a lower budget', 'walkback: re-planned 3 time(s) with a lower budget'];
+  assert.deepEqual(P.planMessages(made), [
+    {text: 'Oxygen is the tighter limit: it allows 820 Wh of the 900 Wh usable', warn: false},
+    {text: 'Planned again 1 time with less energy, so the astronaut can get back from every point', warn: false},
+    {text: 'Planned again 3 times with less energy, so the astronaut can get back from every point', warn: false}]);
+  const all = [TOUR, E4, FIXED].flatMap(fc => P.parsePlan(fc).warnings).concat(made);
+  P.planMessages(all).forEach(({text}, i) => {
+    assert.doesNotMatch(text, /\bE\d{1,2}\b|src\/|plan_tour|prize|walkback|_wh_|\bnull\b/, text);
+    for (const n of all[i].replace(/\bE\d+\b/g, '').match(/\d+(\.\d+)?/g) || []) assert.ok(text.includes(n), `${n} lost: ${text}`);
+  });
+});
+
+test('a plan message the page does not know is shown as written, as a warning', () => {
+  const moved = ['habitat moved 1.4 m to the nearest walkable cell',
+                 'station R3 moved 2.0 m to the nearest walkable cell of the main connected area',
+                 'service power assumed 205 W (E4 default) per astronaut', 'E5 tour: something new'];
+  assert.deepEqual(P.planMessages(moved), moved.map(text => ({text, warn: true})));
+  assert.deepEqual(P.planMessages(undefined), []);
+  assert.deepEqual(P.planMessages([42]), [{text: '42', warn: true}]);
+});
+
 test('markers: stations by type, the goal on its station, unknown types grey', () => {
   const plan = P.parsePlan(E4), markers = P.planMarkers(plan);
   assert.equal(markers.length, 14);                       // habitat + 13 stations

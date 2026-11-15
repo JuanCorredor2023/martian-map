@@ -33,9 +33,16 @@ or press "Reload plan". With no saved plan the terrain still works.
 
 - Compass (top right): face north. House: back to the opening view.
 - **Relief slider**: ×1 is the DEM; ×1.5 to ×5 exaggerate only the local relief.
-- **Plan**: source, length, time, energy and warnings of the plan; "Reload plan";
-  "Rehearse the route". "Plan with default settings" appears only when there is no plan,
-  and makes the server plan and save (it replaces the last plan of the 2D planner).
+- **Plan**: where the plan comes from, length, time and energy; the plan's own messages in
+  plain words, with their numbers ("8 of 13 stations visited · science value 37 · order
+  R3 → R2 → …", "Left out, they do not fit in the limits: …", "Power used at the stations:
+  205 W (the planner's default)"); ⚠ in amber only for what needs a look (not feasible, no
+  route, a failed request, a point the planner moved, a sample route that is not a plan, a
+  message the page does not know). Which planner made it and the project codes the API
+  writes stay out of the panel (`planMessages` in `plan_model.js`; the source is in
+  `viz3d.plan`). "Reload plan"; "Rehearse the route". "Plan with default settings" appears
+  only when there is no plan, and makes the server plan and save (it replaces the last plan
+  of the 2D planner).
 - **Pins**: click one for its card; "Fly here" views it from 60 m. Stations a tour did not
   visit are dimmed. A station's card also shows the nearest rover photo within 150 m: how far
   and from which side it was taken, and whether the station is inside its field (orientation:
@@ -76,7 +83,8 @@ or press "Reload plan". With no saved plan the terrain still works.
   Leaving puts the free-flight view, the relief and the route lines back as they were.
 - **Sun**: Curiosity sol, local true solar time, "Relief only" (hide the photo), "Shadows".
 - **Map layer**: one layer of the 2D planner draped on the terrain, Off by default: Radio
-  coverage (E11), Slope, Too steep to cross, Sand (E8), Walking cost (E3) or Boulders (E9), with the
+  coverage, Slope, Too steep to cross, Sand detected, Walking cost or Boulders (the 2D's names;
+  the hover texts are the 2D's without its codes E11, E8, E3 and E9), with the
   2D's images, opacity slider, legend and note. The radio is seen from the plan's habitat (else
   its start, else the box centre) and the steep cells are those over the plan's own limit.
   Nothing is asked from the server until a layer is picked; one the server cannot give says
@@ -184,7 +192,9 @@ python -m pytest tests/viz3d -q     # the terrain assets against the DEM
 ```
 
 `map_layers_model.test.mjs` also fails if a legend string copied from the 2D is no longer in
-`web/index.html`, or if the slope tile colours of `src/gis/tiles.py` change.
+`web/index.html`, if a layer's name or hover text is no longer the 2D's words (less its
+codes), or if the slope tile colours of `src/gis/tiles.py` change. `plan_model.test.mjs`
+checks the plain words of the plan's messages on the three real answers.
 
 Fixtures in `tests/viz3d/fixtures/` are real answers of the API: an E4 round trip, the
 fixed route with no profile, and a multi-station E5 tour
@@ -193,7 +203,8 @@ fixed route with no profile, and a multi-station E5 tour
 ## Rover photos (P3)
 
 Curiosity Navcam photos placed where the camera was (issue #46): the pins, cards and photo
-view above read what this step builds. Without it the page works and says how to build it. Method,
+view above read what this step builds. Without it the page works and says there are no photos;
+this section says how to build them. Method,
 numbers and limits: `paper/notes/P3_rover_photos.md`.
 
 `<raw>` below is the full data folder outside the repo (`data/README.md`). From the repo

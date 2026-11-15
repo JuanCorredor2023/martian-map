@@ -27,7 +27,7 @@ import { hideCard, showCard, stationCard } from './card.js';
 import { TerrainControls } from './controls.js';
 import { MarkerLayer } from './markers.js';
 import { GroundLines, RouteOverlay } from './overlays.js';
-import { mainRoute, parsePlan, planMarkers } from './plan_model.js';
+import { mainRoute, parsePlan, planMarkers, planMessages } from './plan_model.js';
 import { Rehearsal } from './rehearse.js';
 import { Shadows } from './shadows.js';
 import { SunView } from './sun.js';
@@ -300,8 +300,8 @@ async function main() {
                                     isBusy: busy});
       const got = await layer.load();
       if (!got.ok) {
-        photosNote(`No rover photos: ${got.error}. The rest of the map works without them ` +
-                   '(web/3d/README.md, "Rover photos", says how to build them).');
+        // How to build them: web/3d/README.md, "Rover photos" (for the team, not on screen).
+        photosNote(`No rover photos: ${got.error}. The rest of the map works without them.`);
         return;
       }
       photos = layer;
@@ -361,10 +361,11 @@ async function main() {
     window.viz3d.plan = {...got, model};
     window.viz3d.mapLayers?.setPlan(model);    // the radio antenna and the steep limit follow the plan
 
+    // Which planner made it (model.properties.source, e.g. "E5 tour (live, ...)") is for
+    // the team: it stays in viz3d.plan, not on screen (#124).
     const route = model && mainRoute(model), facts = [], warnings = ui('plan-warnings');
-    const origin = model && model.properties.source ? ` (${model.properties.source})` : '';
     ui('plan-source').textContent =
-      got.source === 'last' ? `Last plan from the planner${origin}`
+      got.source === 'last' ? 'Last plan from the planner'
       : got.source === 'default' ? "Default request: saved stations, the planner's default limits, start at the box centre"
       : got.fc ? 'Plan given to the page'
       : got.missing ? 'No plan yet: plan an EVA in the 2D planner, then press Reload plan'
@@ -392,7 +393,12 @@ async function main() {
     if (got.error) line(warnings, 'warn', got.error);
     if (model && !route) line(warnings, 'warn', 'The plan has no route.');
     if (route && route.totals.feasible === false) line(warnings, 'warn', '⚠ Not feasible within the limits');
-    for (const w of (model ? model.warnings : [])) line(warnings, 'warn', `⚠ ${w}`);
+    // The answer's messages in plain words (plan_model.js): what only describes the plan is
+    // a plain line; ⚠ and amber stay for what needs a look.
+    for (const m of planMessages(model ? model.warnings : [])) {
+      if (m.warn) line(warnings, 'warn', `⚠ ${m.text}`);
+      else line(warnings, 'muted plan-note', m.text);
+    }
     for (const n of (model ? model.notes : [])) line(warnings, 'warn', `Ignored: ${n}`);
     dirty = true;
   }
