@@ -48,10 +48,29 @@ or press "Reload plan". With no saved plan the terrain still works.
   station tasks with "Done, continue", "Return home", "Detour" (demo: 25 m off the route,
   then rejoin) and "Solar storm" (demo: automatic way home with the dose). A way home is
   drawn red and a rejoin orange; it replaces the walked route until "Exit".
-- **Rehearsal**: play / pause (space bar), ×1 to ×180, scrubber, "Chase view", drag to look
-  around, double-click or "Recentre" to look forward, "Exit". It pauses at every stop with
-  the station's card; on pause it draws the walkback lines from there (red: 30 min return,
-  cyan: energy-safe area). The relief is locked at ×1 and the Sun follows the EVA clock.
+- **Rehearsal**: play / pause (space bar), ×1 to ×180, scrubber, "Chase view" (the astronaut
+  seen from behind), drag to look around, double-click or "Recentre" to look forward, "Exit".
+  It pauses at every stop with the station's card; on pause it draws the walkback lines from
+  there (red: 30 min return, cyan: energy-safe area). The relief is locked at ×1 and the Sun
+  follows the EVA clock.
+- **Walk freely** (Plan section; works without a plan too): walk anywhere in the box in first
+  person, like a game. It starts next to the habitat, facing the way the route leaves (with
+  no plan: at the ground point in the middle of the screen).
+
+  | | Keyboard and mouse | Touch screen |
+  |---|---|---|
+  | Move | W A S D or the arrow keys | the arrow pad (hold) |
+  | Look | click the view, then move the mouse (where the browser will not capture it: drag) | drag |
+  | Run (3 m/s) | hold Shift, or "Run" | "Run" |
+  | Fast travel (20 m/s) | F, or "Fast" | "Fast" |
+  | View from behind (the astronaut) | C, or "Chase view" | "Chase view" |
+  | Leave | Esc (the first Esc frees a captured mouse), or "Exit" | "Exit" |
+
+  Walking is 1 m/s, the eye 1.7 m above the ground, the relief locked at ×1. The walker stays
+  1 m inside the box edge and out of the habitat dome. The route is a path on the ground,
+  80 cm wide, in the colours of its legs, and each station has a ring and a flag; the readout
+  says the speed and how far the route is. Space and the photo view's Escape are not used.
+  Leaving puts the free-flight view, the relief and the route lines back as they were.
 - **Sun**: Curiosity sol, local true solar time, "Relief only" (hide the photo), "Shadows".
 - **Rover photos**: orange camera pins where Curiosity's Navcam took photos ("Show photo stops"
   hides them; they are hidden while rehearsing). A pin opens the stop's card: the photo, one
@@ -101,6 +120,7 @@ from the server and leave the page as they found it.
 | `shadows` | rendered shadows against a ray march over the mesh, 07:00, 15:00 and 17:00 at ×1 and ×5 (about 12 s; 7 s in the low preset) |
 | `photos` | for three photos of different sols (`&ids=a,b,c` to choose): camera position, eye height, heading, pitch and field against the catalogue, relief ×1, the photo's Sun, the photo on the centred square; does Exit put everything back? Whether photo and terrain agree: `src/viz3d/photo_skyline.py` |
 | `stations` | for every station of the plan: its nearest rover photo (or that there is none within 150 m) as its card shows it; then each rehearsal stop: the photo is in the card, the clock, the walker and the tasks stay as they were, and the photo pins are hidden |
+| `walk` | "Walk freely" driven through its own key, pad and drag handlers: speeds walking, running, fast, diagonal, backwards and with the pad; the eye above the ground after every step; a drag turns the view as much as in free flight, the pitch stops at ±85°; fast travel straight at each box edge and at the habitat dome; the chase view; does leaving (Escape, and Exit from the chase view) put everything back? |
 
 From the console, `viz3d` gives the page's objects, and `viz3d.showPlan({fc})` draws any
 plan answer without touching the server (how the test fixtures were looked at).
@@ -124,6 +144,9 @@ plan answer without touching the server (how the test fixtures were looked at).
 | `photos.css` | styles of the photo card, the bar and the laid photo |
 | `rehearse_model.js` | where the walker is at a time of the plan: clock, stops, camera path |
 | `rehearse.js` | the rehearsal mode: camera, player, stops, walkback on pause |
+| `walk_model.js` | walking freely: keys to direction, speeds, box and dome limits, mouse look, distance to the route, start next to the habitat, the path strip |
+| `walk.js` | the "Walk freely" mode: keys, mouse capture, arrow pad, camera, the route as a path and the stations as rings |
+| `astronaut.js` | the walker of the chase views: an astronaut of a few three.js shapes that turns and swings its legs |
 | `mars_sun.js` | Mars24: where the Sun is for a UTC instant; sols and local times |
 | `sun_model.js` | sol and local time → light direction, light levels, panel texts |
 | `sun.js` | the lights, the sky colour, the Sun section, "Relief only" |
@@ -141,7 +164,7 @@ import nothing from three.js and are tested in Node.
 From the repo root (Node 26, nothing to install):
 
 ```
-node --test tests/viz3d/            # camera, plan, rehearsal, Sun, shadow camera, view link, photos
+node --test tests/viz3d/            # camera, plan, rehearsal, Sun, shadow camera, view link, photos, walking
 python -m pytest tests/viz3d -q     # the terrain assets against the DEM
 ```
 
@@ -203,3 +226,8 @@ already present and logs size and SHA-256 in `navcam_p3/_download_log.json`. Tes
 - The pixel ratio is read when the page loads: moving the window to a screen with another
   density needs a reload.
 - Speed was measured on one laptop (60 fps in both presets); no tablet was measured.
+- Walking freely is a game, not a model of the EVA: it walks through rocks and up any slope
+  at the same speed (the planner's slope limit and E3 cost are not applied), and the speed
+  is measured on the map, not along the slope. Frames longer than 0.1 s count as 0.1 s, so
+  on a very slow machine the walker is slower, not jumpier. The arrow pad shows only on
+  screens whose main pointer is a finger.
