@@ -118,6 +118,35 @@ def fig2():
     return out
 
 
+def fig3():
+    """X1 (#102): teacher cover at 20 m, GP mean, GP std (both on the base grid)."""
+    t, bb = read(E9 / "teacher_cover_1m.tif")
+    m, _ = read(E9 / "rocks_mean.tif")
+    sd, _ = read(E9 / "rocks_std.tif")
+    t20 = block_mean(np.where(np.isnan(t), np.nan, t), 20) * 100
+    ext = (bb.left, bb.right, bb.bottom, bb.top)
+    gp = load("rocks_gp.json")
+    fig, ax = plt.subplots(1, 3, figsize=(17, 5.4))
+    vmax = np.nanpercentile(t20, 99)
+    panels = ((ax[0], t20, "(a) Teacher cover, 20 m blocks (%)", "magma", vmax),
+              (ax[1], m * 100, "(b) GP mean, rocks_mean.tif (%)", "magma", vmax),
+              (ax[2], sd * 100, "(c) GP std, rocks_std.tif (%)", "viridis",
+               np.nanpercentile(sd * 100, 99.5)))
+    for a, arr, title, cmap, vm in panels:
+        h = a.imshow(arr, cmap=cmap, extent=ext, vmin=0, vmax=vm)
+        a.set_title(title)
+        a.set_xticks([])
+        a.set_yticks([])
+        fig.colorbar(h, ax=a, shrink=0.8)
+    ls = gp["final"]["length_scale_m"]
+    fig.suptitle(f"Matern length scale {ls:.0f} m; spatial CV (400 m tiles): IC90 coverage "
+                 f"{gp['cv']['gp_teacher_sqrt']['coverage_90']:.2f}", y=0.98)
+    out = FIG / "e9_fig3_gp.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
 def main():
     FIG.mkdir(parents=True, exist_ok=True)
     gdf = gpd.read_file(E9 / "boulders_teacher.gpkg")
@@ -144,6 +173,8 @@ def main():
         params_ratio=check["params"] / student["params"],
         figures=[str(fig1(gdf).relative_to(REPO)), str(fig2().relative_to(REPO))],
     )
+    if (E9 / "rocks_gp.json").exists():                      # X1 (#102)
+        summary["figures"].append(str(fig3().relative_to(REPO)))
     (E9 / "summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
     print(json.dumps(summary, indent=1))
 
