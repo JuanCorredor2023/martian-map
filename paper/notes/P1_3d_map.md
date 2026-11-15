@@ -345,6 +345,45 @@ Limitations: no browser or server was run for this change. Native Space key-up c
 - **The rest, with the same formatters on the E4 answer** (a scratch script in Node, not kept; not run in a page): the note under "Rehearse" says "40 min of EVA, 1 stop" (was "40:03 of EVA"); the stop card at R0, "Arrival 16 min into the EVA" and "Standing here 10 min" (were "15:46 into the EVA" and "10:00 min"); the end card's event times are whole minutes too, and the pause line reads "Return home from here: ✔ 3 min (limit 30) · ✔ 14 Wh, 869 Wh spare after it" (the earlier example's 2.9 min, 14.4 and 868.6 Wh in the new format); the storm's voice line is the tablet's, "Solar storm alert. Return home now."
 - **Not covered.** No browser: the width of "↪ Off route" in the four-column row of a phone, and the labels at 375 px. Sentences keep "way home", as the tablet's own sentences do ("Finding the fastest way home…"): "Computing the fastest way home…", two button tooltips and the RETURN NOW log line (the tablet's same text); O₂ litres keep one decimal (the glossary has no format for them).
 
+### Keyboard stop lists (issue #124, part of block 3)
+
+Question: can a keyboard user reach the station and rover-photo cards without picking a
+sprite in the scene? The inputs are the existing parsed plan, station types, server rubric
+and photo catalogue. No planning or terrain data changes. `stationList` in
+`web/3d/plan_model.js` returns the station markers and plain labels, sorted by the route's
+visit order, falling back to the station's order or the single goal. Unvisited stations
+remain reachable after the itinerary; without visit information, input order is retained
+without visit numbers. Rubric labels update when their request finishes. Photo entries
+come from `photoStopList` in `web/3d/photos.js` (see P3's note).
+
+The panel adds folded native disclosures with scrollable button lists. Station activation
+calls the existing camera flight and marker selection; photo activation shows the pins
+and calls the existing stop card. Tab, Enter and Space use native browser behavior. Focus
+moves to the card's Close button, which returns it to the invoking list button. Native
+disabled fieldsets prevent activation during rehearsal (including pause), photo view and
+free walking; a status line explains which mode to exit. Mode callbacks update the
+controls on entry and exit, including programmatic changes. Activation checks the mode
+again. Empty lists explain the missing data.
+
+Checks: `tests/viz3d/plan_model.test.mjs`, `photos_model.test.mjs` and
+`ui_controls.test.mjs` cover fixture ordering, shared marker identities, rubric labels,
+empty data, missing photo images, control wiring and disable/restore behavior for each
+mode. The combined command `node --test tests/viz3d/ tests/web/` produced this terminal
+summary on 2026-11-15 (recorded here; no separate output file):
+
+```text
+tests 269
+pass 269
+fail 0
+```
+
+Limit: no server or browser was started for this change, so real keyboard focus, screen
+reader announcements and visual layout still need a browser check. `checks.js` was read
+and left unchanged; `?check=stations` and `?check=photos` were not rerun. The existing
+selection and photo-view APIs remain the entry points used by those checks. No new
+scientific quantities or figures result from this interface change. Sebas and Juan can
+reuse the pure list helpers and the documented keyboard path in the product and demo.
+
 ## Limitations
 - The DEM does not resolve the boxwork ridges; neither the geometry nor the shading shows them. Only the photo does.
 - The local relief is a smoothed field: at k > 1 small real features below about 6 m across are not exaggerated, and what is exaggerated is no longer to scale. Shading is exaggerated with it.
