@@ -6,6 +6,8 @@
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
 \usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
 \usepackage{float}
 \usepackage[hidelinks]{hyperref}
 \usepackage{xurl}
@@ -17,7 +19,7 @@
 
 \author{Mars EVA Planner team (NASA Space Apps 2026)}
 
-\date{2026-11-15 (draft)}
+\date{2026-11-15}
 
 \begin{document}
 
@@ -61,8 +63,8 @@ The study area is a square of 2 $\times$ 2 km centred at about 4.80$^\circ$ S, 1
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 1. The base grid.}}
-\begin{tabular}{ll}
+\caption{The base grid.}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
 \toprule
 Quantity & Value \\
 \midrule
@@ -73,7 +75,7 @@ Elevation & $-$3876.1 to $-$3401.2 m, no gaps \\
 Steepest slope per cell & mean 16.2$^\circ$; 44.0 \% > 15$^\circ$, 12.4 \% > 30$^\circ$, 1.92 \% > 45$^\circ$ \\
 Curiosity poses inside & 5,247 rover poses, sols 4369--4868 \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
 The terrain comes from the 1 m digital elevation model (DEM) of Gale crater produced by the US Geological Survey for the Mars Science Laboratory mission \cite{Parker2016}. It is a mosaic of stereo models from three orbital cameras: the High Resolution Stereo Camera (HRSC) on Mars Express, the Context Camera (CTX) and the High Resolution Imaging Science Experiment (HiRISE), both on the Mars Reconnaissance Orbiter. The mosaic is vertically tied to the Mars Orbiter Laser Altimeter (MOLA). Although it is posted at 1 m, its effective resolution is coarser: it does not resolve the boxwork ridges, which are 1--3 m wide (Figure \ref{fig:detail}). This limitation shapes several of the results below. The surface itself is seen in the HiRISE orthophoto mosaics of Gale at 0.25 m per pixel, in colour and in greyscale, assembled from images taken between 2006 and 2011 \cite{HiRISE-Gale}. The orthophotos therefore predate the rover's passage by more than a decade, which matters little for bedrock and boulders but can matter for wind-blown sand.
@@ -84,8 +86,8 @@ Three further datasets describe the conditions of a walk. The Radiation Assessme
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 2. Data.}}
-\begin{tabular}{lll}
+\caption{Data.}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
 \toprule
 Data & Resolution and period & Use \\
 \midrule
@@ -98,7 +100,7 @@ Navcam images \cite{MSL-raw} & sols 4450--4848 & photographs in the 3D rehearsal
 REMS weather \cite{REMS-feed} & one record per sol & context only \\
 THEMIS night infrared, CRISM and OMEGA mineral detections \cite{THEMIS-night,MarsTrek} & 100 m mosaic; point detections & context only \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
 \begin{figure}[H]
@@ -134,8 +136,8 @@ It is useful to express the cost per horizontal metre walked, \[c(\alpha) = \fra
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 3. Implementation against hand-computed values of the published models.}}
-\begin{tabular}{lll}
+\caption{Implementation against hand-computed values of the published models.}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
 \toprule
 Quantity & Implementation & Hand computation \\
 \midrule
@@ -147,7 +149,7 @@ Minimum cost per horizontal metre, signed speed & 338.75 J m$^{-1}$ at $-$7.10$^
 Same with speed from |$\alpha$| & 351.00 J m$^{-1}$ at $-$5.41$^\circ$ & same \\
 Flat cost per horizontal metre & 389.64 J m$^{-1}$ & same \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
 Section 3.6 learns, from Curiosity's route, which terrain the driver avoided beyond slope. When we use that result, which we call the \emph{human cost}, it multiplies the energy of each move by a terrain factor at the arrival cell, \[E^{\text{human}}_{uv} = E_{uv}\,\phi(v),\qquad \phi(v) = 1 + \sum_k w_k\, f_k(v) \ge 1,\] where $f_k(v)$ are terrain features of the arrival cell $v$ (in practice, its sand fraction) and $w_k$ their learned weights. The weights are non-negative, so $\phi(v) \ge 1$ and costs stay positive. Time is unchanged.
@@ -163,7 +165,7 @@ Table 4 varies one parameter at a time on the route from the centre of the area 
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 4. Sensitivity of the cost model.}}
+\caption{Sensitivity of the cost model.}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{llllll}
 \toprule
@@ -221,8 +223,8 @@ To show what the return layer adds, we compare the planner with three simple rul
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 5. Baseline rules and the exact planner.}}
-\begin{tabular}{lll}
+\caption{Baseline rules and the exact planner.}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
 \toprule
 Method & Route & Called safe if \\
 \midrule
@@ -231,7 +233,7 @@ Fixed radius & same as A* on slope & straight-line distance $\le r = B / (2\,c_\
 Linear oxygen & shortest-time route out and back & $293\ \text{W} \times t \le B$ \\
 Exact planner & minimum-energy route out and back & $g_E(G) + R_E(G) \le B$ \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
 The reference for every route is its energy under the metabolic model. A \emph{false safe} is a goal that a method calls safe while its own route needs more than the budget. Since the habitat is chosen by the user, budgets are expressed as fractions (25, 50 and 75 \%) of each habitat's costliest exact round trip. We use the centre of the area plus 20 random habitats, and as goals the 13 manually selected science stations plus 2,000 random cells.
@@ -324,7 +326,7 @@ From the centre, the energy needed to return has a median of 135.0 Wh, a 99th pe
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 6. Share of the grid that is reachable and returnable against the usable energy.}}
+\caption{Share of the grid that is reachable and returnable against the usable energy.}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{lllllll}
 \toprule
@@ -344,7 +346,7 @@ Table 7 shows how often each rule calls a goal safe when its own route cannot co
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 7. False safes: share of the goals each method calls safe that its own route cannot complete under the metabolic model.} 42,273 evaluations per method and budget.}
+\caption{False safes: share of the goals each method calls safe that its own route cannot complete under the metabolic model. 42,273 evaluations per method and budget.}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{lllll}
 \toprule
@@ -375,9 +377,8 @@ Table 8 shows the tours planned from the centre with a 1000 Wh budget and a 10 \
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 8. Station tours from the centre of the area.}}
-\resizebox{\linewidth}{!}{%
-\begin{tabular}{lllllll}
+\caption{Station tours from the centre of the area.}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
 \toprule
 Tour & Solver & Stations & Points & Energy & Duration & Smallest return margin \\
 \midrule
@@ -386,8 +387,7 @@ Nominal, 13 manual stations & DP & 13 & 56 of 56 & 723.6 Wh & 180.9 min & 176.4 
 Nominal, + 13 contact sites from the sand map & CP-SAT, proven & 15 & 60.47 of 79.26 & 872.0 Wh & 222.9 min & 28.0 Wh \\
 120 min limit, + contact sites & CP-SAT, proven & 8 & 37 & 445.1 Wh & 111.4 min & --- \\
 \bottomrule
-\end{tabular}
-}
+\end{tabularx}
 \end{table}
 
 Station work dominates the cost of a tour: it is 61 \% of the energy and 72 \% of the time of the nominal tour. Counting that work, visiting all 13 stations needs 750 Wh, whereas walking alone would need 300 Wh. Time is the binding limit, except when the contact sites are added, where energy binds at 872.0 of 900 Wh. The choice of stations stops depending on the rubric once the time budget reaches the nominal duration; below that, ties within the reference rubric have as large an effect as changing the rubric. The human cost raises leg energies by at most 3.5 \% and leaves the chosen stations unchanged.
@@ -398,7 +398,7 @@ Light changes which stations are visited, not only when to leave (Table 9). When
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 9. Points of the station tours against the departure time when stations need light} (local true solar time, waiting at 0 W).}
+\caption{Points of the station tours against the departure time when stations need light (local true solar time, waiting at 0 W).}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{lllllll}
 \toprule
@@ -419,7 +419,7 @@ Table 10 compares the exact solvers with the four metaheuristics.
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 10. Exact solvers against four metaheuristics.} Share of instances solved to optimality, mean gap and median time.}
+\caption{Exact solvers against four metaheuristics. Share of instances solved to optimality, mean gap and median time.}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{llllll}
 \toprule
@@ -442,7 +442,7 @@ The logistic test (Table 11) shows that terrain explains the choice of valley bu
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 11. Terrain-only logistic baseline: visited against unvisited cells} (AUC, mean over route blocks).}
+\caption{Terrain-only logistic baseline: visited against unvisited cells (AUC, mean over route blocks).}
 \begin{tabular}{lll}
 \toprule
 Unvisited cells compared & All features & Slope only \\
@@ -459,7 +459,7 @@ Inverse reinforcement learning leads to the same conclusion (Table 12). At every
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 12. Inverse reinforcement learning on Curiosity's route: negative log-likelihood per metre of the terrain model and of the distance-only control.}}
+\caption{Inverse reinforcement learning on Curiosity's route: negative log-likelihood per metre of the terrain model and of the distance-only control.}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{lllll}
 \toprule
@@ -481,8 +481,8 @@ On held-out drives, with one demonstration per sol, the DEM model scores 1.18373
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 13. Blind point validation in the held-out region} (240 points, 80 per predicted class, area-weighted, 95 \% intervals). The second pass applies a stricter sand rule.}
-\begin{tabular}{lll}
+\caption{Blind point validation in the held-out region (240 points, 80 per predicted class, area-weighted, 95 \% intervals). The second pass applies a stricter sand rule.}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
 \toprule
  & Pass 1 & Pass 2 \\
 \midrule
@@ -492,7 +492,7 @@ User's accuracy, background & 0.612 & 0.688 \\
 Producer's accuracy, sand (area-weighted) & 0.124 & \textbf{0.110} \\
 Overall accuracy (area-weighted) & 0.604 & 0.667 \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
 When the map says sand, it is sand about 92 \% of the time, but it finds only about one in nine sand pixels (Table 13). The sand layer is therefore a conservative lower bound on the real sand. The predicted ridges are not reliable, which is a negative result. Along Curiosity's route, driven cells carry less mapped sand than the alternatives (0.039 against 0.085 during the boxwork sols, $\text{AUC}_\text{avoid}$ 0.523), whereas slope (0.467) and roughness (0.450) carry no avoidance signal.
@@ -512,8 +512,8 @@ BoulderNet finds 8,380 boulders with a score of at least 0.10, of which 2,525 ha
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 14. Distilled student against the teacher and against human labels.}}
-\begin{tabular}{ll}
+\caption{Distilled student against the teacher and against human labels.}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
 \toprule
 Measure & Value \\
 \midrule
@@ -523,15 +523,15 @@ Pixel ROC-AUC / average precision (chance 0.003) & 0.986 / 0.47 \\
 Boulder F1 against human labels, student / teacher & 0.27 / 0.66 \\
 Run time over the area, student / teacher & 8.6 s / 362 s \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
 The student reproduces the teacher's boulder density, with calibrated mean cover, 42 times faster and with 47 times fewer parameters, but it finds individual boulders poorly (Table 14). It is a density map, not a boulder detector.
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 15. Boulder cover uncertainty: held-out RMSE / MAE of cover (\%) and coverage of the Gaussian process's 90 \% interval.}}
-\begin{tabular}{lll}
+\caption{Boulder cover uncertainty: held-out RMSE / MAE of cover (\%) and coverage of the Gaussian process's 90 \% interval.}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
 \toprule
  & Extrapolation, 400 m tiles & Interpolation, random blocks \\
 \midrule
@@ -540,7 +540,7 @@ Gaussian smoothing, best $\sigma$ & 1.309 / 0.546 & \textbf{1.142 / 0.427} \\
 Gaussian process on $\surd$cover & \textbf{1.280 / 0.544} & 1.154 / 0.466 \\
 GP 90 \% coverage: all / empty / rocky blocks & 0.93 / 0.99 / 0.80 & 0.92 / 0.98 / 0.81 \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
 When filling gaps between known blocks, the Gaussian process is no more accurate than a 20 m smoothing (Table 15), a negative result. When extrapolating to unseen tiles it is slightly better, and the stricter independent protocol confirms this: with the smoothing width chosen on training data only, the Gaussian process reaches an RMSE of 1.306 against 1.387 for the smoothing. Its 90 \% interval is calibrated overall (93.0 \% coverage, against 87.2 \% for the calibrated smoothing envelope), but too narrow where it matters most: it covers 79.8 \% of the rocky blocks and 74.4 \% of the blocks next to gaps in the data (Figure \ref{fig:gp}). Part of the difference with the smoothing comes from the shape of the intervals, since the smoothing envelope has the same width everywhere whereas the Gaussian process interval varies, and the bootstrap intervals of the overall coverage overlap (90.8--95.1 \% and 81.7--91.7 \%). An interval from this model is therefore not a guarantee of safe terrain.
@@ -560,7 +560,7 @@ The background dose rate in the boxwork is 156.4 $\mu$Gy day$^{-1}$ (6.52 $\mu$G
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 16. Dose of the station tours at the background rate.}}
+\caption{Dose of the station tours at the background rate.}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{lllll}
 \toprule
@@ -581,7 +581,7 @@ A 3 m antenna at the demonstration habitat sees 22.5 \% of the area, and over 20
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 17. Route length with no link against the gap between the partners, round trip to the ridge station.}}
+\caption{Route length with no link against the gap between the partners, round trip to the ridge station.}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{llllllll}
 \toprule
@@ -606,7 +606,7 @@ Beyond 100 m the relay is not allowed and the length without contact jumps. Most
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 18. Departures that keep the whole walk in sunlight, sol 4711} (local true solar time).}
+\caption{Departures that keep the whole walk in sunlight, sol 4711 (local true solar time).}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{lllll}
 \toprule
@@ -625,7 +625,7 @@ The window in which the whole walk is sunlit is about 8 h wide, and terrain shad
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 19. Simulated walks with a known consumption factor} (round trip to the ridge station, budget 1.25 times the plan, 300 walks per case).}
+\caption{Simulated walks with a known consumption factor (round trip to the ridge station, budget 1.25 times the plan, 300 walks per case).}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{llllll}
 \toprule
@@ -646,7 +646,7 @@ When the astronaut consumes 1.5 times the prediction, the fixed reserve runs out
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Table 20. Paired evaluation on one station tour, $k_\text{true} = 1.2$, independent noise.}}
+\caption{Paired evaluation on one station tour, $k_\text{true} = 1.2$, independent noise.}
 \begin{tabular}{llll}
 \toprule
 Policy & Reserve violations & Mean science points & Mean margin \\
