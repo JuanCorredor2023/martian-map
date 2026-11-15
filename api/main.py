@@ -210,7 +210,7 @@ def _box_centre():
 def walkback(req: WalkbackRequest):
     """Red line R_T = threshold (cached per base) and the energy-safe boundary
     F_E(p, v) + R_E(v) = E_remaining (recomputed for each position and energy).
-    PROVISIONAL return fields until E4 delivers rv.tif."""
+    Also compares the red line with the fixed-radius rules (guide section 15.2)."""
     limit = req.max_cell_slope_deg if req.max_cell_slope_deg else None
     base_xy = req.base or _box_centre()
     try:
@@ -238,6 +238,8 @@ def walkback(req: WalkbackRequest):
         feature("Point", list(base_xy), kind="base"),
         feature("Point", list(req.current_position), kind="current_position"),
     ]
+    for chk in wb.fixed_radius_check(g, r_t, base_xy, req.emergency_return_time_s):
+        features.append(feature("LineString", chk.pop("circle"), kind="fixed_radius", **chk))
     crs_wkt = (BASE / "crs.wkt").read_text(encoding="utf-8").strip()
     return feature_collection(
         features, crs_wkt,

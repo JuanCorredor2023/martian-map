@@ -80,6 +80,16 @@ The fields are computed on the **same shared E4 graph** as `/plan` and the guide
 - Storm options are the real event peak and E12's hypothetical ×10 and ×50 scalings of its excess over the baseline.
 - With the real storm the return dose is tiny. For an astronaut about 520 m from the base, R_T is 12.1 min, so the dose on the way back is 58.8 µGy at ×50 against 1.3 µGy without a storm. So radiation only changes the plan through the SEP return, as E12 concludes.
 
+### The red line against fixed-radius rules (guide section 15.2)
+`POST /walkback` also returns the circles of the classic fixed-radius rules around the base: 30 min at 0.75 m/s = 1.35 km, as in the guide, and the Apollo rule of 1.7 km at 3.4 km/h. For each one it reports the share of box cells **inside the circle that cannot get back within 30 min**, split into *no way back* (blocked or cut off) and *too slow* (detours). The HUD draws the circles next to the red line.
+
+| Base at the box centre | Falsely safe inside 1.35 km | of which no way back | of which too slow | Inside 1.7 km |
+|---|---|---|---|---|
+| Edge 20° + cell block 30° (default) | 36.3 % | 15.6 % | 20.7 % | 36.6 % |
+| Edge limit 20° only | 7.2 % | 0.9 % | 6.2 % | 7.6 % |
+
+Both circles cover the whole 2 × 2 km box, so no truly safe cell lies outside them. A fixed radius **over-promises**: about a third of what it calls safe is not. This agrees with Aaron's baseline study (PR #56: the fixed radius is the worst baseline, 45.7 % falsely safe at a 50 % budget). The red line follows the terrain instead of a circle.
+
 ### Manual science stations and their rubric
 - Stations are placed by clicking on the 0.25 m orthophoto, where ridges and hollows are visible; the 1 m DEM does not resolve them (base grid note).
 - A station's score is **the rubric score of its type**, never typed per station, so each value traces back to a written rule [Guide-REV3, section 24]. The rubric is editable live in the HUD and saved with the stations.
