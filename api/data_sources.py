@@ -9,7 +9,8 @@ from pathlib import Path
 
 from . import weather
 
-# (data type, instrument, mission, what the product does with it, path under data/)
+# (data type, instrument, mission(s) joined by " / ", what the product does with it,
+#  path under data/; None = the REMS feed, found by weather.find_feed)
 SOURCES = [
     ("Orbital image", "HiRISE orthophoto, 25 cm", "Mars Reconnaissance Orbiter",
      "base map; sand detected by E8's U-Net", "base/ortho_color_025.tif"),
@@ -21,10 +22,11 @@ SOURCES = [
      "EVA dose budget and solar storm alert (E12)", "e12/rad_summary.json"),
     ("Surface weather", "REMS", "Mars Science Laboratory",
      "temperature, UV and daylight of the EVA's sol", None),
+    ("Spectral (minerals)", "CRISM / OMEGA detections", "Mars Reconnaissance Orbiter / Mars Express",
+     "regional context: hydrous minerals and clays 16-50 km from the box", "minerals/gale_minerals.geojson"),
 ]
 
 PLANNED = [
-    ("Spectral (minerals)", "CRISM / OMEGA detections", "MRO / Mars Express"),
     ("Thermal", "THEMIS night IR, 100 m", "Mars Odyssey"),
     ("Chemistry", "ChemCam / APXS at the drill sites", "Mars Science Laboratory"),
 ]
@@ -37,7 +39,7 @@ def summary(data_dir):
         path = weather.find_feed(data_dir) if rel is None else data_dir / rel
         row = {"type": kind, "instrument": instrument, "mission": mission, "use": use}
         (used if path is not None and Path(path).exists() else missing).append(row)
-    missions = sorted({r["mission"] for r in used})
+    missions = sorted({m for r in used for m in r["mission"].split(" / ")})
     return {
         "n_types": len({r["type"] for r in used}), "n_missions": len(missions),
         "missions": missions, "sources": used, "missing": missing,
