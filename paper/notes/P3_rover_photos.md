@@ -1,10 +1,10 @@
 # P3 · Curiosity ground photographs in the 3D map
 
-Owner: Juan (`@JuanCorredor2023`) · Issue: #46 · PRs: #80 (block 1), block 2 pending · Status: blocks 1–2 done (catalogue, camera geometry, photos in the 3D page, visual check of three photos); station previews pending (block 3) · Last update: 2026-11-15
+Owner: Juan (`@JuanCorredor2023`) · Issue: #46 · PRs: #80 (block 1), #95 (block 2), block 3 pending · Status: done (catalogue and poses, photos in the 3D page with a visual check of three sols, station previews) · Last update: 2026-11-15
 
 ## Question
 
-Can a real Curiosity photograph be placed at its measured camera position and direction in the P1 terrain, and help an astronaut understand the surroundings of a planned station? Block 1 prepared the catalogue, the camera geometry and the local images. Block 2 puts the photographs in the 3D page and checks, for photographs of different sols, whether the terrain model agrees with them.
+Can a real Curiosity photograph be placed at its measured camera position and direction in the P1 terrain, and help an astronaut understand the surroundings of a planned station? Block 1 prepared the catalogue, the camera geometry and the local images. Block 2 puts the photographs in the 3D page and checks, for photographs of different sols, whether the terrain model agrees with them. Block 3 adds, to each station's card and to each rehearsal stop, the nearest photograph and whether the station lies in its field.
 
 ## Data
 
@@ -33,6 +33,10 @@ Stops are grouped by the rover position: each group's representative is the firs
 ### Photos in the 3D page (block 2)
 
 `web/3d/photos_model.js` (pure, tested in Node) reads the catalogue; `web/3d/photos.js` draws one orange camera pin per stop on its own marker layer, the stop's card (photo, one button per view, UTC date, sol, LMST, direction, credit, link to the NASA original) and the photo view. Pins that overlap on screen offer a list of stops. "View from here" flies P1's camera to the photograph's pose: the camera's horizontal position, its height above the DEM at relief ×1 (catalogue elevation minus DEM, never forced onto the ground), heading and pitch, and a vertical field such that the centred square of the canvas spans 40° on both axes. The Sun is set to the photograph's own sol and local true solar time at its longitude (`sunOf`, from the UTC time). The comparison image is laid over that square without stretching, with an opacity slider. A pose under the ground, less than 0.5 m or more than 4 m above it, or outside the box is stated in the bar, not corrected. Exit gives back camera pose and field, relief, near plane and Sun. Pins are hidden while rehearsing; `?photo=<id>` opens a photo view and `?check=photos` measures it.
+
+### Station previews (block 3)
+
+`nearestPhoto` (`web/3d/photos_model.js`) takes the published photographs (images available) whose camera is within 150 m of the station, horizontally. Those within 10 m of the nearest (a stop's radius) count as equally near; among them the one pointing most towards the station wins, then the nearer, then the image id. It reports the distance, the side of the station the photo was taken from, the direction it looks, the station's angle off the photo's centre, and whether the station is inside the 40° field: horizontally always, vertically when the DEM gives the station's ground (relief ×1). The card says this as orientation and adds that the terrain may still hide the station; it never claims visibility. With no photograph within 150 m it says so, with the distance of the nearest. A station card in free flight adds "View the rover photo" (the photo view). At a rehearsal stop the same preview is added to the stop card through a `stationMedia` option of the rehearsal: no button, and the walker, clock, tasks and controls are untouched. Photo pins are hidden while rehearsing.
 
 ### Photograph against terrain (block 2)
 
@@ -82,6 +86,8 @@ Over all 23 selected photographs with |pitch| ≤ 12° (17 sols, 12,524 compared
 
 ![Sol 4813: DEM skyline over the photograph](../figures/p3_fig1_skyline_4813.jpg)
 
+**Station previews** (`/3d/?check=stations`, 2026-11-15, low preset). The saved plan (E4 round trip, 13 stations drawn), the E4 fixture and the E5 tour fixture (`tests/viz3d/fixtures/plan_e4.json`, `plan_tour_e5.json`) each draw the same 13 stations: all 13 have a published photograph within 150 m (the farthest 103.7 m, station R3), and 7 of them lie inside its field. At the 8 stops of the E5 tour and the single stop of the E4 round trip, the stop card shows the preview, the rehearsal clock and the walker do not move while it is shown, the tasks and "Done, continue" stay, there is no photo-view button, and the photo pins are hidden. A point near the box's south-west corner gets "No rover photo within 150 m of this station (the nearest is 734 m away)".
+
 ## Checks
 
 - `tests/viz3d/test_rover_photo_geometry.py`: known rotations, camera-centre translation, pitch sign, distortion forward and inverse, roll removal by ray mapping, transparent corners, rejection of unsupported metadata, and real metadata from six sols (frame agreement with mast angles and PLACES).
@@ -91,6 +97,7 @@ Over all 23 selected photographs with |pitch| ≤ 12° (17 sols, 12,524 compared
 - An independent review by a separate agent repeated the frame checks over all local stereo pairs, drives and mast mosaics and found no convention error; it led to the highest-pose rule above and to the physical tests.
 - Results on 2026-11-15: `python -m pytest tests/viz3d -q` 61 passed (with `MARTIAN_DATA` pointing at the data folder; 60 passed and 1 skipped without it); `node --test tests/viz3d/` 71 passed. No file of the page changed, so `?check=shading`, `route` and `rehearse` are unchanged.
 - Block 2, `?check=photos` (photos of sols 4450, 4596 and 4848; 2026-11-15, high preset): camera position error 0 m, eye height equal to the catalogue's height above the DEM (1.778, 2.007, 1.924 m), heading, pitch and field errors 0°, relief ×1, the Sun at each photo's sol and solar time, the laid photo on the centred square to 0 px; after Exit, position, heading, pitch, field, relief and Sun as before. P1's `?check=shading`, `route` and `rehearse` give the same numbers as on main; the only change is one more marker layer in the scene list.
+- Block 3: `?check=stations` as in Results. P1's `?check=route`, `shading` and `rehearse` give the same JSON on this branch as on main, and `?check=photos` the same as in block 2 (all errors 0). `?check=photos` and `?check=stations` step the camera flight themselves and pause on timers, so they also run in a hidden browser tab.
 - Block 2 visual check: the three figures above, inspected by eye, and the aggregate over 23 photographs. Node tests: 86 passed (`node --test tests/viz3d/`), including 15 for `photos_model.js` (catalogue parsing, pose limits, the square view, and the photographs' own LMST reproduced from their UTC time within 4 s).
 
 ## Limitations
@@ -107,7 +114,8 @@ Over all 23 selected photographs with |pitch| ≤ 12° (17 sols, 12,524 compared
 - The skyline comparison fails only one way: "photo above DEM" cannot tell terrain beyond the box from a DEM that is too low or from rover hardware. The sky detector treats faint, hazy hills as sky and its threshold was tuned on the three figures. The 1 m DEM rounds off crests, and heading cannot be separated from position. In six of fifteen photographs with hidden crests, the brightness-step check is at chance level (dark or low-contrast frames, or the arm), so those crests are not confirmed.
 - Most selected photographs look 10–35° down at the near ground, which the 1 m DEM and the 0.25 m orthophoto cannot resolve at 2–20 m: their laid photo shows rocks the 3D ground does not have. The comparison is meaningful for crests and knolls, not for near rocks.
 - At the overview, the 100 photo pins form a dense row along the traverse; station pins stay on top, and "Show photo stops" hides them.
-- Not done yet: station previews (block 3). No video or tablet test is planned.
+- A station preview is the nearest photograph, not a view of the station: "inside its field" is a direction, and the terrain, the rover or the photograph's own crop can hide the station. The 150 m limit is a choice: farther, a station is a few pixels of a Navcam frame. The photographs date from 2025–2026, not from the simulated EVA.
+- Out of scope: the PIA26559 panorama, video, and a tablet test.
 
 ## What other pieces can use
 
@@ -115,7 +123,8 @@ Over all 23 selected photographs with |pitch| ≤ 12° (17 sols, 12,524 compared
 - P3 block 2 (Juan): `catalog.json` gives for each photo its exact camera position, heading and pitch (radians), field of view, sol, UTC date, local mean solar time, credit and image paths; groups give the stops and their missing sectors. It will reuse P1's markers, card, terrain conversions, solar time and `controls.flyTo`.
 - Station previews (block 3): selected positions and directions with an explicit missing-image state. A nearest-photo result must show the distance and whether the station is inside the photographed field.
 - E2 (Juan): the join rule for repeated PLACES poses (attitude, then the highest co-located pose) applies to any use of image metadata with PLACES.
-- No API contract, planner output or P1 asset changes. Sebas's PR #73 (rehearsal) is not touched.
+- Station previews: `nearestPhoto(model, {x, y}, {groundElevation})` and `previewText(result)` in `web/3d/photos_model.js` are pure and could serve the guide's station cards (`web/guide_core.js`, Sebas) if wanted; the rehearsal takes any element through its `stationMedia` option.
+- No API contract, planner output or P1 asset changes. In `web/3d/rehearse.js` only the `stationMedia` option and the stop card's media slot were added.
 
 ## Reproduce
 

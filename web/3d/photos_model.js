@@ -1,10 +1,11 @@
-// Rover photos of the 3D map (P3, issue #46, block 2): the numbers.
+// Rover photos of the 3D map (P3, issue #46, blocks 2 and 3): the numbers.
 //
 // Reads the catalogue of block 1 (src/viz3d/build_rover_photos.py, served at
 // /tiles/3d/photos/catalog.json) and turns it into what photos.js shows: one pin per
-// stop, the views of a stop, the rows of the card, where the camera stands and the
-// square of the canvas the photo covers. No three.js and no page here, so it is tested
-// in Node (tests/viz3d/photos_model.test.mjs).
+// stop, the views of a stop, the rows of the card, where the camera stands, the
+// square of the canvas the photo covers and, on a station's card, its nearest photo
+// (block 3). No three.js and no page here, so it is tested in Node
+// (tests/viz3d/photos_model.test.mjs).
 //
 // A bad photo or stop is skipped and listed in `problems`, never thrown. Text from the
 // catalogue is data: it comes back as plain strings for textContent, never as HTML.
@@ -23,6 +24,12 @@ export const MIN_EYE_HEIGHT_M = 0.5;
 export const MAX_EYE_HEIGHT_M = 4;
 // Headings 0 to 90 degrees are sector 0, and so on (the catalogue's "quadrants").
 export const SECTOR_LABELS = ['N to E', 'E to S', 'S to W', 'W to N'];
+// A station's card shows the nearest photo taken at most PREVIEW_MAX_M away (block 3).
+// Photos up to PREVIEW_TIE_M farther than the nearest are as near (the views of one
+// stop lie a few metres apart): among them, the one that looks most towards the station.
+export const PREVIEW_MAX_M = 150;
+export const PREVIEW_TIE_M = 10;
+const AT_CAMERA_M = 1e-3;          // closer than this the station has no direction from the camera
 
 const ID = /^[A-Za-z0-9_-]{1,80}$/;
 const LMST = /^Sol-(\d+)M(\d\d):(\d\d):(\d\d(?:\.\d+)?)$/;
@@ -32,6 +39,8 @@ const isObject = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const finite = v => typeof v === 'number' && Number.isFinite(v);
 const text = v => (typeof v === 'string' && v.trim() ? v : null);
 const degrees360 = rad => ((Math.round(rad / DEG) % 360) + 360) % 360;
+const around360 = deg => ((deg % 360) + 360) % 360;
+const signed180 = deg => around360(deg + 180) - 180;
 
 // An asset path of the catalogue (relative to PHOTO_ROOT) as an address under it, or
 // null when it could leave the photo folder or carry a scheme, query or escape.
@@ -212,6 +221,81 @@ export function sunOf(photo, lonEastDeg = siteFromCrs(photo.x, photo.y).lonEastD
   const date = trueSolarDate(photo.utcMs, lonEastDeg);
   const sol = Math.floor(date);
   return {sol, hours: (date - sol) * 24};
+}
+
+// Where a station lies for one photo: bearing from the camera (degrees clockwise from
+// north), off the photo's centre across (+ right) and, with the ground under the station,
+// up and down (+ below), and whether it falls in the comparison frame (fov square). Only
+// the direction: nothing here says the terrain between them lets the station be seen.
+function aim(photo, x, y, distanceM, groundElevation) {
+  const headingDeg = around360(photo.heading / DEG), half = photo.fov / 2;
+  const verticalChecked = finite(groundElevation);
+  // Angle of the station's ground point under the camera's horizon, minus the photo's pitch.
+  const verticalOffDeg = verticalChecked
+    ? Math.atan2(photo.z - groundElevation, distanceM) / DEG - photo.pitch / DEG : null;
+  const at = {verticalChecked, verticalOffDeg, looking: compassWord(headingDeg)};
+  if (distanceM < AT_CAMERA_M) {
+    // Straight under the camera: no side and no bearing. Given as the heading itself
+    // (0 off the centre) so the numbers stay numbers, but never in the field.
+    return {...at, bearingDeg: headingDeg, offAxisDeg: 0, inField: false, cameraSide: null};
+  }
+  const bearingDeg = around360(Math.atan2(x - photo.x, y - photo.y) / DEG);
+  const offAxisDeg = signed180(bearingDeg - headingDeg);
+  const inField = Math.abs(offAxisDeg) <= half && (!verticalChecked || Math.abs(verticalOffDeg) <= half);
+  return {...at, bearingDeg, offAxisDeg, inField, cameraSide: compassWord(bearingDeg + 180)};
+}
+
+// The rover photo for a station's card at (x, y) (Mars CRS metres): of the photos with
+// images, the nearest across the ground; any up to tieM farther counts as as near, and of
+// those the one that looks most towards the station wins, then the nearer, then the id.
+// groundElevation: the DEM elevation (m) at the station at relief x1, or null (outside
+// the box): with it the station must also fall in the frame up and down (verticalChecked).
+// Returns {photo, distanceM, bearingDeg (camera -> station, 0 to 360), offAxisDeg (station
+// bearing minus heading, -180 to 180, + right), verticalOffDeg (+ below the centre, null
+// unchecked), inField, verticalChecked, cameraSide (compass word, station -> camera),
+// looking (compass word of the heading)}; or, when no photo is within maxDistanceM,
+// {photo: null, nearestM (null when no photo has images), maxDistanceM}. null when (x, y)
+// is not a point. The photo is the model's own (not a copy); the model is not changed.
+export function nearestPhoto(model, {x, y} = {}, {groundElevation = null, maxDistanceM = PREVIEW_MAX_M,
+                                                    tieM = PREVIEW_TIE_M} = {}) {
+  if (!finite(x) || !finite(y)) return null;
+  const near = model.photos.filter(p => p.available)
+    .map(photo => ({photo, distanceM: Math.hypot(photo.x - x, photo.y - y)}));
+  const d0 = near.reduce((min, n) => Math.min(min, n.distanceM), Infinity);
+  if (!(d0 <= maxDistanceM)) return {photo: null, nearestM: near.length ? d0 : null, maxDistanceM};
+  // As near as the nearest: within tieM of it, and never past maxDistanceM.
+  const limit = Math.min(d0 + tieM, maxDistanceM);
+  const away = r => (r.cameraSide === null ? Infinity : Math.abs(r.offAxisDeg));   // under the camera: looks nowhere at it
+  return near.filter(n => n.distanceM <= limit)
+    .map(n => ({...n, ...aim(n.photo, x, y, n.distanceM, groundElevation)}))
+    .sort((a, b) => away(a) - away(b) || a.distanceM - b.distanceM || (a.photo.id < b.photo.id ? -1 : 1))[0];
+}
+
+// The station's photo line of its card, one plain sentence from nearestPhoto(). It says
+// where the photo was taken and whether the station falls in its field, which is a
+// direction only: the terrain may still hide the station, and the words never say it is seen.
+export function previewText(result) {
+  const metres = m => `${Number(m.toFixed(1))} m`;
+  if (!result.photo) {
+    const max = metres(result.maxDistanceM);
+    if (result.nearestM === null) return `No rover photo within ${max} of this station (no rover photo is published for this map).`;
+    const nearest = Math.round(result.nearestM);
+    return `No rover photo within ${max} of this station ` +
+           `(the nearest is ${nearest > result.maxDistanceM ? `${nearest} m` : `just over ${max}`} away).`;
+  }
+  const {photo, distanceM, cameraSide, looking, offAxisDeg: off, verticalOffDeg: down} = result;
+  const m = Math.round(distanceM);
+  const where = cameraSide === null ? 'right at the station' : `${m < 1 ? 'under 1' : m} m ${cameraSide} of the station`;
+  if (result.inField) {
+    // Without the ground under the station only the side to side test was made: said so.
+    const [field, note] = result.verticalChecked ? ['inside its field', 'the terrain may still hide it']
+      : ['inside its field from side to side', 'not checked up and down; the terrain may still hide it'];
+    return `Rover photo taken ${where}, looking ${looking}: the station is ${field} (${note}).`;
+  }
+  const why = cameraSide === null ? 'the station is straight under the camera'
+    : Math.abs(off) > photo.fov / 2 ? `the station is ${Math.round(Math.abs(off))}° to the ${off > 0 ? 'right' : 'left'} of its centre`
+    : `the station is ${Math.round(Math.abs(down))}° ${down > 0 ? 'below' : 'above'} its centre`;
+  return `Nearest rover photo: ${where}, looking ${looking}; ${why}, outside its field.`;
 }
 
 // ?photo=<id>: the id when it can be one, else null.

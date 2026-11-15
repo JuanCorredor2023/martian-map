@@ -1,4 +1,5 @@
-// Rover photos in the 3D map (P3, issue #46, block 2): pins, card and photo view.
+// Rover photos in the 3D map (P3, issue #46, blocks 2 and 3): pins, card, photo view
+// and the preview on a station's card.
 //
 // Curiosity's Navcam photos (the catalogue of block 1, read by photos_model.js) are
 // pinned at the stops where the rover took them. This file owns what the page does with
@@ -15,12 +16,15 @@
 //     centred square that spans the same 40 degrees, so fading it in and out compares
 //     the photo with the terrain. Exit or Escape puts back camera, field of view, near
 //     plane, relief and Sun exactly.
+//   - station preview (block 3): for main.js and the rehearsal's stop cards, the nearest
+//     photo of a station (stationPreview), where it was taken and whether the station
+//     falls in its field: a direction only, never a promise that the station is seen.
 // A pose that does not fit the map (outside the box, camera under or too far above the
 // shown ground) is still flown, and the reason is written in the bar: never hidden.
 // The numbers are in photos_model.js (tested in Node). Text from the catalogue is set as
 // text, never as HTML. Nothing is rendered here: onChange() asks main.js to draw.
-import { MIN_EYE_HEIGHT_M, PHOTO_ROOT, parseCatalog, photoFacts, photoMarkers, photoPose, squareView, sunOf,
-         viewsOf } from './photos_model.js';
+import { MIN_EYE_HEIGHT_M, PHOTO_ROOT, nearestPhoto, parseCatalog, photoFacts, photoMarkers, photoPose, previewText,
+         squareView, sunOf, viewsOf } from './photos_model.js';
 
 const NEAR = 0.3;                  // m: near plane in the photo view, as in the rehearsal (the camera's own is 2 m)
 const FLIGHT_S = 1;                // s: flight to a photo pose
@@ -161,6 +165,26 @@ export class PhotoLayer {
     }
     this._openCard({title: 'Rover photo stops', subtitle: `${stops.length} stops overlap here: choose one.`, media: list});
     return true;
+  }
+
+  // What a station's card shows of the rover photos at (x, y) (Mars CRS metres): media, an
+  // element for the card's media slot (the nearest photo's thumbnail, the previewText
+  // sentence and "sol N · credit"; only the sentence when no photo is near), and action,
+  // the button that opens that photo's view, or null (no photo, the layer is busy, or
+  // interactive is false: the rehearsal's cards). null when no catalogue is loaded or
+  // (x, y) is not a point. The card is the caller's: nothing is shown or drawn here.
+  stationPreview({x, y, label} = {}, {interactive = true} = {}) {
+    if (!this.model) return null;
+    const near = nearestPhoto(this.model, {x, y}, {groundElevation: this._groundElevation(x, y)});
+    if (!near) return null;
+    const {photo} = near, media = make('div', 'photo-preview');
+    if (photo) media.append(this._previewImage(photo, near.looking, label));
+    media.append(make('div', 'photo-preview-text', previewText(near)));
+    if (photo) media.append(make('div', 'muted photo-preview-meta', `sol ${photo.sol} · ${photo.credit ?? 'credit not given'}`));
+    // The button sits on the station's card, which the photo view has no room for.
+    const action = interactive && photo && !this.isBusy()
+      ? {label: 'View the rover photo', onClick: () => { if (this.enter(photo.id)) this.hideCard(); }} : null;
+    return {media, action};
   }
 
   // Photo view of a photo. Called again while on, it changes photo and keeps what exit()
@@ -391,6 +415,19 @@ export class PhotoLayer {
     img.addEventListener('error', () => img.replaceWith(missing('Image not available: it could not be loaded.')),
                          {once: true});
     img.src = photo.images.card;
+    return img;
+  }
+
+  // The thumbnail of a station preview, or a short text when it does not load.
+  _previewImage(photo, looking, label) {
+    const missing = text => make('div', 'photo-missing', text);
+    if (!photo.images.thumb) return missing('Image not available for this photo.');
+    const img = make('img', 'photo-preview-img');
+    img.alt = `Navcam photo looking ${looking}, the nearest to ${label || 'this station'}`;
+    img.decoding = 'async';
+    img.addEventListener('error', () => img.replaceWith(missing('Image not available: it could not be loaded.')),
+                         {once: true});
+    img.src = photo.images.thumb;
     return img;
   }
 

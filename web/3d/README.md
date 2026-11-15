@@ -37,7 +37,11 @@ or press "Reload plan". With no saved plan the terrain still works.
   "Rehearse the route". "Plan with default settings" appears only when there is no plan,
   and makes the server plan and save (it replaces the last plan of the 2D planner).
 - **Pins**: click one for its card; "Fly here" views it from 60 m. Stations a tour did not
-  visit are dimmed.
+  visit are dimmed. A station's card also shows the nearest rover photo within 150 m: how far
+  and from which side it was taken, and whether the station is inside its field (orientation:
+  the terrain may still hide it); "View the rover photo" opens its photo view. With none that
+  near, the card says so. At a rehearsal stop the card shows the same photo, without the button
+  and without moving the walker or the clock.
 - **Guide** (the arm tablet's logic, shared in `web/guide_core.js`): the next maneuver
   with its distance, voice on/off, the three meters (energy left after returning, time
   back against the 30 min line, EVA time left against the plan's maximum duration),
@@ -96,6 +100,7 @@ from the server and leave the page as they found it.
 | `guide` | does the rehearsal carry the arm-tablet guide? banner and meters at start, middle and end; Return home, detour and solar storm (asks the server); the plan is back after exit |
 | `shadows` | rendered shadows against a ray march over the mesh, 07:00, 15:00 and 17:00 at ×1 and ×5 (about 12 s; 7 s in the low preset) |
 | `photos` | for three photos of different sols (`&ids=a,b,c` to choose): camera position, eye height, heading, pitch and field against the catalogue, relief ×1, the photo's Sun, the photo on the centred square; does Exit put everything back? Whether photo and terrain agree: `src/viz3d/photo_skyline.py` |
+| `stations` | for every station of the plan: its nearest rover photo (or that there is none within 150 m) as its card shows it; then each rehearsal stop: the photo is in the card, the clock, the walker and the tasks stay as they were, and the photo pins are hidden |
 
 From the console, `viz3d` gives the page's objects, and `viz3d.showPlan({fc})` draws any
 plan answer without touching the server (how the test fixtures were looked at).

@@ -54,9 +54,12 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 export class Rehearsal {
   // relief: {lock(reason), unlock(k)} from main.js; lines: a GroundLines layer for the
-  // walkback boundaries; rubric(): the station rubric for the cards; onTime: see above.
-  constructor({terrain, scene, camera, canvas, controls, relief, lines, rubric = () => ({}), onTime = () => {}}) {
-    Object.assign(this, {terrain, scene, camera, canvas, controls, relief, lines, rubric, onTime});
+  // walkback boundaries; rubric(): the station rubric for the cards; onTime: see above;
+  // stationMedia(station): an element for a stop card's media slot (the nearest rover
+  // photo, P3) or null. It only adds to the card: no camera, clock or task changes.
+  constructor({terrain, scene, camera, canvas, controls, relief, lines, rubric = () => ({}), onTime = () => {},
+               stationMedia = () => null}) {
+    Object.assign(this, {terrain, scene, camera, canvas, controls, relief, lines, rubric, onTime, stationMedia});
     this.active = false;
     this.playing = false;
     this.plan = null;              // parsePlan() result
@@ -309,6 +312,7 @@ export class Rehearsal {
     if (g && g.why) rows.push(['Why', g.why]);
     if (g) g.tasks.forEach((t, k) => rows.push([k ? '' : 'Tasks', `• ${t}`]));
     showCard({...base, rows, color: s ? TYPE_COLORS[s.type] || null : null,
+              media: s ? this.stationMedia(s) : null,
               note: stop.waitS > 0
                 ? 'Press play: the time here runs at the playback speed, with the walker standing.'
                 : 'Press play to walk on.',

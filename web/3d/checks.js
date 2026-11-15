@@ -636,11 +636,10 @@ async function photosCheck(viz) {
   const el = id => document.getElementById(id), DEG = Math.PI / 180;
   if (!photos) return {error: 'no rover photos loaded', note: el('photos-note').textContent};
   const {photoPose, squareView, sunOf} = await import('./photos_model.js');
-  const frames = n => new Promise(done => {
-    const step = () => (n-- > 0 ? requestAnimationFrame(step) : done());
-    requestAnimationFrame(step);
-  });
-  const landed = async () => { for (let i = 0; i < 300 && controls._flight; i++) await frames(1); };
+  // Pauses on a timer and the flight stepped here, as the frame loop would: a hidden page
+  // draws no frames, and nothing measured needs a picture.
+  const frames = n => new Promise(done => setTimeout(done, 50 * n));
+  const landed = async () => { for (let i = 0; i < 100 && controls._flight; i++) controls.update(0.05); };
   const wrap = deg => ((deg + 540) % 360) - 180;
   const asked = (new URLSearchParams(location.search).get('ids') || '').split(',').filter(Boolean);
   const ids = asked.length ? asked : (() => {
@@ -697,5 +696,58 @@ async function photosCheck(viz) {
   return out;
 }
 
+// Station photo previews (P3 block 3): for every station of the plan, the nearest rover
+// photo (or the explicit "none near"), as its card shows it; then the rehearsal's stop
+// cards: the preview is in the card, and showing it changes neither the clock nor the
+// walker, nor what the card already said.
+async function stationsCheck(viz) {
+  const {photos, markers, rehearsal, terrain} = viz;
+  const el = id => document.getElementById(id);
+  if (!photos) return {error: 'no rover photos loaded', note: el('photos-note').textContent};
+  const {nearestPhoto, PREVIEW_MAX_M} = await import('./photos_model.js');
+  const stations = markers.items.map(it => it.marker).filter(m => m.kind === 'station' || m.kind === 'goal');
+  const out = {plan_source: viz.plan ? viz.plan.source : null, stations: stations.length, max_distance_m: PREVIEW_MAX_M,
+               with_photo: 0, in_field: 0, without_photo: 0, cards: []};
+  for (const m of stations) {
+    const [X, Z] = terrain.toLocal(m.x, m.y);
+    const r = nearestPhoto(photos.model, {x: m.x, y: m.y},
+                           {groundElevation: terrain.elevation(terrain.surfaceAt(X, Z, 1))});
+    markers.select(m);
+    const card = el('card'), media = card.querySelector('.card-media');
+    const buttons = [...card.querySelectorAll('.card-action')].map(b => b.textContent);
+    if (r.photo) { out.with_photo++; if (r.inField) out.in_field++; } else out.without_photo++;
+    out.cards.push({station: m.label, photo: r.photo ? r.photo.id : null,
+                    distance_m: r.photo ? +r.distanceM.toFixed(1) : null,
+                    off_axis_deg: r.photo ? +r.offAxisDeg.toFixed(1) : null, in_field: r.photo ? r.inField : null,
+                    nearest_m: r.photo ? null : (r.nearestM === null ? null : +r.nearestM.toFixed(0)),
+                    card_text: media ? media.textContent.replace(/\s+/g, ' ').trim() : null,
+                    view_button: buttons.includes('View the rover photo')});
+  }
+  viz.redraw();
+  // The rehearsal: seek to each stop (that shows its card), compare before and after.
+  // A pause on a timer, not on frames: a hidden page draws none, and nothing here needs one.
+  const frames = () => new Promise(done => setTimeout(done, 100));
+  if (rehearsal.model) {
+    rehearsal.enter();
+    out.rehearsal = [];
+    for (const stop of rehearsal.model.stops) {
+      const t = stop.arrive + 1;
+      rehearsal.seek(t);
+      const card = el('card'), media = card.querySelector('.card-media');
+      const walker = rehearsal.camera.position.toArray();
+      await frames();                            // the card stays up: nothing may move meanwhile
+      out.rehearsal.push({station: stop.station ? stop.station.id : null, card_shown: !card.hidden,
+                          photo_in_card: Boolean(media), clock_kept: Math.abs(rehearsal.time - t) < 1e-9,
+                          playing: rehearsal.playing,
+                          tasks_kept: card.textContent.includes('Done, continue'),
+                          view_button: [...card.querySelectorAll('.card-action')].some(b => b.textContent === 'View the rover photo'),
+                          walker_kept: walker.every((v, i) => Math.abs(v - rehearsal.camera.position.toArray()[i]) < 1e-9),
+                          photo_pins_hidden: !viz.photoMarkers.group.visible});
+    }
+    rehearsal.exit();
+  }
+  return out;
+}
+
 export const CHECKS = {shading: shadingCheck, route: routeCheck, rehearse: rehearseCheck, sun: sunCheck,
-                       shadows: shadowsCheck, guide: guideCheck, photos: photosCheck};
+                       shadows: shadowsCheck, guide: guideCheck, photos: photosCheck, stations: stationsCheck};
