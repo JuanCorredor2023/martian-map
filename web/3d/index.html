@@ -292,6 +292,7 @@
     <button id="rh-detour" title="Demo: step 25 m off the route, then rejoin it">↪ Detour</button>
     <button id="rh-storm" title="Demo: solar storm alert, automatic way home with the dose">☢ Solar storm</button>
     <button id="rh-home" title="Fastest way home from here">🏠 Return home</button>
+    <button id="rh-ktrue" title="Demo: simulated energy use of this astronaut against the model (k_true); the walk learns it">Use ×1.0</button>
   </div>
   <input type="range" id="rh-scrub" min="0" max="1" step="any" value="0" aria-label="Position in the rehearsal">
   <div id="rh-progress"></div>
@@ -307,6 +308,7 @@
     <span>Energy left after returning</span><div class="track"><div id="rh-m-energy" class="fill"></div></div><span id="rh-v-energy"></span>
     <span>Time back (limit 30 min)</span><div class="track"><div id="rh-m-back" class="fill"></div></div><span id="rh-v-back"></span>
     <span id="rh-radio-label">Radio (E11)</span><div class="track" id="rh-radio-track"><div id="rh-m-radio" class="fill"></div></div><span id="rh-v-radio"></span>
+    <span id="rh-k-label" hidden>Spare energy, learned use (k p90)</span><div class="track" id="rh-k-track" role="meter" aria-label="Spare energy after returning, with this walk's learned energy use" aria-valuemin="0" aria-valuemax="100" hidden><div id="rh-m-k" class="fill"></div></div><span id="rh-v-k" hidden></span>
     <span id="rh-eva-label">EVA time left</span><div class="track" id="rh-eva-track"><div id="rh-m-eva" class="fill"></div></div><span id="rh-v-eva"></span>
   </div>
   <div id="rh-alert" hidden></div>

@@ -436,6 +436,13 @@ export function energyReadout(values, usable) {
           energyLeft: Math.round(usable - used)};
 }
 
+// Rows of the "plan against the walk" card for the adaptive walkback (X2, #129): the
+// [label, plan, walked] rows of guide_core.adaptiveRows as the card's [label, text].
+// A plan of "—" (nothing planned to compare with) is left out of the text.
+export function adaptiveCardRows(rows) {
+  return (rows || []).map(([label, plan, walked]) => [label, plan === '—' ? walked : `${walked} (plan ${plan})`]);
+}
+
 // First line of the player: time, leg and distance.
 export function progressText(model, state) {
   const parts = [`${clock(state.time - model.start)} of ${clock(model.duration)}`];
