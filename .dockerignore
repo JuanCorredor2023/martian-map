@@ -1,0 +1,20 @@
+# Allow only application sources. Scientific data and credentials are never sent
+# to a remote builder. Keep the exceptions narrow even when worktrees are local.
+*
+!Dockerfile
+!.dockerignore
+!api/
+!api/*.py
+!api/requirements.txt
+!src/
+!src/**/
+!src/**/*.py
+!src/**/*.mjs
+!web/
+!web/**
+**/__pycache__/
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/.git/
