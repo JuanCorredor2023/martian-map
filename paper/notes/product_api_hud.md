@@ -27,6 +27,41 @@ How does the planner reach the jury: which service exposes the terrain, the cost
 - Layers: ortho, hillshade, slope (opacity slider made linear: deck.gl applies `opacity^(1/2.2)`, compensated by raising the slider value to 2.2), E8 sand, radio coverage (E11), THEMIS night thermal, E3 cost with legend, steep-cell block with on/off and a 15–60° slider, route, start and stations. Cursor readout in Mars metres and grid cell.
 - All map layers lie on one plane, so they are drawn in list order with the depth test off (`depthCompare: "always"`). With the depth test on, coplanar layers fought on a real GPU (patches after turning the slope tiles off and on under the thermal layer); headless rendering did not show it.
 
+### Usability pass on the HUD (2026-11-15)
+The first HUD grew one control at a time. An audit at laptop size (1366 × 768, headless Edge screenshots) found:
+- one 2,060 px column of controls inside a 696 px scroller;
+- no sign of where to start;
+- a plan result written as a wall of team jargon ("E5 tour (live, E5 plan_tour (src/orienteering))"), with plain facts flagged ⚠ like errors;
+- internal codes (E3, E8, E11, E12) in the labels;
+- red, cyan and white lines on the map with no legend.
+
+The redesign keeps every function and every element id, and changes how they are reached:
+- **Tabs that follow the order of work:** a docked sidebar with *1 Terrain → 2 Stations → 3 Plan → 4 Walk*, plus *Context* (radiation, weather, minerals, data sources). Each tab opens with one sentence on what it is for. No tab is taller than about 950 px, and *Save* and *Next* stay in reach in the stations tab. Empty states say what to do next.
+- **The plan in numbers:** a status line ("The astronaut can get back from every point"), four figures with a bar showing how much of each limit is used (stations, time, energy, distance), the visiting order as chips in the station colours, and the stations left out with the reason. Engine, cost model and service power go under *Details*. A request that cannot fit says what to change, not the raw error.
+- **A legend on the map** listing only what is drawn. The safety lines (30 min, reachable area, fixed-distance circles) are drawn only on the *Walk* tab, so the plan view shows the route and the stations alone. The energy-safe boundary is now green; it used to be almost the route's cyan.
+- **Readable map marks:** the route has a dark casing; planned stations carry "3. R2" labels, and the ones left out are faded. Labels that would overlap at the current zoom are hidden by priority (plan order, then science value) and return when zooming in. deck.gl's `CollisionFilterExtension` hid every label in this setup and was dropped for that 15-line rule.
+- **Map-click modes are visible:** adding a station, placing the astronaut and moving the habitat are toggle buttons. While one is on, a banner on the map says what a click will do; Esc or changing tab turns it off, so a stray click never adds a station.
+- **Plain words:** "Sand detected", "Walking cost", "Radio coverage", "Never cross cells steeper than 30°", "Longest walk", "Reserve kept unused"; the piece codes stay in tooltips.
+- **Sized to the screen:** the opening zoom fits the study area to the stage (1366 to 1920 px wide), and under 860 px the map goes on top of the panel.
+
+Checks, all in headless Edge driven over the DevTools protocol:
+- the whole flow at 1366 × 768, 1920 × 1080 and 800 × 900 with no console errors;
+- a plan that cannot fit;
+- adding a station by a real click on the map, and Esc;
+- the radio link, *Rehearse it*, and arrow keys between tabs.
+
+The design rules applied by hand are those of the Impeccable skill pack (hierarchy, plain copy, no nested cards or glass panels, visible focus, numbered labels only for a real sequence) [Impeccable]; it was not installed.
+
+### Design critique and fixes (Impeccable, 2026-11-15)
+The redesigned HUD was reviewed with the Impeccable `critique` method [Impeccable]: one isolated design review (Nielsen heuristics, cognitive load, personas) and one isolated detector run (CLI and in-browser overlay). It scored **23/40** and found five priority issues, all fixed in the same PR:
+- **The safety envelope was illegible.** The red 30 min line sat on red "too steep" fill and the slope ramp's red end (1.26–1.37:1). Now red is kept for the return limit: the steep-cell layer is a near-black hatch (`api/raster_layers.blocked_layer`), the slope fades to 0.18 on the Walk tab, "out of reach with the energy left" is a dark shade over the area with the reachable region cut out, and sand moved from yellow (the ridge colour) to warm white.
+- **The plan was not framed.** After planning (and on *Rehearse it*) the map zooms to the walk with room for the legend, so the order labels show; *Fit plan* and *Whole area* sit on the map.
+- **Habitat and stale plans.** The habitat moved to the top of *Plan* (set on the map, back to the centre). Any change to the limits, stations, rubric or habitat after a plan dims the summary, swaps the ✓ for a dot and asks to plan again.
+- **Walk buried its answer.** A status block now opens the tab: time back against the 30 min line, energy spare after returning, and a meter. It is updated as the route plays or for a probed point; the probe controls fold under *Try another point*.
+- **Keyboard and screen readers.** Results, plan changes and the storm are announced in a live region. The map is focusable and shows a focus ring; with a placing mode on, arrows move a crosshair and Enter places. The tabs use roving tabindex with arrows, Home and End. Input borders are at 3:1. Enter in a limit field plans and Space plays. A removed station has *Undo*, and walkback and save errors are in words.
+
+Polish: dark `color-scheme` (scrollbars, native controls), themed selection, a stable scrollbar gutter, one stroked SVG icon set instead of Unicode glyphs, map labels in the interface face, one primary button per panel, a type scale of 13/16/20 px, and no 11 px text. The solar-storm alert now draws the fastest way home on the map (`POST /guide/return_home`). After the fixes the detector reports one finding, the hatch swatch in the legend (`repeating-gradient decorative stripes`). It is a false positive: the swatch mirrors the map's hatch. The critique report is archived in `.impeccable/critique/` (local, not in git).
+
 ### Multi-station tour (E5 on E4, `api/tour.py`)
 With stations and no explicit goal, `/plan` delegates to E5's `orienteering.tour.plan_tour(req, graph)` (Diana, in `main` since #37; #64 here). It passes the same shared E4 graph (E3 or human cost) and only renames the output for the HUD and the guide (the habitat is dropped from the visiting order).
 - E5 solves the tour exactly: a bitmask DP up to 20 nodes, CP-SAT (OR-Tools) above. Its limits are energy, service time, maximum EVA duration and O2. E4 gives the legs and the walkback is checked at every vertex; E5 re-plans if it fails.
