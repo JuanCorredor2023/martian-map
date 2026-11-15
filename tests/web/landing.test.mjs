@@ -81,6 +81,21 @@ test('the landing page opens the three app views and the demo page', () => {
   for (const want of ['/', '/3d/', '/guide.html', 'demo.html']) assert.ok(hrefs.includes(want), want);
 });
 
+test('the hero has one button, and it starts the demo at step 1 (#173)', () => {
+  const html = read('index.html');
+  const hero = html.match(/<section class="hero"[\s\S]*?<\/section>/)?.[0];
+  assert.ok(hero, 'hero section');
+  const buttons = hero.match(/<a[^>]*class="btn[^"]*"[^>]*>/g) ?? [];
+  assert.equal(buttons.length, 1, buttons.join('\n'));
+  assert.match(buttons[0], /href="demo\.html#step-1"/);
+  assert.match(read('demo.html'), /<article class="step" id="step-1"/);
+});
+
+test('step 1 of the demo opens the planner, so the tutorial can start there', () => {
+  const step1 = read('demo.html').match(/<article class="step" id="step-1"[\s\S]*?<\/article>/)?.[0];
+  assert.match(step1, /<a href="\/">/);
+});
+
 test('every image in assets/ is used by a page (no dead weight)', async () => {
   const { readdirSync } = await import('node:fs');
   const used = new Set(PAGES.flatMap(p => urls(read(p)).map(u => u.url)).filter(u => u.startsWith('assets/')));
