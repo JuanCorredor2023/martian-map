@@ -166,6 +166,8 @@ export function offsetSideways(dense, [first, last], offset, {window = 3, taper 
 //   goal     the station named by a 'goal' point (it keeps its own position and the
 //            colour of its type), or the goal point itself when it names no station
 //   station  every other 'station' point, coloured by type
+//   (a 'stop' point, which the E5 tour writes on the route for every station it visits,
+//   is not drawn apart when it names a station of the plan: that station's marker is it)
 //   point    anything else, grey
 // `stationTypes` ({id: type}, from GET /stations or the saved request) fills in the
 // type when the response does not carry it.
@@ -197,6 +199,8 @@ export function planMarkers(plan, stationTypes = {}) {
       if (props.station != null && stationIds.has(String(props.station))) continue;
       out.push({id: unique('goal'), x: p.x, y: p.y, kind: 'goal', label: 'Goal',
                 color: ROUTE_COLOR, data: props});
+    } else if (p.kind === 'stop' && props.id != null && stationIds.has(String(props.id))) {
+      continue;                                     // shown on that station's marker
     } else {
       out.push({id: unique(String(props.id ?? p.kind)), x: p.x, y: p.y, kind: 'point',
                 label: String(props.id ?? p.kind), color: UNKNOWN_COLOR, data: props});

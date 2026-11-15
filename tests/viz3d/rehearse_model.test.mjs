@@ -1,7 +1,7 @@
 // Rehearsal model of the 3D map. Run from the repo root:  node --test tests/viz3d/
 //
-// Fixtures: the same two real answers as plan_model.test.mjs (E4 round trip with the
-// profile; fixed route with no profile, first 400 vertices).
+// Fixtures: the same real answers as plan_model.test.mjs (E4 round trip with the
+// profile; fixed route with no profile, first 400 vertices; E5 tour of 8 stations).
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -11,7 +11,7 @@ import * as R from '../../web/3d/rehearse_model.js';
 import { loadRubric, requestWalkback, walkbackRequest } from '../../web/3d/api.js';
 
 const fixture = name => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
-const E4 = fixture('plan_e4.json'), FIXED = fixture('plan_fixed_route.json');
+const E4 = fixture('plan_e4.json'), FIXED = fixture('plan_fixed_route.json'), TOUR = fixture('plan_tour_e5.json');
 const DEG = Math.PI / 180;
 const close = (a, b, tol = 1e-6) => assert.ok(Math.abs(a - b) <= tol, `${a} vs ${b}`);
 
@@ -246,6 +246,67 @@ test('stops: a tour has several, taken from the answer; skipped stations are not
   // A goal point that names no station of the plan is a stop on its own.
   const lone = handRoute(coords, {turn: 30, points: [{x: coords[30][0], y: coords[30][1], properties: {kind: 'goal'}}]}).model;
   assert.deepEqual(lone.stops.map(s => [s.index, s.station.id, s.waitS]), [[30, 'Goal', 0]]);
+});
+
+test('real E5 tour: eight stops where the answer puts them, each with its 10 min of service', () => {
+  const {plan, route, model} = modelOf(TOUR), ts = route.profile.t_s;
+  const written = TOUR.features.filter(f => f.properties.kind === 'stop').map(f => f.properties);
+  assert.equal(model.assumedSpeed, null);
+  close(model.duration, 6686.7, 1e-9);
+  assert.deepEqual(model.stops.map(s => s.station.id), ['R3', 'R2', 'H2', 'H4', 'H0', 'R0', 'R4', 'R1']);
+  assert.deepEqual(model.stops.map(s => s.index), route.stops.map(s => s.index));
+  assert.deepEqual(model.stops.map(s => s.station.order), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.deepEqual(model.anchors, [0, ...route.stops.map(s => s.index), 1133]);
+  model.stops.forEach((stop, i) => {
+    // The wait is inferred from the profile (the step that arrives carries the service
+    // time); E5 also writes the arrival and departure times: they must agree.
+    close(stop.leave, ts[stop.index], 1e-9);
+    close(stop.leave, written[i].departure_time_s, 0.05);
+    close(stop.arrive, written[i].arrival_time_s, 0.6);            // measured: 0.46 s at most
+    close(stop.waitS, 600, 0.6);
+    assert.equal(stop.station.serviceMin, 10);
+    // On arrival and through the wait the walker stands on the stop's vertex.
+    for (const f of [0, 0.5, 0.999]) {
+      const s = model.stateAt(stop.arrive + f * stop.waitS);
+      assert.equal(s.standing, true, `stop ${stop.station.id} at ${f}`);
+      assert.equal(s.stop, stop);
+      close(s.x, route.coords[stop.index][0]); close(s.y, route.coords[stop.index][1]);
+      close(s.cx, s.x); close(s.cy, s.y);
+      close(s.profile.rv_wh, route.profile.rv_wh[stop.index], 1e-9);
+      assert.equal(R.progressText(model, s).includes(`at ${stop.station.id}`), true);
+    }
+    assert.equal(model.stateAt(stop.arrive - 0.5).standing, false);
+    assert.equal(model.stateAt(stop.leave).standing, false);
+    close(model.stateAt(stop.leave).profile.used_wh, route.profile.used_wh[stop.index], 1e-9);
+  });
+  // Stations the tour skipped are not stops, and no stop is the single goal of the route.
+  const skipped = plan.points.filter(p => p.kind === 'station' && p.properties.visited === false).map(p => String(p.properties.id));
+  assert.equal(skipped.length, 5);
+  assert.ok(model.stops.every(s => !skipped.includes(s.station.id)));
+  // Outbound until the walker leaves the last station, then returning to the habitat.
+  assert.equal(model.stateAt(model.stops[3].leave + 5).leg, 'outbound');
+  assert.equal(model.stateAt(model.stops[7].arrive + 300).leg, 'outbound');
+  assert.equal(model.stateAt(model.stops[7].leave + 5).leg, 'return');
+  assert.equal(R.progressText(model, model.stateAt(6000)), '100:00 of 111:27 · returning · 862 of 1392 m');
+  // Every vertex is where the profile says, with the answer's own values.
+  for (let i = 0; i < route.coords.length; i += 9) {
+    const s = model.stateAt(ts[i]);
+    close(s.x, route.coords[i][0]); close(s.y, route.coords[i][1]);
+    for (const key of P.PROFILE_KEYS) close(s.profile[key], route.profile[key][i], 1e-9);
+  }
+  const end = R.energyReadout(model.stateAt(model.end).profile, model.usableWh);
+  close(end.used, 447.5225, 1e-9); close(end.rv, 0, 1e-9);
+});
+
+test('walking the whole E5 tour: same limits as the round trip, through eight stops', () => {
+  const {route, model} = modelOf(TOUR);
+  const w = walk(model, route.coords, 0.1);
+  assert.ok(w.steps > 66000);
+  assert.ok(w.maxJump <= 0.095, `largest move in 0.1 s: ${w.maxJump} m`);           // measured 0.091
+  assert.ok(w.maxTurnPerM < 10, `heading turns ${w.maxTurnPerM} deg per metre`);    // measured 8.6
+  assert.ok(w.maxOff <= R.MAX_CUT, `camera path ${w.maxOff} m from the route`);     // measured 0.98
+  assert.ok(w.minEye >= R.MIN_EYE - 1e-9, `eye ${w.minEye} m above the ground`);
+  assert.ok(w.standingTurn < 1, `turn in one 0.1 s step at a stop: ${w.standingTurn} deg`);   // measured 0.41
 });
 
 test('energy bar and texts: the same numbers and words as the 2D planner', () => {
