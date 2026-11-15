@@ -180,8 +180,10 @@ test('1. free flight: drag, right-drag or Shift + drag, wheel and touch; ?drag=p
 });
 
 test('2. compass (face north) and home (reset the view)', () => {
-  present('compass', 'compass-needle');          // a <div> for now: #124 (c) makes it a button
-  buttons('home');
+  // Buttons, so the keyboard reaches them (#124 c); both are a picture alone, so each has a name.
+  buttons('compass', 'home');
+  present('compass-needle');
+  for (const id of ['compass', 'home']) assert.ok(element(id).attrs['aria-label'], `#${id} has no aria-label`);
   wired('compass', 'click', 'faceNorth');
   wired('home', 'click', 'controls\\.home');
 });
@@ -329,6 +331,10 @@ test('20. enter and leave the rehearsal', () => {
   present('player', 'rehearse-note');
   wired('rehearse', 'click');
   wired('rh-exit', 'click');
+  // Esc closes what is on top and pauses, but never leaves: leaving loses the end summary (#124 c).
+  const esc = methodWith('rehearse', /'Escape'/);
+  assert.match(esc, /\bthis\.pause\(/, 'web/3d/rehearse.js: Esc no longer pauses the rehearsal');
+  assert.doesNotMatch(esc, /\bthis\.exit\(/, 'web/3d/rehearse.js: Esc leaves the rehearsal, and loses the end summary');
 });
 
 test('21. player: play / pause (also Space), speed and position bar', () => {

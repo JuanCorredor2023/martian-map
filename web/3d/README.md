@@ -31,11 +31,19 @@ or press "Reload plan". With no saved plan the terrain still works.
 | Move | right-drag or Shift + drag | two fingers |
 | Zoom towards the point under the cursor | wheel | pinch (twist turns) |
 
-- Compass (top right): face north. House: back to the opening view.
+- Compass (top right, a button that the keyboard reaches too): face north. Under it, the frame
+  (four corners): back to the opening view. The house icon is only the rehearsal's "Return home".
 - **Relief slider**: ×1 is the DEM; ×1.5 to ×5 exaggerate only the local relief.
-- **Plan**: source, length, time, energy and warnings of the plan; "Reload plan";
-  "Rehearse the route". "Plan with default settings" appears only when there is no plan,
-  and makes the server plan and save (it replaces the last plan of the 2D planner).
+- **Plan**: where the plan comes from, length, time and energy; the plan's own messages in
+  plain words, with their numbers ("8 of 13 stations visited · science value 37 · order
+  R3 → R2 → …", "Left out, they do not fit in the limits: …", "Power used at the stations:
+  205 W (the planner's default)"); ⚠ in amber only for what needs a look (not feasible, no
+  route, a failed request, a point the planner moved, a sample route that is not a plan, a
+  message the page does not know). Which planner made it and the project codes the API
+  writes stay out of the panel (`planMessages` in `plan_model.js`; the source is in
+  `viz3d.plan`). "Reload plan"; "Rehearse the route". "Plan with default settings" appears
+  only when there is no plan, and makes the server plan and save (it replaces the last plan
+  of the 2D planner).
 - **Pins**: click one for its card; "Fly here" views it from 60 m. Stations a tour did not
   visit are dimmed. A station's card also shows the nearest rover photo within 150 m: how far
   and from which side it was taken, and whether the station is inside its field (orientation:
@@ -43,16 +51,21 @@ or press "Reload plan". With no saved plan the terrain still works.
   near, the card says so. At a rehearsal stop the card shows the same photo, without the button
   and without moving the walker or the clock.
 - **Guide** (the arm tablet's logic, shared in `web/guide_core.js`): the next maneuver
-  with its distance, voice on/off, the meters (energy left after returning, time back
-  against the 30 min line, radio, EVA time left against the plan's maximum duration, and,
-  once the walk has learned it, "Spare energy at your pace" with this astronaut's own
-  energy use, X2), a RETURN NOW alert when the way home no longer fits at that use,
+  with its distance, voice on/off, the tablet's meters with its labels ("Spare energy" after
+  walking home, "Time home (limit 30 min)", "Radio", "EVA time left" against the plan's
+  maximum duration and, once the walk has learned it, "Spare energy at your pace" with this
+  astronaut's own energy use, X2), each value with the tablet's state word before it (OK, LOW
+  or TURN BACK; OK, TURN SOON or OVER 30 MIN for the time home) and its bar in that state's
+  colour, a RETURN NOW alert when the way home no longer fits at that use (screen readers
+  announce it, as the storm alert),
   station tasks with "Done, continue", "Return home", "Detour" (demo: 25 m off the route,
   then rejoin), "Solar storm" (demo: automatic way home with the dose) and "Use ×k" (demo:
   the simulated energy use against the model, 1.0 / 1.2 / 1.5 / 0.8). A way home is
   drawn red and a rejoin orange; it replaces the walked route until "Exit".
 - **Rehearsal**: play / pause (space bar), ×1 to ×180, scrubber, "Chase view" (the astronaut
   seen from behind), drag to look around, double-click or "Recentre" to look forward, "Exit".
+  Esc closes what is on top (the card, or a message) and pauses; it never leaves the rehearsal,
+  which would lose the end summary: only "Exit" does.
   It pauses at every stop with the station's card; on pause it draws the walkback lines from
   there (red: 30 min return, cyan: energy-safe area). The relief is locked at ×1 and the Sun
   follows the EVA clock.
@@ -75,8 +88,16 @@ or press "Reload plan". With no saved plan the terrain still works.
   says the speed and how far the route is. Space and the photo view's Escape are not used.
   Leaving puts the free-flight view, the relief and the route lines back as they were.
 - **Sun**: Curiosity sol, local true solar time, "Relief only" (hide the photo), "Shadows".
+  The Sun opens at 15:00 and, once a plan is drawn, moves to that plan's best time to leave,
+  the one the 2D planner shows under the plan (`GET /plan/departure` for the sol shown; 11:00
+  for its 120 min tour on sol 4711), and the note says so. It stays where it is if the sol or
+  the time was moved first, during a rehearsal or a photo view, with `?lt=`, or when the
+  planner gives no best time. The readout says how high the Sun is and where the light comes
+  from ("Sun 44° high, light from the west"); its tooltip has the exact height, the compass
+  bearing (azimuth) and the season (Ls).
 - **Map layer**: one layer of the 2D planner draped on the terrain, Off by default: Radio
-  coverage (E11), Slope, Too steep to cross, Sand (E8), Walking cost (E3) or Boulders (E9), with the
+  coverage, Slope, Too steep to cross, Sand detected, Walking cost or Boulders (the 2D's names;
+  the hover texts are the 2D's without its codes E11, E8, E3 and E9), with the
   2D's images, opacity slider, legend and note. The radio is seen from the plan's habitat (else
   its start, else the box centre) and the steep cells are those over the plan's own limit.
   Nothing is asked from the server until a layer is picked; one the server cannot give says
@@ -104,7 +125,7 @@ All optional; they combine with `&`.
 | `k=1..5` | relief exaggeration at the start, in steps of 0.5 (default 2) |
 | `view=x,y,z,heading,pitch` | where the camera starts: Mars CRS metres, elevation of the camera in metres (DEM datum), heading from north and pitch below the horizon in degrees. Example (the opening view): `view=8143537.49,-286459.66,-2146.25,0,37` |
 | `sol=4711` | Curiosity sol whose Sun lights the scene (default 4711) |
-| `lt=15:00` | local true solar time at the box centre (default 15:00) |
+| `lt=15:00` | local true solar time at the box centre (default: the plan's best time to leave, else 15:00; with `lt` the planner is not asked) |
 | `shadows=0` | start without cast shadows |
 | `light=az,el` | debug: a fixed light direction in degrees instead of the Sun |
 | `drag=pan` | map-style mouse: drag moves, right-drag rotates |
@@ -119,7 +140,9 @@ All optional; they combine with `&`.
 `/3d/?check=<name>` runs a measurement in the running page and shows the result (also in
 `viz3d.checkResult` and the console). Add `&q=low` for the low preset. They ask nothing
 from the server (but `guide`, as its row says; `layers` only GETs the images and info JSON
-the 2D asks for, which changes nothing there) and leave the page as they found it.
+the 2D asks for, which changes nothing there) and leave the page as they found it. With a
+check in the address the page does not ask for the best time to leave: the Sun starts at
+15:00 (or `?lt=`), so a check gives the same answer whatever the plan.
 
 | Name | What it answers |
 |---|---|
@@ -146,7 +169,7 @@ plan answer without touching the server (how the test fixtures were looked at).
 | `terrain.js` | loads the assets, builds the meshes, heights, CRS ↔ scene coordinates, relief factor |
 | `controls.js` | free-flight camera (arcball on the terrain), `flyTo` |
 | `camera_math.js` | the camera's maths: axes, orbit, pan, zoom, ray against the heights |
-| `api.js` | the requests: saved plan, default plan, rubric, walkback |
+| `api.js` | the requests: saved plan, default plan, rubric, walkback, best time to leave |
 | `plan_model.js` | plan answer → routes, points, profile, markers |
 | `overlays.js` | route and walkback lines draped on the mesh |
 | `markers.js` | pins and the habitat dome; picking |
@@ -163,8 +186,8 @@ plan answer without touching the server (how the test fixtures were looked at).
 | `walk.js` | the "Walk freely" mode: keys, mouse capture, arrow pad, camera, the route as a path and the stations as rings |
 | `astronaut.js` | the walker of the chase views: an astronaut of a few three.js shapes that turns and swings its legs |
 | `mars_sun.js` | Mars24: where the Sun is for a UTC instant; sols and local times |
-| `sun_model.js` | sol and local time → light direction, light levels, panel texts |
-| `sun.js` | the lights, the sky colour, the Sun section, "Relief only" |
+| `sun_model.js` | sol and local time → light direction, light levels, panel texts; the best time to leave out of the planner's answer |
+| `sun.js` | the lights, the sky colour, the Sun section and its start at the best time to leave, "Relief only" |
 | `shadow_fit.js` | the box the shadow map must cover for a Sun direction |
 | `shadows.js` | cast shadows: when the shadow map is drawn again |
 | `view_link.js` | `?view=`: a free-flight view as text, and the link that carries it |
@@ -184,7 +207,9 @@ python -m pytest tests/viz3d -q     # the terrain assets against the DEM
 ```
 
 `map_layers_model.test.mjs` also fails if a legend string copied from the 2D is no longer in
-`web/index.html`, or if the slope tile colours of `src/gis/tiles.py` change.
+`web/index.html`, if a layer's name or hover text is no longer the 2D's words (less its
+codes), or if the slope tile colours of `src/gis/tiles.py` change. `plan_model.test.mjs`
+checks the plain words of the plan's messages on the three real answers.
 
 Fixtures in `tests/viz3d/fixtures/` are real answers of the API: an E4 round trip, the
 fixed route with no profile, and a multi-station E5 tour
@@ -193,7 +218,8 @@ fixed route with no profile, and a multi-station E5 tour
 ## Rover photos (P3)
 
 Curiosity Navcam photos placed where the camera was (issue #46): the pins, cards and photo
-view above read what this step builds. Without it the page works and says how to build it. Method,
+view above read what this step builds. Without it the page works and says there are no photos;
+this section says how to build them. Method,
 numbers and limits: `paper/notes/P3_rover_photos.md`.
 
 `<raw>` below is the full data folder outside the repo (`data/README.md`). From the repo

@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import * as P from '../../web/3d/plan_model.js';
 import * as R from '../../web/3d/rehearse_model.js';
 import { loadRubric, requestWalkback, walkbackRequest } from '../../web/3d/api.js';
+import * as G from '../../web/guide_core.js';
 
 const fixture = name => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
 const E4 = fixture('plan_e4.json'), FIXED = fixture('plan_fixed_route.json'), TOUR = fixture('plan_tour_e5.json');
@@ -333,6 +334,21 @@ test('energy bar and texts: the same numbers and words as the 2D planner', () =>
   assert.equal(R.clock(59.6), '1:00');                       // the 2D planner would write 0:60
   // With no usable budget in the answer there is no bar, and nothing breaks.
   assert.equal(R.energyReadout(model.stateAt(0).profile, null), null);
+  // On arrival the time to return can come out a hair under zero: 0.0, never "-0.0" (#124).
+  assert.equal(R.energyReadout({used_wh: 447.5, rv_wh: 0, o2_used_l: 80, rv_time_s: -1e-9}, 900).lines[1],
+               'O₂ used 80.0 L (metabolic equivalent) · back in 0.0 min');
+});
+
+test('time home: the words of the tablet meter, from its seconds, never "home in -0.0 min"', () => {
+  // guide_core's meters() of the same E4 answer, as the rehearsal reads them (back.s, back.text).
+  const r = G.routeFromPlan({plan: E4});
+  for (const i of [0, 1, 250, 535, 536, 800, r.coords.length - 1]) {
+    const back = G.meters(r, i).back;
+    assert.equal(R.homeInText(back.s), back.text);
+  }
+  assert.equal(R.homeInText(754), 'home in 12.6 min');
+  assert.equal(R.homeInText(-1e-9), 'home in 0.0 min');      // toFixed alone writes "-0.0"
+  assert.equal(R.homeInText(-0), 'home in 0.0 min');
 });
 
 test('a way home of one point (Return home or the storm pressed at the habitat): the walker stands there', () => {

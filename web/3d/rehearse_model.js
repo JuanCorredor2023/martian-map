@@ -419,6 +419,17 @@ export function eyeAltitude(ground, d, length) {
   return Math.max(sum / count + EYE_HEIGHT, ground(d) + MIN_EYE);
 }
 
+// Minutes with one decimal, never "-0.0": on arrival the time left to walk can come out a
+// hair under zero (rounding), and toFixed writes that as "-0.0" (#124).
+const minutesText = seconds => (Math.max(0, seconds) / 60).toFixed(1);
+
+// The value of the guide's "Time home" meter, in guide_core's words ("home in 12.3 min",
+// meters().back.text), written here from its seconds (meters().back.s) so that the 3D
+// never shows "home in -0.0 min".
+export function homeInText(seconds) {
+  return `home in ${minutesText(seconds)} min`;
+}
+
 // Energy bar and its text for the values of a state, with the 2D planner's arithmetic
 // and wording (showRouteIdx in web/index.html). values: state.profile; usable in Wh.
 // Returns null when there is nothing to show.
@@ -430,7 +441,7 @@ export function energyReadout(values, usable) {
                  `free ${free.toFixed(0)} of ${usable.toFixed(0)} Wh`];
   const more = [];
   if (values.o2_used_l != null) more.push(`O₂ used ${values.o2_used_l.toFixed(1)} L (metabolic equivalent)`);
-  if (values.rv_time_s != null) more.push(`back in ${(values.rv_time_s / 60).toFixed(1)} min`);
+  if (values.rv_time_s != null) more.push(`back in ${minutesText(values.rv_time_s)} min`);
   if (more.length) lines.push(more.join(' · '));
   return {used, rv, free, usable, usedPct: pct(used), rvPct: pct(rv), freePct: pct(free), lines,
           energyLeft: Math.round(usable - used)};

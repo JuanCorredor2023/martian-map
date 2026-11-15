@@ -4,7 +4,9 @@
 // local true solar time (sun_model.js, mars_sun.js), and the light levels follow its
 // height. This file owns the two lights, the sky colour, the "Sun" section of the
 // panel and the "Relief only" switch; the numbers are in sun_model.js.
-//   - Start: sol 4711 at 15:00 unless the address says ?sol=<n>&lt=<hh:mm>.
+//   - Start: sol 4711 at 15:00 unless the address says ?sol=<n>&lt=<hh:mm>. Once a plan
+//     is drawn, the start moves to the plan's best time to leave, the one the 2D planner
+//     shows (startAtBestTime(), GET /plan/departure), unless the address sets the time.
 //   - While the route is rehearsed the Sun moves with the EVA clock (follow()), and
 //     goes back to the start when the rehearsal ends.
 //   - ?light=az,el (debug) fixes the light as before this block: the Sun is not used.
@@ -13,6 +15,7 @@
 // mid-afternoon light under the one added here ("Relief only" hides the photo to judge
 // the light).
 import * as THREE from 'three';
+import { loadDeparture } from './api.js';
 import * as M from './sun_model.js';
 
 const DISTANCE = 5000;                 // m from the origin: only the direction matters
@@ -23,12 +26,15 @@ const el = id => document.getElementById(id);
 
 export class SunView {
   // sun: the DirectionalLight; hemi: the HemisphereLight; sky: the scene's sky colour
-  // (number); fixed: [azimuth, elevation] from ?light, or null; start: {sol, hours};
-  // onChange(): something to draw.
+  // (number); fixed: [azimuth, elevation] from ?light, or null; start: {sol, hours}, each
+  // given only when the address sets it; onChange(): something to draw.
   constructor({terrain, scene, sun, hemi, sky, fixed = null, start = {}, onChange = () => {}}) {
     Object.assign(this, {terrain, scene, sun, hemi, fixed, onChange});
     this.site = M.siteFromCrs(...terrain.toMars(0, 0));
     this.start = {sol: start.sol ?? M.DEFAULT_SOL, hours: start.hours ?? M.DEFAULT_HOURS};
+    this.timeFromAddress = start.hours != null;         // ?lt= wins over the planner's time
+    this.best = null;                  // the planner's best time to leave {sol, hours}, once it answers
+    this.chosen = false;               // the sol or the time was set in the panel
     this.elapsed = null;               // seconds of EVA while rehearsing, else null
     this.state = null;                 // sun_model.sunState() of what is lit (null with ?light)
     this.reliefOnly = false;
@@ -40,13 +46,18 @@ export class SunView {
     el('sun-sol').max = M.MAX_SOL;
     el('sun-sol').addEventListener('change', e => {
       const sol = M.parseSol(e.target.value);
+      if (sol !== null) this.chosen = true;
       this.set({sol: sol === null ? this.start.sol : sol});            // not a sol: the field goes back
     });
-    el('sun-time').addEventListener('input', e => this.set({hours: Number(e.target.value) / 60}));
+    el('sun-time').addEventListener('input', e => {
+      this.chosen = true;
+      this.set({hours: Number(e.target.value) / 60});
+    });
     el('relief-only').addEventListener('change', e => this.setReliefOnly(e.target.checked));
     if (fixed) {
       for (const id of ['sun-sol', 'sun-time']) el(id).disabled = true;
-      el('sun-readout').textContent = `Light fixed from azimuth ${fixed[0]}°, ${fixed[1]}° high.`;
+      el('sun-readout').textContent = `Light fixed from the ${M.compassWord(fixed[0])} (${fixed[0]}° from north), ` +
+                                      `${fixed[1]}° high.`;
       el('sun-note').textContent = 'The address has ?light= (debug): the Sun of Mars is not used.';
     }
     this._apply();
@@ -56,6 +67,29 @@ export class SunView {
   set({sol = this.start.sol, hours = this.start.hours} = {}) {
     this.start = {sol: Math.min(M.MAX_SOL, Math.max(0, Math.round(sol))), hours: ((hours % 24) + 24) % 24};
     this._apply();
+  }
+
+  // Start at the plan's best time to leave, as the 2D planner gives it (GET
+  // /plan/departure for the sol shown; main.js calls this once a plan is drawn, with that
+  // plan). Nothing waits for the answer. The start moves only if nothing has moved the
+  // Sun in the meantime (the panel, a photo view, a rehearsal); otherwise the note just
+  // says the best time. Nothing changes with ?lt= or ?light= in the address, with no
+  // plan, or when the planner gives no best time: the start stays (15:00 by default).
+  // ask(sol) is the request (api.js). Resolves to true when the start moved.
+  async startAtBestTime(plan, {ask = loadDeparture} = {}) {
+    if (this.fixed || this.timeFromAddress || !(plan && plan.fc)) return false;
+    const asked = {...this.start};
+    const hours = M.bestDeparture(await ask(asked.sol), asked.sol);
+    if (hours === null) {
+      if (this.best) { this.best = null; this._apply(); }               // an older answer no longer holds
+      return false;
+    }
+    this.best = {sol: asked.sol, hours};
+    const moved = this.chosen || this.elapsed !== null || this.start.sol !== asked.sol ||
+                  Math.abs(this.start.hours - asked.hours) > 1e-6;
+    if (moved) { this._apply(); return false; }
+    this.set({hours});
+    return true;
   }
 
   // Rehearsal: seconds of EVA since its start, or null when it is over.
@@ -107,8 +141,9 @@ export class SunView {
     el('sun-time').value = Math.round((rehearsing ? s.ltst : this.start.hours) * 60);
     show('sun-time-text', M.clockText(rehearsing ? s.ltst : this.start.hours));
     show('sun-readout', M.readoutText(s));
-    show('sun-note', (rehearsing ? `Following the EVA clock: it started at ${M.clockText(this.start.hours)}. ` : '') +
-                     `On Earth: ${M.utcText(s.utcMs)}.`);
+    const exact = M.readoutTitle(s);                                    // the numbers, as a tooltip
+    if (el('sun-readout').title !== exact) el('sun-readout').title = exact;
+    show('sun-note', M.noteText({...this.start, rehearsing, best: this.best, utcMs: s.utcMs}));
     this.onChange();
   }
 }

@@ -2,8 +2,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { loadDeparture } from '../../web/3d/api.js';
 import { SOL_IN_SECONDS, sunPosition } from '../../web/3d/mars_sun.js';
 import * as M from '../../web/3d/sun_model.js';
+import { viewLink } from '../../web/3d/view_link.js';
 
 const close = (a, b, tol = 1e-9, what = '') => assert.ok(Math.abs(a - b) <= tol, `${what} ${a} vs ${b}`);
 // Centre of the study box (AGENTS.md, contract table).
@@ -68,7 +70,9 @@ test('default afternoon: sol 4711 at 15:00 is lit from the west at full level', 
   assert.equal(s.sun, M.SUN_FULL);
   assert.equal(s.sky, M.SKY_DAY);
   assert.ok(s.direction[0] < 0 && s.direction[1] > 0 && s.direction[2] < 0);           // west, up, a little north
-  assert.equal(M.readoutText(s), 'Sun 44° above the horizon · light from the west (azimuth 282°) · Ls 167°');
+  assert.equal(M.readoutText(s), 'Sun 44° high, light from the west');
+  assert.equal(M.readoutTitle(s), 'The Sun is 43.9° above the horizon, 282.3° clockwise from north (azimuth). ' +
+                                  "Season: 167.4° round Mars's orbit from the start of northern spring (solar longitude, Ls).");
   assert.equal(M.utcText(s.utcMs), '2025-11-06 16:52 UTC');
 });
 
@@ -80,8 +84,20 @@ test('morning from the east, afternoon from the west, noon on the meridian, nigh
   assert.ok(at(12).elevation > at(11).elevation && at(12).elevation > at(13).elevation);
   const night = at(21);
   assert.ok(night.night && night.sun === 0 && night.sky === M.SKY_NIGHT);
-  assert.match(M.readoutText(night), /^Night: the Sun is below the horizon \(45° under it\) · Ls 16[78]°$/);
-  assert.match(M.readoutText(at(18)), /^Night: the Sun is below the horizon \(1° under it\)/);
+  assert.equal(M.readoutText(night), 'Night: the Sun is 45° below the horizon');
+  assert.match(M.readoutTitle(night), /^The Sun is 45\.2° below the horizon\. Season: 167\.5° round Mars's orbit/);
+  assert.equal(M.readoutText(at(18)), 'Night: the Sun is 1° below the horizon');             // 0.45° under it
+  assert.equal(M.readoutText(at(11)), 'Sun 72° high, light from the north-east');
+});
+
+test('the readout says it in plain words at every time of the sol; the numbers stay in its tooltip', () => {
+  for (let minute = 0; minute < 1440; minute += 5) {
+    const s = M.sunState({sol: 4711, hours: minute / 60}, SITE), text = M.readoutText(s);
+    assert.doesNotMatch(text, /azimuth|\bLs\b/i, `${M.clockText(minute / 60)}: ${text}`);
+    assert.match(text, s.night ? /^Night: the Sun is \d+° below the horizon$/
+                               : /^Sun \d+° high, light from the (north|east|south|west|north-east|south-east|south-west|north-west)$/);
+    assert.match(M.readoutTitle(s), /\(solar longitude, Ls\)\.$/);
+  }
 });
 
 test('rehearsal: the Sun advances with the elapsed EVA time from the chosen start', () => {
@@ -97,4 +113,83 @@ test('rehearsal: the Sun advances with the elapsed EVA time from the chosen star
   // The state is the Sun of mars_sun.js at that instant, nothing else.
   const p = sunPosition(later.utcMs, SITE);
   assert.deepEqual([later.elevation, later.azimuth, later.ls], [p.elevation, p.azimuth, p.ls]);
+});
+
+// ---- the plan's best time to leave (GET /plan/departure, #124) ------------------------
+// An answer for the 120 min E5 tour on sol 4711, in the shape of api/departure.py, with the
+// times that tests/api/test_departure_api.py asserts (best 11:00, all lit 06:45-15:15);
+// the 57 rows are left out.
+const DEPARTURE = {
+  sol: 4711, duration_min: 111.4, habitat_lon_east_deg: 137.3864, habitat_lat_deg: -4.7991,
+  clock: 'local true solar time at the habitat (start_lmst_h: local mean solar time, the mission clock)',
+  step_min: 15, lit_window_ltst_h: [6.75, 15.25],
+  best: {start_ltst_h: 11, start_lmst_h: 10.367, end_ltst_h: 12.876, sunlit_share: 1, shadow_share: 0, dark_share: 0,
+         min_sun_elevation_deg: 71.8, longest_unlit_min: 0},
+  best_clock: '11:00', best_mission_clock: '10:22', lit_window_clock: ['06:45', '15:15'], rows: [],
+};
+const answer = (best, more = {}) => ({...DEPARTURE, best: best === null ? null : {...DEPARTURE.best, ...best}, ...more});
+
+test('the best time to leave is read from the planner\'s answer, and only from a usable one', () => {
+  assert.equal(M.DEFAULT_HOURS, 15);                                      // the start without it
+  assert.equal(M.bestDeparture(DEPARTURE, 4711), 11);
+  assert.equal(M.bestDeparture(answer({start_ltst_h: 6.75}), 4711), 6.75);
+  assert.equal(M.bestDeparture(answer({start_ltst_h: 10.2499}), 4711), 10.25);          // to the minute
+  assert.equal(M.bestDeparture(answer({sunlit_share: 0.37}), 4711), 11);                // partly lit: still the best there is
+  // The clock text when the hours are missing.
+  assert.equal(M.bestDeparture(answer({start_ltst_h: undefined}), 4711), 11);
+  assert.equal(M.bestDeparture(answer({start_ltst_h: undefined}, {best_clock: '07:30'}), 4711), 7.5);
+  // Nothing usable: the start stays as it is.
+  for (const bad of [null, undefined, '', 'eleven', 11, [], {}, {detail: 'no plan yet: plan an EVA in the HUD first'}]) {
+    assert.equal(M.bestDeparture(bad, 4711), null, JSON.stringify(bad));
+  }
+  assert.equal(M.bestDeparture(DEPARTURE, 4712), null);                   // an answer for another sol
+  assert.equal(M.bestDeparture(answer(null), 4711), null);                // no best departure
+  assert.equal(M.bestDeparture(answer({sunlit_share: 0}), 4711), null);   // no sunlight at all on the walk
+  for (const hours of [-0.25, 24, 25, NaN, Infinity, '11']) {
+    assert.equal(M.bestDeparture(answer({start_ltst_h: hours}, {best_clock: null}), 4711), null, String(hours));
+  }
+  assert.equal(M.bestDeparture(answer({start_ltst_h: undefined}, {best_clock: '24:00'}), 4711), null);
+});
+
+test('a start at the best time travels in a view link and comes back the same', () => {
+  // Every departure the planner tries: 05:00 to 19:00 every 15 min (api/departure.py).
+  for (let quarter = 20; quarter <= 76; quarter++) {
+    const hours = M.bestDeparture(answer({start_ltst_h: quarter / 4}), 4711);
+    const link = viewLink('http://localhost:8000/3d/', '', {view: '1,2,3,4,5', sol: 4711, lt: M.clockText(hours)});
+    const back = new URL(link).searchParams;
+    assert.equal(M.parseClock(back.get('lt')), hours, link);
+    assert.equal(M.parseSol(back.get('sol')), 4711);
+  }
+});
+
+test('the note says when the start is the planner\'s best time to leave, in plain words', () => {
+  const utcMs = M.sunState({sol: 4711, hours: 11}, SITE).utcMs, best = {sol: 4711, hours: 11};
+  const earth = 'On Earth: 2025-11-06 12:45 UTC.';
+  assert.equal(M.utcText(utcMs), '2025-11-06 12:45 UTC');
+  assert.equal(M.noteText({sol: 4711, hours: 11, best, utcMs}), `Starts at the best time to leave, 11:00, as the planner suggests. ${earth}`);
+  assert.equal(M.noteText({sol: 4711, hours: 15, best, utcMs}), `The planner suggests leaving at 11:00. ${earth}`);
+  assert.equal(M.noteText({sol: 4711, hours: 11, rehearsing: true, best, utcMs}),
+               `Following the EVA clock: it started at 11:00, the best time to leave. ${earth}`);
+  assert.equal(M.noteText({sol: 4711, hours: 15, rehearsing: true, best, utcMs}), `Following the EVA clock: it started at 15:00. ${earth}`);
+  // The slider moves in whole minutes: 11:00 set by hand is the best time again.
+  assert.equal(M.noteText({sol: 4711, hours: 660 / 60, best: {sol: 4711, hours: 11.004}, utcMs}),
+               `Starts at the best time to leave, 11:00, as the planner suggests. ${earth}`);
+  // Another sol than the one asked, or no best time: the note is as before.
+  assert.equal(M.noteText({sol: 4712, hours: 11, best, utcMs}), earth);
+  assert.equal(M.noteText({sol: 4711, hours: 15, utcMs}), earth);
+  assert.equal(M.noteText({sol: 4711, hours: 15, rehearsing: true, utcMs}), `Following the EVA clock: it started at 15:00. ${earth}`);
+});
+
+test('GET /plan/departure: the answer, or null without a plan, a clock or a server', async () => {
+  const urls = [];
+  const server = (status, body) => async url => { urls.push(url); return {ok: status < 400, status, json: async () => body}; };
+  assert.deepEqual(await loadDeparture(4711, {fetchFn: server(200, DEPARTURE)}), DEPARTURE);
+  assert.deepEqual(urls, ['/plan/departure?sol=4711']);
+  assert.equal(M.bestDeparture(await loadDeparture(4600, {fetchFn: server(200, {...DEPARTURE, sol: 4600})}), 4600), 11);
+  assert.equal(urls[1], '/plan/departure?sol=4600');
+  assert.equal(await loadDeparture(4711, {fetchFn: server(404, {detail: 'no plan yet: plan an EVA in the HUD first'})}), null);
+  assert.equal(await loadDeparture(4711, {fetchFn: server(422, {detail: 'the last plan has no timed route'})}), null);
+  assert.equal(await loadDeparture(0, {fetchFn: server(422, {detail: [{msg: 'Input should be greater than or equal to 1'}]})}), null);
+  assert.equal(await loadDeparture(4711, {fetchFn: async () => { throw new Error('offline'); }}), null);
+  assert.equal(await loadDeparture(4711, {fetchFn: async () => ({ok: true, status: 200, json: async () => { throw new Error('not JSON'); }})}), null);
 });

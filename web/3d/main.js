@@ -6,7 +6,8 @@
 //   plan=default    ask the server for a plan with the default settings on load, as the
 //                   "Plan with default settings" button does (see api.js)
 //   sol=4711        Curiosity sol whose Sun lights the scene (default 4711; sun.js)
-//   lt=15:00        local true solar time at the box centre (default 15:00)
+//   lt=15:00        local true solar time at the box centre (default: the plan's best
+//                   time to leave from GET /plan/departure, else 15:00)
 //   light=az,el     debug: a fixed light direction in degrees (azimuth from north towards
 //                   east, elevation) instead of the Sun of Mars
 //   shadows=0       start without cast shadows (the Sun section has the switch; shadows.js)
@@ -27,7 +28,7 @@ import { hideCard, showCard, stationCard } from './card.js';
 import { TerrainControls } from './controls.js';
 import { MarkerLayer } from './markers.js';
 import { GroundLines, RouteOverlay } from './overlays.js';
-import { mainRoute, parsePlan, planMarkers } from './plan_model.js';
+import { mainRoute, parsePlan, planMarkers, planMessages } from './plan_model.js';
 import { Rehearsal } from './rehearse.js';
 import { Shadows } from './shadows.js';
 import { SunView } from './sun.js';
@@ -57,7 +58,8 @@ function sunDirection(azDeg, elDeg) {
 }
 
 // Centred message box. It can always be closed: the cross, the Escape key or a
-// click outside it.
+// click outside it. An Escape that closes it is marked as used (defaultPrevented), so
+// that the rehearsal, which also listens to Escape, only pauses (rehearse.js).
 function showMessage(html) {
   const box = ui('message');
   box.innerHTML = `<button id="message-close" title="Close (Esc)" aria-label="Close">×</button>${html}`;
@@ -67,7 +69,11 @@ function showMessage(html) {
 
 function hideMessage() { ui('message').hidden = true; }
 
-window.addEventListener('keydown', e => { if (e.key === 'Escape') hideMessage(); });
+window.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || ui('message').hidden) return;
+  hideMessage();
+  e.preventDefault();
+});
 window.addEventListener('pointerdown', e => {
   if (!ui('message').hidden && !ui('message').contains(e.target)) hideMessage();
 });
@@ -300,8 +306,8 @@ async function main() {
                                     isBusy: busy});
       const got = await layer.load();
       if (!got.ok) {
-        photosNote(`No rover photos: ${got.error}. The rest of the map works without them ` +
-                   '(web/3d/README.md, "Rover photos", says how to build them).');
+        // How to build them: web/3d/README.md, "Rover photos" (for the team, not on screen).
+        photosNote(`No rover photos: ${got.error}. The rest of the map works without them.`);
         return;
       }
       photos = layer;
@@ -361,10 +367,11 @@ async function main() {
     window.viz3d.plan = {...got, model};
     window.viz3d.mapLayers?.setPlan(model);    // the radio antenna and the steep limit follow the plan
 
+    // Which planner made it (model.properties.source, e.g. "E5 tour (live, ...)") is for
+    // the team: it stays in viz3d.plan, not on screen (#124).
     const route = model && mainRoute(model), facts = [], warnings = ui('plan-warnings');
-    const origin = model && model.properties.source ? ` (${model.properties.source})` : '';
     ui('plan-source').textContent =
-      got.source === 'last' ? `Last plan from the planner${origin}`
+      got.source === 'last' ? 'Last plan from the planner'
       : got.source === 'default' ? "Default request: saved stations, the planner's default limits, start at the box centre"
       : got.fc ? 'Plan given to the page'
       : got.missing ? 'No plan yet: plan an EVA in the 2D planner, then press Reload plan'
@@ -392,7 +399,12 @@ async function main() {
     if (got.error) line(warnings, 'warn', got.error);
     if (model && !route) line(warnings, 'warn', 'The plan has no route.');
     if (route && route.totals.feasible === false) line(warnings, 'warn', '⚠ Not feasible within the limits');
-    for (const w of (model ? model.warnings : [])) line(warnings, 'warn', `⚠ ${w}`);
+    // The answer's messages in plain words (plan_model.js): what only describes the plan is
+    // a plain line; ⚠ and amber stay for what needs a look.
+    for (const m of planMessages(model ? model.warnings : [])) {
+      if (m.warn) line(warnings, 'warn', `⚠ ${m.text}`);
+      else line(warnings, 'muted plan-note', m.text);
+    }
     for (const n of (model ? model.notes : [])) line(warnings, 'warn', `Ignored: ${n}`);
     dirty = true;
   }
@@ -407,6 +419,10 @@ async function main() {
     } finally {
       ui('plan-reload').disabled = ui('plan-default').disabled = false;
     }
+    // Then the Sun moves to this plan's best time to leave (sun.js), on the first plan and
+    // on every reload, without holding the page; not with ?check=: a check must give the
+    // same answer whatever the planner says.
+    if (!params.get('check')) void sunView.startAtBestTime(window.viz3d.plan);
   }
   const reloadPlan = () => fetchPlan('Loading the saved plan…', () => loadLastPlan());
   const planDefault = () => fetchPlan('Planning with the default settings… (about 10 s the first time)',

@@ -99,6 +99,50 @@ export function parsePlan(fc) {
 // The planned route of a parsed plan (the first line of kind 'route'), or null.
 export const mainRoute = plan => plan.routes.find(r => r.kind === 'route') || null;
 
+// The plan's messages (properties.warnings) as they are written in the API, and how the
+// panel says them. The API writes them for the team, with project codes and engine names
+// ("E5 tour: 8 of 13 stations, prize 37 (order R3 > R2 > …)", "service power assumed
+// 205 W (E4 default)"). One that only says what the plan is, or how the planner made it,
+// becomes a plain line with all its numbers (warn false); the 2D HUD keeps the first four
+// out of its warnings too (PLAN_NOTES in web/index.html). One that may need a look stays a
+// warning (warn true): a sample route that is not a plan, a feasibility it cannot tell.
+const PLAN_MESSAGES = [
+  // api/main.py _plan_tour (E5 tour)
+  {re: /^E5 tour: (\d+) of (\d+) stations(?:, prize (\S+))?(?: \(order (.+)\))?$/,
+   plain: (n, of, value, order) => [`${n} of ${of} stations visited`, value && `science value ${value}`,
+                                    order && `order ${order.split(' > ').join(' → ')}`].filter(Boolean).join(' · ')},
+  {re: /^not visited within the limits: (.+)$/, plain: ids => `Left out, they do not fit in the limits: ${ids}`},
+  // api/main.py _plan_tour and _plan_live (E4 round trip)
+  {re: /^service power assumed (\S+) W \(E4 default\)$/,
+   plain: w => `Power used at the stations: ${w} W (the planner's default)`},
+  {re: /^single-goal round trip to the best-scoring station ([^;]+?)(?:;.*)?$/,
+   plain: id => `Round trip to ${id} (highest science value)`},
+  // src/orienteering/tour.py and api/tour.py (E5)
+  {re: /^O2 budget is the tighter limit: (\S+) Wh of (\S+) usable$/,
+   plain: (o2, usable) => `Oxygen is the tighter limit: it allows ${o2} Wh of the ${usable} Wh usable`},
+  {re: /^walkback: re-planned (\d+) time\(s\) with a lower budget$/,
+   plain: n => `Planned again ${n} ${n === '1' ? 'time' : 'times'} with less energy, so the astronaut can get back from every point`},
+  // api/main.py plan(): no stations and no goal
+  {re: /^fixed test route \(Curiosity trajectory\)/, warn: true,
+   plain: () => "Sample route (Curiosity's path), not a plan: add stations in the 2D planner to plan a walk"},
+  {re: /^service_energy_wh_per_min is null\b/, warn: true,
+   plain: () => 'The energy for the work at the stations is not given, so the plan cannot be called energy-feasible'},
+];
+
+// The plan's messages as lines of the plan panel: [{text, warn}], in the API's order. A
+// message not listed above is shown as the API wrote it, as a warning (a point the planner
+// moved, a new message), so nothing is hidden.
+export function planMessages(warnings) {
+  return (Array.isArray(warnings) ? warnings : []).map(message => {
+    const text = String(message);
+    for (const {re, plain, warn = false} of PLAN_MESSAGES) {
+      const m = re.exec(text);
+      if (m) return {text: plain(...m.slice(1)), warn};
+    }
+    return {text, warn: true};
+  });
+}
+
 // Split every segment so that no step is longer than maxStep metres. The original
 // vertices are all kept. For every new vertex:
 //   at[i]   fractional index into the original vertices (2.25 = a quarter of the way
