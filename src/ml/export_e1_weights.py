@@ -8,7 +8,9 @@ Rasters are given relative to the feature directory of
 src/fisica/build_cost_layers.py (by default the DEM's folder, data/base/).
 
 Which weights are handed over: the per-sol models at 1 m (fit_irl.py and
-validate_irl.py with --features dem, sand and dem_sand) are the candidates.
+validate_irl.py with --features dem, sand, dem_sand, rocks and sand_rocks) are
+the candidates; the rocks models use the E9 student layer (rocas.tif), the
+teacher run is only a sensitivity check.
 Only a model whose terrain prices beat the distance-only control on held-out
 blocks (held-out NLL per metre) can be handed over; among those, the one with
 the lowest held-out NLL wins. If none beats the control, every weight is 0: a
@@ -18,13 +20,16 @@ values are always kept in `fitted_weight` (ignored by E3).
 Exact scaling: E1 uses x / p99 without clipping; fisica.human_cost uses
 clip(x / max, 0, 1). We export max = the true maximum of x over the box (so the
 clip never acts) and weight = w * max / p99, which gives exactly the same
-cost. For the sand layers p99 = max = 1, so the weights are unchanged.
+cost. For the sand layers p99 = max = 1, so the weights are unchanged. For
+the boulder layers p99 < max, and the max ignores NaN cells; E1 and
+fisica.human_cost both count a NaN cell of rocas.tif as 0.
 
-The 5 x 5 m mean of sand has no raster of its own, so this script writes it to
-data/e1/sand_mean_5m.tif (float32, base grid) when the chosen model uses it.
+The window means (5 x 5 m of sand, 10 x 10 m of boulder cover) have no raster
+of their own, so this script writes them to data/e1/sand_mean_5m.tif and
+data/e1/rocks_mean_10m.tif (float32, base grid) when the chosen model uses them.
 
 Input:  data/e1/irl_fit_<tag>.json and data/e1/validation_<tag>.json for every candidate
-Output: data/e1/e1_weights.json (and data/e1/sand_mean_5m.tif if needed)
+Output: data/e1/e1_weights.json (and the window-mean rasters the chosen model needs)
 Usage:  python src/ml/export_e1_weights.py
 """
 import json
@@ -37,8 +42,12 @@ import irl_data
 
 CANDIDATES = {"dem": "per_sol_cell1m_margin50m",
               "sand": "per_sol_cell1m_margin50m_sand",
-              "dem_sand": "per_sol_cell1m_margin50m_dem_sand"}
-SAND_MEAN_TIF = common.E1_OUTPUT / "sand_mean_5m.tif"
+              "dem_sand": "per_sol_cell1m_margin50m_dem_sand",
+              "rocks": "per_sol_cell1m_margin50m_rocks",
+              "sand_rocks": "per_sol_cell1m_margin50m_sand_rocks"}
+# Window means written by this script (feature -> file)
+MEAN_TIFS = {"sand_mean_5m": common.E1_OUTPUT / "sand_mean_5m.tif",
+             "rocks_mean_10m": common.E1_OUTPUT / "rocks_mean_10m.tif"}
 # feature -> (raster relative to data/base/, transform, slope feature, note)
 SOURCES = {
     "roughness": ("roughness.tif", None, False, None),
@@ -50,6 +59,10 @@ SOURCES = {
     "sand": ("../e8/sand.tif", None, False, "E8 sand fraction (release e8-v0)"),
     "sand_mean_5m": ("../e1/sand_mean_5m.tif", None, False,
                      "mean of sand.tif over a 5 x 5 m window, written by src/ml/export_e1_weights.py"),
+    "rocks": ("../e9/rocas.tif", None, False,
+              "E9 boulder cover fraction, distilled student (release e9-rocks-v1); NaN counts as 0"),
+    "rocks_mean_10m": ("../e1/rocks_mean_10m.tif", None, False,
+                       "mean of rocas.tif (NaN as 0) over a 10 x 10 m window, written by src/ml/export_e1_weights.py"),
 }
 
 
@@ -72,12 +85,13 @@ def candidates():
     return out
 
 
-def write_sand_mean():
-    phi, _, transform = irl_data.feature_stack(["metre", "sand", "sand_mean_5m"])
+def write_mean(name, raw):
+    """Write the window-mean feature `name` in its own units (not divided by p99) on the base grid."""
     with rasterio.open(common.base_layer("dem_1m.tif")) as dem:
         profile = dem.profile | {"dtype": "float32", "count": 1, "nodata": np.nan}
-    with rasterio.open(SAND_MEAN_TIF, "w", **profile) as dst:
-        dst.write(phi[2].astype(np.float32), 1)   # scale is 1: phi = the 5 x 5 m mean itself
+    with rasterio.open(MEAN_TIFS[name], "w", **profile) as dst:
+        dst.write(raw[name].astype(np.float32), 1)
+    return MEAN_TIFS[name]
 
 
 def factor_check(spec, phi, feats, w):
@@ -110,12 +124,14 @@ def main():
     c = cands[chosen]
     fit, validated = c["fit"], bool(passing)
     feats = fit["features"]
-    phi, scale, _ = irl_data.feature_stack(feats)
+    phi, scale, _ = irl_data.feature_stack(feats, rocks_layer="student")
+    raw, _ = irl_data.raw_features(feats, rocks_layer="student")
     w = fit["terrain"]["w"]
     features = {}
     for j, name in enumerate(feats[1:], start=1):
         raster, transform, slope, note = SOURCES[name]
-        true_max = float(np.nanmax(phi[j])) * scale[name]
+        # The largest value E3 reads (float32 rasters, NaN ignored), so x / max never exceeds 1.
+        true_max = float(np.nanmax(raw[name].astype(np.float32)))
         factor = true_max / scale[name]          # weight conversion for clip(x / true_max)
         f = {"weight": w[name] * factor if validated else 0.0, "fitted_weight": w[name],
              "raster": raster, "min": 0.0, "max": true_max}
@@ -126,8 +142,7 @@ def main():
         if note:
             f["note"] = note
         features[name] = f
-    if validated and "sand_mean_5m" in feats:
-        write_sand_mean()
+    written = [write_mean(n, raw) for n in MEAN_TIFS if validated and n in feats]
     non_slope = [n for n in feats[1:] if not SOURCES[n][2]]
     max_factor = 1 + sum(features[n]["weight"] for n in non_slope) / w["metre"]
     spec = {
@@ -151,7 +166,7 @@ def main():
     out = common.E1_OUTPUT / "e1_weights.json"
     out.write_text(json.dumps(spec, indent=2), encoding="utf-8")
     print(json.dumps({k: spec[k] for k in ("model", "validated", "result", "candidates")}, indent=2))
-    print(f"wrote {out}" + (f" and {SAND_MEAN_TIF}" if validated and "sand_mean_5m" in feats else ""))
+    print(f"wrote {out}" + "".join(f" and {p}" for p in written))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # E1 · Terrain cost learned from Curiosity's route (MaxEnt IRL)
 
-Owner: Juan (`@JuanCorredor2023`) · Issue: #5 (open: refit with boulders, hours 24–34) · PRs: #50 (DEM features), #57 (E8 sand) · Status: DEM features give no price (negative result); E8 sand gives a small price that holds out of sample and is handed to E3 · Last update: 2026-11-14
+Owner: Juan (`@JuanCorredor2023`) · Issue: #5 · PRs: #50 (DEM features), #57 (E8 sand), this PR (E9 boulders) · Status: DEM features give no price (negative result); E8 sand gives a small price that holds out of sample and is handed to E3; E9 boulders give a price in sample that does not hold out of sample (negative result), so the hand-off stays sand-only · Last update: 2026-11-15
 
 ## Question
 Given where Curiosity started and where it stopped, which terrain prices make the route its drivers actually chose the most likely one? If the learned prices explain the route better than distance alone, they become the terrain part of the astronaut's cost (combined with E3); if not, the planner uses E3 alone.
@@ -9,6 +9,11 @@ Given where Curiosity started and where it stopped, which terrain prices make th
 - **Demonstrations:** E2's cell sequence (`data/e2/cell_sequence.csv`, release `e2-trajectory-v1`): Curiosity's route inside the bbox from PLACES [PLACES], cell by cell on the 1 m base grid, 8-connected, sols 4369–4868.
 - **Terrain:** JB's base grid (release `base-grid-v2`): `slope_deg.tif`, `roughness.tif`, `tpi.tif` from `dem_1m.tif` [Parker2016], plus the mean slope in 5 × 5 and 15 × 15 m windows, the same five features as E2's baseline. No cell of the box is nodata.
 - **Sand:** E8's `sand.tif` (JB, release `e8-v0`, PR #49): the fraction (0–1) of each 1 m cell that E8's U-Net marks as sand on the 0.25 m orthophoto [HiRISE-Gale]. Same grid as the DEM (checked: CRS, transform, 2000 × 2000), no nodata; 10.3 % of the box has some sand and the 99th percentile is 1 (`data/e1/e1_summary.json` → `sand.sand_layer`). JB reports the U-Net as conservative: 91 % of what it marks as sand is sand, but it misses much of it.
+- **Boulders:** E9's `rocas.tif` (Aaron, release `e9-rocks-v1`, PR #99, note `paper/notes/E9_boulders.md`): the fraction (0–1) of each 1 m cell covered by boulders, from a small CNN distilled from BoulderNet [Prieur2023] on the 0.25 m greyscale orthophoto [HiRISE-Gale]. Same grid as the DEM (checked in `irl_data.read_on_grid`: transform and 2000 × 2000). Numbers below from `data/e1/e1_summary.json` → `rocks.rock_layer`.
+  - 266 cells are NaN (orthophoto nodata); E1 counts them as 0.
+  - The student is a soft density: it is above 0 in every valid cell, above 0.01 in 4.4 % of the box and above 0.25 in 0.29 %. Mean 0.0039, median 0.0004, 99th percentile 0.0869, maximum 0.925.
+  - For the sensitivity check, the teacher's own cover (`teacher_cover_1m.tif`, same format) is above 0 in 1.5 % of the box and above 0.25 in 0.51 %; mean 0.0037, 99th percentile 0.0980, maximum 1.0. Averaged over 10 × 10 m, the two layers correlate at r = 0.73 over the box.
+  - E9 reports that the student agrees with the teacher at r = 0.66 on held-out blocks, reads best averaged to 10 m and does not see boulders below about 1 m.
 
 ## Method
 
@@ -34,10 +39,18 @@ Given where Curiosity started and where it stopped, which terrain prices make th
 - `dem_sand`: the DEM set plus the two sand features.
 - All three are fitted and validated on the per-sol demonstrations at 1 m, the scale where a rover would dodge sand inside a valley.
 
+### Feature sets with E9 boulders (`--features`, `--rocks-layer`)
+- `rocks`: `metre`, `rocks` (the cell's boulder cover from `rocas.tif`, NaN counted as 0) and `rocks_mean_10m` (its mean over a 10 × 10 m window, `scipy.ndimage.uniform_filter` [SciPy], because E9 reports that the layer reads best averaged to 10 m).
+- `sand_rocks`: `metre`, the two sand features and the two boulder features.
+- Like every other feature, both boulder features are divided by their 99th percentile over the box, so a weight is the price of a metre over a cell at the box's 99th-percentile cover. A NaN cell counts as no boulders, the same rule as `fisica.human_cost.terrain_factor`.
+- Sensitivity check: `--features rocks --rocks-layer teacher` repeats the `rocks` model with BoulderNet's own cover (`teacher_cover_1m.tif`) instead of the distilled student.
+- All of them are fitted and validated like the sand models: per sol, 1 m cells, 50 m margin.
+
 ### Hand-off rule (`src/ml/export_e1_weights.py`)
 - **Which model:** a model's prices go to E3 only if it beats the distance-only control on held-out blocks; among those, the lowest held-out NLL wins.
 - **Same cost in E3:** `fisica.human_cost` scales a feature as clip(x / max, 0, 1). We export max = the feature's true maximum over the box and weight = w · max / p99, so the clip never acts and E3 computes exactly E1's w · x / p99.
-- **Extra raster:** the 5 × 5 m sand mean has no file of its own, so the script writes it to `data/e1/sand_mean_5m.tif`.
+- **Candidates:** the per-sol models `dem`, `sand`, `dem_sand`, `rocks` and `sand_rocks` (boulders from the E9 student, the layer E9 publishes). The teacher run is only a sensitivity check.
+- **Extra rasters:** the window means have no file of their own, so the script writes them when the chosen model uses them: `data/e1/sand_mean_5m.tif` and `data/e1/rocks_mean_10m.tif` (float32, base grid). The boulder maximum ignores NaN cells.
 
 ### Validation
 - **Leave-one-block-out** with E2's 5 consecutive blocks of the route (`src/ml/cell_features.py`); a demonstration belongs to the block of its middle step. Both models are fitted on four blocks and scored on the fifth.
@@ -151,6 +164,39 @@ Sources: `src/ml/fit_irl.py` and `src/ml/validate_irl.py` with `--features sand`
 
 *Figure E1-5. (a) Held-out NLL per metre of each model minus the distance-only control, per E2 block (below 0 = better than distance). (b) Sand prices of the sand-only model fitted without each block (bars) and on all drives (dashed lines).*
 
+### With E9 boulders: a price in sample that does not hold out of sample
+Sources: `src/ml/fit_irl.py` and `src/ml/validate_irl.py` with `--features rocks`, `--features sand_rocks` and `--features rocks --rocks-layer teacher` → `data/e1/irl_fit_per_sol_cell1m_margin50m_<set>.json` and `validation_per_sol_cell1m_margin50m_<set>.json` (`<set>` = `rocks`, `sand_rocks`, `rocks_teacher`), gathered by `src/ml/irl_paper_figures.py` in `data/e1/e1_summary.json` → `rocks`. One demonstration per sol, 1 m cells, 50 m margin; the 129 drives and the distance-only control are the same as for sand.
+
+| Model | Held-out NLL per metre (control 1.18349) | Blocks where it beats the control | Held-out AUC of the cost, 50 m corridor / whole box | Prices fitted on all drives |
+|---|---|---|---|---|
+| Sand only (E8, the current hand-off) | **1.18281** | **4 of 5** | 0.525 / 0.499 | `sand` 0.072, `sand_mean_5m` 0.224 |
+| Boulders only, E9 student | 1.18455 | 2 of 5 | 0.535 / 0.542 | `rocks` 0.432, `rocks_mean_10m` 0.073 |
+| Sand + boulders, E9 student | 1.18390 | 3 of 5 | 0.543 / 0.531 | `sand` 0.074, `sand_mean_5m` 0.222, `rocks` 0.444, `rocks_mean_10m` 0.065 |
+| Boulders only, E9 teacher (sensitivity) | 1.18832 | 0 of 5 (4 ties) | 0.502 / 0.513 | none (both 0) |
+
+- **In sample, boulders look like a price.** With the student layer, the boulder model explains the 129 drives better than distance alone (NLL per metre 1.17962 against 1.18002, better on 78 drives).
+  - At the control's fit the real route crosses 9.5 % less boulder cover per metre than the model's routes (`rocks` 0.0156 against 0.0172 in units of the 99th percentile; preference z −0.91 for `rocks` and −1.17 for `rocks_mean_10m`). Each z alone is within chance.
+  - Read as a price, the fit says a metre over a cell fully covered by boulders costs 1.92 times the metre price on top of it, plus 0.46 times for a fully covered 10 × 10 m window (`price_at_full_cover_relative_to_metre`).
+  - Applied to the box, that would give a terrain factor up to 2.97, with p95 1.024 and 3.0 % of the box above 1.05 (`terrain_factor`).
+- **Held out, it does not generalise.** The boulder-only model is worse than distance alone: +1.06 × 10⁻³ NLL per metre overall. By block: +0.17, −0.01, +5.53, +0.69 and −0.81 × 10⁻³, so it beats the control in 2 of 5 blocks (fig. E1-6a).
+- **Boulders also spoil the sand price.** Sand + boulders is worse than the control (+0.41 × 10⁻³) and than sand alone (1.18390 against 1.18281). In every block its difference is close to the sum of the sand-only and boulder-only differences; block 2 (+5.48 × 10⁻³) carries the boulders' loss.
+- **The prices are unstable.** Fitted without each block, `rocks` costs 0.40, 0.40, 1.11, 0.46 and 0.12, and `rocks_mean_10m` 0.15, 0.15, 0, 0.38 and 0 (fig. E1-6b). Compare sand, whose `sand_mean_5m` stayed within 0.13–0.26.
+- **Where the held-out loss comes from** (`held_out_drives`, a diagnostic after the fact, not a model choice):
+  - Most held-out drives do get slightly better with the boulder price (76 of 129), but a few get much worse.
+  - One drive, sol 4544 in block 2 (21.8 m), adds 5.27 nats, more than the whole net loss of 4.98 nats. The fit without block 2 priced `rocks` at 1.11, and along this drive the student marks a mean cover of 0.035 and a maximum of 0.093 (above the box's 99th percentile), while the teacher marks no boulder at all.
+  - Without that drive the boulder model would be at −0.06 × 10⁻³ per metre: still no real gain, against −0.68 × 10⁻³ for sand on all drives.
+- **The teacher gives no price at all.** With BoulderNet's own cover, the fit on all drives sets both boulder prices to 0.
+  - At the control's fit the real route crosses *more* teacher cover per metre than the model's routes (0.0205 against 0.0098 in units of the 99th percentile; z +1.00 and +1.18). In total it crosses 2.3 times the teacher cover the model's routes expect (127.6 against 55.9 in `feature_counts_real` and `feature_counts_model`), but only 3.1 % of drives cross more `rocks`, so a few drives carry it.
+  - Held out, the prices are 0 in four folds, which tie with the control. The fold without block 3 priced `rocks` 0.149 and `rocks_mean_10m` 0.235, and block 3 got much worse (+23.1 × 10⁻³).
+  - Two drives in block 3, sols 4680 and 4673, add 12.3 and 9.5 nats; along them the teacher marks a mean cover of 0.107 and 0.096 and a maximum of 0.79. The rover's route, as rebuilt on the 1 m grid from PLACES, runs over cells that BoulderNet calls boulders (see Limitations for why).
+  - So the in-sample price of the student is not a price on the boulders the teacher sees; it comes from the student's soft cover.
+- **Cell-level AUC is the highest of any E1 model** in the 50 m corridor (0.535 with boulders, 0.543 with sand and boulders; E2's logistic baseline 0.526). The route does lie on cells with less student cover than its surroundings, but that is a statement about where the route is, which the goal-conditioned model does not reward: it scores how the rover went between its own start and goal, and there the boulder price does not carry over to unseen drives.
+- **Hand-off: unchanged.** Neither boulder model beats the control, so `export_e1_weights.py` still picks the sand-only model. `data/e1/e1_weights.json` keeps the same weights and terrain factor; its `candidates` now also list `rocks` (held-out 1.18455) and `sand_rocks` (1.18390), both with `beats_control` false. The file from before this block is kept as `data/e1/e1_weights_sand_v1.json`.
+
+![Boulders](../figures/e1_fig6_rocks.png)
+
+*Figure E1-6. (a) Held-out NLL per metre of each model minus the distance-only control, per E2 block (below 0 = better than distance), for sand only, boulders only (E9 student), sand + boulders and boulders only with the E9 teacher's cover. The teacher's block 3 (+23.1) is drawn at the edge. (b) Boulder prices of the boulder-only student model fitted without each block (bars) and on all drives (dashed lines), per metre at the box's 99th-percentile cover.*
+
 ## Checks
 - **Gradient:** three independent computations agree (synthetic check above), and 6 unit tests in `tests/ml/test_maxent_irl.py` cover it, including padded batches (`python -m pytest tests/ml -q`).
 - **Policy:** sums to 1 at every cell but the goal (test).
@@ -158,6 +204,9 @@ Sources: `src/ml/fit_irl.py` and `src/ml/validate_irl.py` with `--features sand`
 - **Move order:** identical to E3's `NEIGHBOURS` (test), so E1 prices can multiply E3 edges directly.
 - **Feature matching:** at every optimum, for every feature whose weight is not at its bound, the model's expected counts equal the real ones to the stored precision of 0.01 (`feature_counts_real` vs `feature_counts_model` in `irl_fit_*.json`). Every fit reports L-BFGS-B success.
 - **Coarse grid:** 4 tests in `tests/ml/test_irl_data.py` (block means, 8-connected coarse routes, lengths in metres).
+- **Boulder features:** 5 more tests in the same file: the feature sets, NaN counted as 0, the 10 × 10 m mean equal to the plain mean of the window, `--rocks-layer teacher` refused without a boulder feature set, and a missing or off-grid layer refused with a clear message.
+- **Boulder fits:** every boulder fit reports L-BFGS-B success, and for every weight not at its bound the model's feature counts match the real ones (`irl_fit_*_rocks*.json`).
+- **Hand-off scaling with boulders:** the exported `max` is the largest value E3 reads from the float32 raster (NaN ignored), so `human_cost`'s clip never acts; this matters for boulders, whose maximum (0.925) is far above the 99th percentile (0.0869). Not exercised by the current hand-off, which has no boulder feature.
 
 ## Limitations
 - **The goal is given.** E1 explains how the rover went between two points, not where it went. The drivers' terrain choice is mostly in the waypoints themselves (on the valley floor, away from the walls; fig. E1-4), which this model takes as data. E2's whole-box AUC of 0.73 measures that choice of place; a goal-conditioned model cannot learn it.
@@ -173,19 +222,28 @@ Sources: `src/ml/fit_irl.py` and `src/ml/validate_irl.py` with `--features sand`
 - **The sand layer is a first version.** E8's U-Net v0 misses much of the sand (JB), so the price is learned from the sand it does mark.
   - **Image date** (E8 note, `paper/notes/E8_boxwork_sand.md`, confirmed by JB from the USGS record): the orthophoto's detail comes from HiRISE images of 2006–2011, all before landing, so it shows no rover tracks. Sand patches may have moved in the roughly 13 years before the boxwork campaign, which adds noise but cannot create the measured avoidance.
   - **Colour:** the U-Net recognises sand by colour, and the LRGB colour was fused onto the mosaic in 2025 from HiRISE colour strips whose dates are not published.
+- **Boulders: what the layer can and cannot show.**
+  - **Student against teacher.** The student is a soft density that agrees with the teacher at r = 0.66 (E9 note) and spreads cover into halos around clusters and onto some ridge edges where the teacher found nothing. The drive that carries the held-out loss (sol 4544) has student cover along its whole length and no teacher boulder, which fits that pattern; we did not check it on the image.
+  - **Small boulders are not seen.** BoulderNet does not detect boulders below about 1 m (E9: 95 % of detections are at least 1.26 m). Smaller rocks can still matter to a rover's wheels, and no orbital layer used here resolves them.
+  - **Finer avoidance than the layer and the route.** A single boulder can be avoided with a detour of a metre or two. E2 rebuilds the route from PLACES poses joined by straight lines on 1 m cells, and the rover is about 3 m wide. A detour of that size, or a boulder beside the wheels, falls inside the route's own cells, so the demonstrations cannot show it. This also explains how the route can run over cells the teacher marks as boulders (sols 4673 and 4680) without the rover having driven over a boulder; localisation offsets between PLACES and the orthophoto, or teacher false positives on bright bedrock, would do the same. We did not check these drives on the image.
+  - **Image date.** The orthophoto is the same 2006–2011 mosaic as for sand. Boulders move far less than sand, so the date matters less here.
+  - **A boulder is a hazard more than a price per metre.** A linear price on cover is the only form tried; a threshold or blocking rule was not.
 - **Rover preferences applied to a person.** The sand price is how much Curiosity's drivers avoided sand. Using it as a relative price for an astronaut follows the team plan ("keep what was learned about roughness and sand"), but it is an assumption, not a measurement.
 
 ## What other pieces can use
-- **E3 and product (Sebas):** the DEM features give no price, but E8 sand does. `data/e1/e1_weights.json` (`src/ml/export_e1_weights.py`, format agreed in #2, read by `fisica.human_cost`, PR #41) hands over the sand-only model.
+- **E3 and product (Sebas):** the DEM features and E9 boulders give no price that holds out of sample, but E8 sand does. `data/e1/e1_weights.json` (`src/ml/export_e1_weights.py`, format agreed in #2, read by `fisica.human_cost`, PR #41) hands over the sand-only model, with the same weights as before the boulder runs (the earlier file is kept as `data/e1/e1_weights_sand_v1.json`).
   - Prices: `sand` 0.07177 and `sand_mean_5m` 0.22352, with distance weight 2.57767, giving a terrain factor from 1.0 on bare ground to 1.115 in full sand.
   - Rasters: `../e8/sand.tif` and `../e1/sand_mean_5m.tif`, relative to `data/base/`.
   - The file keeps every candidate's held-out NLL and the check with E3's own reader.
 - **E8 (JB):** sand is the first layer that helps E1 out of sample; ridges were not tried (E8 reports them at chance).
-- **E9 (Aaron):** boulders are the other obstacle the DEM does not see. E1 takes a new layer as one more feature (`irl_data.feature_stack`, a new `--features` set); when `rocks.tif` arrives, refit and validate.
+- **E9 (Aaron):** Curiosity's route gives no validated boulder price, so the weight k of E9's sensitivity sweep (`src/dl_rocas/route_effect.py`) still has no source and stays a stated modelling choice.
+  - In sample, the student fit corresponds to k ≈ 1.92 per unit of cell cover (plus 0.46 for the 10 × 10 m mean) relative to the metre price, but it fails on held-out drives, and the teacher's cover gives no price at all (fig. E1-6).
+  - The held-out failures point to specific drives worth a look on the orthophoto: sol 4544 (student cover, no teacher boulder) and sols 4673 and 4680 (route over teacher boulders).
+  - A new layer version is one command away: `fit_irl.py` and `validate_irl.py` with `--features rocks` (or `--rocks-layer teacher`), then `export_e1_weights.py`.
 - **E4 and E5 (Aaron, Diana):** at 250 m the cheapest route between the rover's consecutive positions already follows the valley floor like the real route (fig. E1-4). Steep walls are avoided by where the waypoints are, which E4/E5 decide through E3's cell block and slope cost.
 
 ## Reproduce
-From the repo root, with the `martian` environment, `data/base/` from release `base-grid-v2`, `data/e2/` from E2 and `data/e8/` from release `e8-v0`:
+From the repo root, with the `martian` environment, `data/base/` from release `base-grid-v2`, `data/e2/` from E2, `data/e8/` from release `e8-v0` and `data/e9/` from release `e9-rocks-v1`:
 ```bash
 python -m pytest tests/ml -q
 python src/ml/irl_toy_check.py
@@ -201,18 +259,25 @@ python src/ml/fit_irl.py --features sand --chunk 32
 python src/ml/fit_irl.py --features dem_sand --chunk 32
 python src/ml/validate_irl.py --features sand --chunk 32
 python src/ml/validate_irl.py --features dem_sand --chunk 32
+python src/ml/fit_irl.py --features rocks --chunk 32
+python src/ml/validate_irl.py --features rocks --chunk 32
+python src/ml/fit_irl.py --features sand_rocks --chunk 32
+python src/ml/validate_irl.py --features sand_rocks --chunk 32
+python src/ml/fit_irl.py --features rocks --rocks-layer teacher --chunk 32
+python src/ml/validate_irl.py --features rocks --rocks-layer teacher --chunk 32
 python src/ml/logistic_sand.py
 python src/ml/irl_paper_figures.py
 python src/ml/export_e1_weights.py
 ```
-About 110 minutes on an NVIDIA T1000 (4 GB); most of it is the whole-box runs.
+About 110 minutes on an NVIDIA T1000 (4 GB); most of it is the whole-box runs. The six boulder runs add about 35 minutes (each validation 7–12 min, `seconds` in `validation_*.json`; each fit 1.5–3 min). Run them one at a time on a 4 GB card.
 
 ## Outputs
 In `data/e1/` (not in git):
 - `toy_check.json`;
-- `irl_fit_<tag>.json` for the six scales and the two sand sets;
-- `validation_per_sol_cell1m_margin50m[_sand|_dem_sand].json` and `validation_piece250m_cell5m_box.json`;
+- `irl_fit_<tag>.json` for the six scales, the two sand sets and the three boulder runs;
+- `validation_per_sol_cell1m_margin50m[_sand|_dem_sand|_rocks|_sand_rocks|_rocks_teacher].json` and `validation_piece250m_cell5m_box.json`;
 - `e1_summary.json`;
-- the hand-off to E3: `e1_weights.json` and `sand_mean_5m.tif`.
+- the hand-off to E3: `e1_weights.json` and `sand_mean_5m.tif` (`rocks_mean_10m.tif` is written only if a boulder model is chosen);
+- `e1_weights_sand_v1.json`: the hand-off as it was before the boulder runs (same weights).
 
-In `data/e2/`: `logistic_baseline_sand.json`. In `paper/figures/`: `e1_fig1_toy_check.png` to `e1_fig5_sand.png`. Column and file reference: `src/ml/README.md`.
+In `data/e2/`: `logistic_baseline_sand.json`. In `paper/figures/`: `e1_fig1_toy_check.png` to `e1_fig6_rocks.png`. Column and file reference: `src/ml/README.md`.

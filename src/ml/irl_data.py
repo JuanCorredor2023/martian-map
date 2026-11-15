@@ -24,6 +24,14 @@ With --features dem_sand (E8, JB's release e8-v0) two more; --features sand
 uses only metre and these two:
   sand             fraction of the cell that E8's U-Net marks as sand (data/e8/sand.tif)
   sand_mean_5m     mean sand fraction in a 5 x 5 m window
+With --features rocks (E9, Aaron's release e9-rocks-v1) metre and two more;
+--features sand_rocks uses metre, the two sand features and these two:
+  rocks            fraction of the cell covered by boulders (data/e9/rocas.tif, the
+                   distilled student; NaN counts as 0, as in fisica.human_cost)
+  rocks_mean_10m   mean boulder cover in a 10 x 10 m window (E9: the layer reads
+                   best averaged to 10 m)
+--rocks-layer teacher reads data/e9/teacher_cover_1m.tif (BoulderNet itself)
+instead of the student, as a sensitivity check.
 The default feature set ("dem") is the one of the E1 result merged in #50.
 
 Block: the E2 validation block (src/ml/cell_features.py: 5 consecutive stretches
@@ -41,16 +49,38 @@ import maxent_irl as irl
 DEM_FEATURES = ["metre", "slope_deg", "roughness", "tpi_ridge", "tpi_hollow",
                 "slope_mean_5m", "slope_mean_15m"]
 FEATURE_SETS = {"dem": DEM_FEATURES, "dem_sand": DEM_FEATURES + ["sand", "sand_mean_5m"],
-                "sand": ["metre", "sand", "sand_mean_5m"]}
+                "sand": ["metre", "sand", "sand_mean_5m"],
+                "rocks": ["metre", "rocks", "rocks_mean_10m"],
+                "sand_rocks": ["metre", "sand", "sand_mean_5m", "rocks", "rocks_mean_10m"]}
 FEATURES = list(DEM_FEATURES)     # the active set; setup() switches it with --features
 SAND = common.PRODUCTS / "e8" / "sand.tif"
+ROCKS = common.PRODUCTS / "e9" / "rocas.tif"                       # E9 student (release e9-rocks-v1)
+ROCK_LAYERS = {"student": ROCKS, "teacher": common.PRODUCTS / "e9" / "teacher_cover_1m.tif"}
+ROCKS_LAYER = "student"           # the active rock layer; setup() switches it with --rocks-layer
 MIN_DRIVE_M = 10.0
 MARGIN_M = 50
 
 
-def feature_stack(features=None):
-    """(F, 2000, 2000) float32 features, the scale (99th percentile) of each, and the transform."""
+def read_on_grid(path, transform, shape, release):
+    """A float64 layer that must be on the base grid (same transform and shape as the DEM)."""
+    if not path.exists():
+        raise SystemExit(f"{path} not found: download {release} into data/{path.parent.name}/")
+    with rasterio.open(path) as src:
+        if src.transform != transform or src.shape != shape:
+            raise SystemExit(f"{path} is not on the base grid")
+        return src.read(1).astype("float64")
+
+
+def rock_features(cover):
+    """rocks (cell cover, NaN -> 0) and rocks_mean_10m (its mean over a 10 x 10 m window)."""
+    rocks = np.nan_to_num(cover, nan=0.0)
+    return {"rocks": rocks, "rocks_mean_10m": uniform_filter(rocks, size=10, mode="nearest")}
+
+
+def raw_features(features=None, rocks_layer=None):
+    """Every feature in its own units (before dividing by its 99th percentile), and the transform."""
     features = features or FEATURES
+    rocks_layer = rocks_layer or ROCKS_LAYER
     layers, transform = cf.feature_rasters()
     raw = {
         "slope_deg": layers["slope_deg"],
@@ -60,20 +90,26 @@ def feature_stack(features=None):
         "slope_mean_5m": layers["slope_mean_5m"],
         "slope_mean_15m": layers["slope_mean_15m"],
     }
+    shape = layers["slope_deg"].shape
     if "sand" in features:
-        if not SAND.exists():
-            raise SystemExit(f"{SAND} not found: download JB's release e8-v0 into data/e8/")
-        with rasterio.open(SAND) as src:
-            if src.transform != transform or src.shape != layers["slope_deg"].shape:
-                raise SystemExit(f"{SAND} is not on the base grid")
-            sand = src.read(1).astype("float64")
+        sand = read_on_grid(SAND, transform, shape, "JB's release e8-v0")
         raw["sand"] = sand
         raw["sand_mean_5m"] = uniform_filter(sand, size=5, mode="nearest")
+    if "rocks" in features:
+        raw |= rock_features(read_on_grid(ROCK_LAYERS[rocks_layer], transform, shape,
+                                          "Aaron's release e9-rocks-v1"))
+    return raw, transform
+
+
+def feature_stack(features=None, rocks_layer=None):
+    """(F, 2000, 2000) float32 features, the scale (99th percentile) of each, and the transform."""
+    features = features or FEATURES
+    raw, transform = raw_features(features, rocks_layer)
     scale = {}
     for k in features[1:]:
         p99 = float(np.nanpercentile(raw[k], 99))
         scale[k] = p99 if p99 > 0 else float(np.nanmax(raw[k]))   # a mostly-zero layer
-    phi = np.stack([np.ones_like(layers["slope_deg"])] + [raw[k] / scale[k] for k in features[1:]])
+    phi = np.stack([np.ones_like(raw["slope_deg"])] + [raw[k] / scale[k] for k in features[1:]])
     return phi.astype(np.float32), scale, transform
 
 
@@ -168,19 +204,26 @@ def add_arguments(ap):
     ap.add_argument("--whole-box", action="store_true", help="every window is the whole box")
     ap.add_argument("--chunk", type=int, default=16, help="demonstrations per GPU batch")
     ap.add_argument("--features", choices=sorted(FEATURE_SETS), default="dem",
-                    help="feature set: dem (E1 as merged in #50), dem_sand (plus E8 sand) or sand (metre + sand)")
+                    help="feature set: dem (E1 as merged in #50), dem_sand (plus E8 sand), sand (metre + sand), "
+                         "rocks (metre + E9 boulders) or sand_rocks (metre + sand + boulders)")
+    ap.add_argument("--rocks-layer", choices=sorted(ROCK_LAYERS), default="student",
+                    help="E9 boulder layer for the rocks features: student (rocas.tif, default) or "
+                         "teacher (teacher_cover_1m.tif, sensitivity check; tag suffix _teacher)")
 
 
 def setup(args):
     """(tag, features on the chosen grid, table, demos, feature scales) for the chosen demonstrations.
 
     Also makes args.features the active FEATURES list, which fit_irl.py and
-    validate_irl.py read. Route lengths for NLL per metre come from the demos
-    (demo.length_m * cell), not from the table: a demo that touches its goal
-    earlier is cut there.
+    validate_irl.py read, and args.rocks_layer the active ROCKS_LAYER. Route
+    lengths for NLL per metre come from the demos (demo.length_m * cell), not
+    from the table: a demo that touches its goal earlier is cut there.
     """
-    global FEATURES
-    FEATURES = list(FEATURE_SETS[args.features])
+    global FEATURES, ROCKS_LAYER
+    layer = getattr(args, "rocks_layer", "student")
+    if layer != "student" and "rocks" not in FEATURE_SETS[args.features]:
+        raise SystemExit("--rocks-layer only applies to a feature set with rocks")
+    FEATURES, ROCKS_LAYER = list(FEATURE_SETS[args.features]), layer
     phi, scale, _ = feature_stack()
     table = drives() if args.piece_m is None else pieces(args.piece_m)
     if args.cell > 1:
@@ -189,7 +232,8 @@ def setup(args):
     margin = 10 ** 6 if args.whole_box else -(-args.margin // args.cell)   # metres -> cells
     tag = ("per_sol" if args.piece_m is None else f"piece{int(args.piece_m)}m") + \
         f"_cell{args.cell}m_" + ("box" if args.whole_box else f"margin{args.margin}m") + \
-        ("" if args.features == "dem" else f"_{args.features}")
+        ("" if args.features == "dem" else f"_{args.features}") + \
+        ("" if ROCKS_LAYER == "student" else f"_{ROCKS_LAYER}")
     return tag, phi, table, demos(phi, table, margin), scale
 
 
