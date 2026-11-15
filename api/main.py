@@ -27,6 +27,7 @@ from . import minerals
 from . import thermal
 from . import weather
 from . import walkback as wb
+from . import adaptive
 from . import comms as e11
 from . import departure
 from .plan import (PlanRequest, RejoinRequest, ReturnHomeRequest, WalkRecord, WalkbackRequest, feature,
@@ -284,7 +285,8 @@ def return_home(req: ReturnHomeRequest):
     Dijkstra on time, no new planning)."""
     limit = req.max_cell_slope_deg if req.max_cell_slope_deg else None
     try:
-        out = guide.return_home(str(BASE), limit, req.position, req.habitat, req.human_cost)
+        out = guide.return_home(str(BASE), limit, req.position, req.habitat, req.human_cost,
+                                req.k)
     except ValueError as err:
         raise HTTPException(status_code=422, detail=str(err))
     crs_wkt = (BASE / "crs.wkt").read_text(encoding="utf-8").strip()
@@ -331,17 +333,20 @@ def walkback(req: WalkbackRequest):
         raise HTTPException(status_code=422, detail="no walkable path from this position "
                             "to the base (blocked cell or isolated area)")
     e_rem_j = req.energy_remaining_wh * 3600.0
-    f_e = wb.forward_energy(str(BASE), limit, pos_node, e_rem_j, req.human_cost)
-    combined = f_e + r_e                                   # J: go to v, then return
+    # X2 (#101): a uniform metabolic factor k scales every arc, so k (F_E + R_E) <= E_rem
+    # is the same region as F_E + R_E <= E_rem / k (k = 1: unchanged).
+    e_eff_j = e_rem_j / req.k
+    f_e = wb.forward_energy(str(BASE), limit, pos_node, e_eff_j, req.human_cost)
+    combined = f_e + r_e                                   # J at k = 1: go to v, then return
 
-    rt_here, re_here = float(r_t.flat[pos_node]), float(r_e.flat[pos_node])
+    rt_here, re_here = float(r_t.flat[pos_node]), float(r_e.flat[pos_node]) * req.k
     warnings = [f"return fields on {g.cost_model} costs (same graph as /plan)"]
     if req.base is None:
         warnings.append("base not set: using the box centre (illustrative)")
     features = [
         feature("MultiLineString", g.contour(r_t, req.emergency_return_time_s, base_node),
                 kind="emergency_time_boundary", threshold_s=req.emergency_return_time_s),
-        feature("MultiLineString", g.contour(combined, e_rem_j, pos_node),
+        feature("MultiLineString", g.contour(combined, e_eff_j, pos_node),
                 kind="energy_safe_boundary", energy_remaining_wh=req.energy_remaining_wh),
         feature("Point", list(base_xy), kind="base"),
         feature("Point", list(req.current_position), kind="current_position"),
@@ -355,9 +360,39 @@ def walkback(req: WalkbackRequest):
         return_time_s=rt_here, return_energy_wh=re_here / 3600.0,
         contingency_ok=rt_here <= req.emergency_return_time_s,
         energy_ok=re_here <= e_rem_j,
-        energy_left_after_return_wh=(e_rem_j - re_here) / 3600.0,
+        energy_left_after_return_wh=(e_rem_j - re_here) / 3600.0, k=req.k,
         max_cell_slope_deg=req.max_cell_slope_deg, warnings=warnings)
 
+
+@app.post("/walkback/update")
+def walkback_update(req: adaptive.UpdateRequest):
+    """X2 (#101): one walked segment -> posterior of the metabolic factor k, k_p90, the
+    reserve home at k_p90 and the "return now" alert (stateless: send the posterior
+    back on the next call). Units: Wh or L for the whole request."""
+    ret = req.return_predicted
+    warnings = []
+    if ret is None:
+        limit = req.max_cell_slope_deg if req.max_cell_slope_deg else None
+        habitat = req.habitat
+        if habitat is None:
+            saved = guide.load_plan(PLANS)
+            habitat = (tuple(saved["plan"]["properties"]["habitat"])
+                       if saved and saved["plan"]["properties"].get("habitat") else _box_centre())
+            warnings.append("habitat not given: last plan's habitat (or the box centre)")
+        try:
+            g = wb.grid(str(BASE), limit, req.human_cost)
+            base_node, pos_node = g.node(*habitat), g.node(*req.position)
+        except ValueError as err:
+            raise HTTPException(status_code=422, detail=str(err))
+        _, r_e = wb.return_fields(str(BASE), limit, base_node, req.human_cost)
+        re_j = float(r_e.flat[pos_node])
+        if not np.isfinite(re_j):
+            raise HTTPException(status_code=422, detail="no walkable path from this position "
+                                "to the habitat")
+        ret = adaptive.to_unit(re_j / 3600.0, req.unit)
+    out = adaptive.update(req, ret)
+    out["warnings"] += warnings
+    return out
 
 def _plan_tour(req):
     """E5 station tour on E4's graph (when E5 is in main)."""
