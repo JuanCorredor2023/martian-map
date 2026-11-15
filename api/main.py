@@ -286,7 +286,7 @@ def return_home(req: ReturnHomeRequest):
     limit = req.max_cell_slope_deg
     try:
         out = guide.return_home(str(BASE), limit, req.position, req.habitat, req.human_cost,
-                                req.k)
+                                req.k, resources=req.resources())
     except ValueError as err:
         raise HTTPException(status_code=422, detail=str(err))
     crs_wkt = (BASE / "crs.wkt").read_text(encoding="utf-8").strip()
@@ -302,7 +302,8 @@ def rejoin(req: RejoinRequest):
     limit = req.max_cell_slope_deg
     try:
         out = guide.rejoin(str(BASE), limit, req.position, req.target, req.habitat,
-                           req.human_cost)
+                           req.human_cost, resources=req.resources(),
+                           continuation=req.continuation.model_dump() if req.continuation else None)
     except ValueError as err:
         raise HTTPException(status_code=422, detail=str(err))
     crs_wkt = (BASE / "crs.wkt").read_text(encoding="utf-8").strip()
