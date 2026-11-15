@@ -5,15 +5,19 @@ Orienteering solvers. Every solver is solve(problem: Problem) -> Solution.
     cpsat   : OR-Tools CP-SAT, exact model; proves the optimum within its time limit or
               returns its best tour with an upper bound (Solution.bound, .optimal)
     routing : OR-Tools routing with guided local search, heuristic (kept for comparison)
+    ils     : iterated local search, heuristic (E6)
+    sa      : simulated annealing, heuristic, seeded (E6)
 The OR-Tools solvers need the ortools package and import it only when used.
 """
-from orienteering.solvers import brute, cpsat, dp, routing
+from orienteering.solvers import brute, cpsat, dp, ils, routing, sa
 
 SOLVERS = {
     "dp": dp.solve,
     "brute": brute.solve,
     "cpsat": cpsat.solve,
     "routing": routing.solve,
+    "ils": ils.solve,
+    "sa": sa.solve,
 }
 
 MAX_STATIONS = {
@@ -21,6 +25,8 @@ MAX_STATIONS = {
     "brute": brute.MAX_STATIONS,
     "cpsat": cpsat.MAX_STATIONS,
     "routing": routing.MAX_STATIONS,
+    "ils": ils.MAX_STATIONS,
+    "sa": sa.MAX_STATIONS,
 }
 
 EXACT = {"dp", "brute"}

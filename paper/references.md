@@ -18,6 +18,7 @@ Short key, then the source. Add yours in alphabetical order of key; complete ent
 - **[Johnson2010]** Johnson, A. W., Hoffman, J. A., Newman, D. J., Mazarico, E. M. and Zuber, M. T. (2010). An Integrated Traverse Planner and Analysis Tool for Planetary Exploration. AIAA SPACE 2010, table 2 (Santee et al. 2001 metabolic model for suited astronauts).
 - **[JPL2026]** NASA/JPL (2026-02-23). NASA's Curiosity rover sees Martian 'spiderwebs' up close. Press release. https://www.jpl.nasa.gov/news/nasas-curiosity-rover-sees-martian-spiderwebs-up-close/
 - **[Kim2025]** Kim et al. (2025). NASA CSRM Traverse Model, ICES-2025-129, equations 1–8 (Pandolf + Santee 2003 correction, Apollo speed regression).
+- **[Kirkpatrick1983]** Kirkpatrick, S., Gelatt, C. D. and Vecchi, M. P. (1983). Optimization by simulated annealing. Science 220(4598), 671–680. Simulated annealing used in E6.
 - **[Marquez2019]** Marquez, J. J. et al. (2019). Minerva: planning and scheduling for the BASALT EVA analog. Astrobiology 19(3) (title not checked). https://pmc.ncbi.nlm.nih.gov/articles/PMC6442304
 - **[MSR-STM2025]** Mars 2020 sample science traceability matrix (2025), NTRS 20250009654 (title not checked). https://ntrs.nasa.gov/api/citations/20250009654/downloads/20250009654.pdf
 - **[NASA-blog-4804]** NASA Curiosity blog, sols 4804–4811: kicking off the final phase of boxwork exploration (2026). https://science.nasa.gov/blog/curiosity-blog-sols-4804-4811-kicking-off-the-final-phase-of-boxwork-exploration/
@@ -44,5 +45,7 @@ Short key, then the source. Add yours in alphabetical order of key; complete ent
 - **[Stevens2019]** Stevens, A. H. et al. (2019). BASALT science backroom: tactical sample prioritisation (leaderboard). Astrobiology 19(3) (title not checked). https://www.ebi.ac.uk/europepmc/webservices/rest/PMC6442282/fullTextXML
 - **[Tan2019]** Tan, M. and Le, Q. V. (2019). EfficientNet: Rethinking model scaling for convolutional neural networks. ICML 2019, PMLR 97, 6105-6114.
 - **[threejs]** three.js, JavaScript 3D library, release r187 (npm `three@0.187.0`), MIT licence. Vendored in `web/3d/vendor/` for the 3D map (P1). https://threejs.org/
+- **[Tsiligirides1984]** Tsiligirides, T. (1984). Heuristic methods applied to orienteering. Journal of the Operational Research Society 35(9), 797–809. Source of the three classic OP instance sets used in E6 (KU Leuven test-instance page).
+- **[Vansteenwegen2009]** Vansteenwegen, P., Souffriau, W., Vanden Berghe, G. and Van Oudheusden, D. (2009). Iterated local search for the team orienteering problem with time windows. Computers & Operations Research 36(12), 3281–3290. ILS (insertion by score² / time, shake) used in E6.
 - **[Vansteenwegen2011]** Vansteenwegen, P., Souffriau, W. and Van Oudheusden, D. (2011). The orienteering problem: A survey. European Journal of Operational Research 209(1), 1–10.
 - **[Ziebart2008]** Ziebart, B. D., Maas, A., Bagnell, J. A. and Dey, A. K. (2008). Maximum Entropy Inverse Reinforcement Learning. Proc. AAAI-08, 1433–1438. Copy in `data/09_papers/irl_y_movilidad_rover/`.
