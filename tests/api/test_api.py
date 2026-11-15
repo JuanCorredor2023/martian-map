@@ -204,6 +204,16 @@ def test_plan_live_infeasible_budget_is_422():
     assert client.post("/plan", json=body).status_code == 422
 
 
+def test_rocks_layer():
+    if not (REPO / "data" / "e9" / "rocas.tif").exists():
+        pytest.skip("E9 release (e9-rocks-v1) not downloaded")
+    res = client.get("/layers/rocks.png")
+    assert res.status_code == 200 and res.content[:4] == b"\x89PNG"
+    info = client.get("/layers/rocks").json()
+    assert info["block_m"] == 10 and 0 < info["mean_cover_pct"] < 5          # boulders cover well under 5 % of the box
+    assert 0 < info["share_of_squares_over_5pct_pct"] < info["share_of_squares_with_dots_pct"] < 100
+
+
 def test_sand_layer():
     if not (REPO / "data" / "e8" / "sand.tif").exists():
         pytest.skip("E8 release not downloaded")

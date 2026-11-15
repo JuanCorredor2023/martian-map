@@ -13,7 +13,7 @@ from . import thermal, weather
 #  path under data/, or a function data_dir -> path for sources with two homes)
 SOURCES = [
     ("Orbital image", "HiRISE orthophoto, 25 cm", "Mars Reconnaissance Orbiter",
-     "base map; sand detected by E8's U-Net", "base/ortho_color_025.tif"),
+     "base map; sand found by E8's U-Net and boulders by E9 (BoulderNet)", "base/ortho_color_025.tif"),
     ("Elevation", "HiRISE stereo DEM, 1 m", "Mars Reconnaissance Orbiter",
      "slope, E3 walking cost, walkback, 3D view", "base/dem_1m.tif"),
     ("Rover traverse", "Curiosity localization (PLACES)", "Mars Science Laboratory",

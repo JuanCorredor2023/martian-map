@@ -31,7 +31,7 @@ from . import comms as e11
 from . import departure
 from .plan import (PlanRequest, RejoinRequest, ReturnHomeRequest, WalkRecord, WalkbackRequest, feature,
                    feature_collection)
-from .raster_layers import blocked_layer, cost_layer, sand_layer
+from .raster_layers import blocked_layer, cost_layer, rocks_layer, sand_layer
 from . import stations as st
 
 REPO = Path(__file__).resolve().parents[1]
@@ -42,6 +42,7 @@ E2 = DATA / "e2"
 STATIONS = DATA / "stations"
 E12 = DATA / "e12"
 E8 = DATA / "e8"
+E9 = DATA / "e9"
 PLANS = DATA / "plans"
 WALKS = DATA / "walks"
 WEB = REPO / "web"
@@ -95,6 +96,22 @@ def sand_png():
     if not (E8 / "sand.tif").exists():
         raise HTTPException(status_code=404, detail="data/e8/sand.tif missing (release e8-v0)")
     return Response(sand_layer(str(E8))[0], media_type="image/png")
+
+
+@app.get("/layers/rocks.png")
+def rocks_png():
+    """E9 boulder cover (release e9-rocks-v1, Aaron): halftone, one dot per 10 m square."""
+    if not (E9 / "rocas.tif").exists():
+        raise HTTPException(status_code=404, detail="data/e9/rocas.tif missing (release e9-rocks-v1)")
+    return Response(rocks_layer(str(E9))[0], media_type="image/png")
+
+
+@app.get("/layers/rocks")
+def rocks_info():
+    if not (E9 / "rocas.tif").exists():
+        raise HTTPException(status_code=404, detail="data/e9/rocas.tif missing (release e9-rocks-v1)")
+    return {**rocks_layer(str(E9))[1], "source": "E9 (Aaron): BoulderNet distilled to a small U-Net, release e9-rocks-v1",
+            "note": "boulders larger than about 1 m; display only, not part of the route cost"}
 
 
 @app.get("/layers/sand")
