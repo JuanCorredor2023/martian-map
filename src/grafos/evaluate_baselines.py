@@ -14,12 +14,23 @@ Goals: the 13 manual stations (data/stations/stations_manual.gpkg, release
 stations-v1; skipped if missing) plus --n-goals random cells of the main
 connected component (fixed seed).
 
-Writes to --out-dir (default data/baselines):
+Human cost (issue #65): --human-cost builds the graph with api.planner.graph(base,
+30, human=True), i.e. E3 energy x E1's sand factor (release e1-sand-v1, 1.0-1.115;
+time unchanged). The terrain truth and the MVP then use the human cost, while the
+baselines keep their flat-E3 calibration (389.6 J/m, 293 W): they plan as someone
+who knows nothing about sand. Budget levels are fractions of the farthest round
+trip on the graph in use, so they keep their meaning.
+
+Extra goals: --extra-stations adds GeoPackages with a "stations" layer, e.g. the
+15 sand-rock contacts of E8 (data/stations/stations_e8.gpkg, release stations-e8-v0).
+
+Writes to --out-dir (default data/baselines), with --suffix on every file name
+(default: "_human" with --human-cost, plus "_e8" if E8 stations are added):
     baselines_goals.csv       one row per habitat x budget x goal x method
     baselines_summary.json    confusion counts per method and budget level
     b1_astar_slope.geojson, b2_fixed_radius.geojson, b3_linear_o2.geojson, mvp_e4.geojson
                               round trip to a reference station from the first habitat,
-                              with the real E3 profile (used_wh, rv_wh, slack_wh) per vertex
+                              with the real profile (used_wh, rv_wh, slack_wh) per vertex
 """
 
 import argparse
@@ -39,6 +50,23 @@ from grafos.labels import Budget, round_trip  # noqa: E402
 from grafos.walkback import J_PER_WH  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
+
+
+def build_graph(base_dir, human):
+    """E3 graph (as in #56), or E3 x E1 sand through the API's planner.graph. Stops
+    if the human cost was asked for but E1's weights are missing (planner.graph
+    would silently fall back to E3)."""
+    if not human:
+        g = Graph.from_base_dir(base_dir)
+        g.cost_model = "E3"
+        return g
+    sys.path.insert(0, str(REPO))
+    from api import planner
+    g = planner.graph(str(base_dir), 30.0, True)
+    if g.cost_model == "E3":
+        sys.exit("--human-cost: E1 weights not found (data/e1/e1_weights.json, release "
+                 "e1-sand-v1; also data/e8/ from release e8-v0)")
+    return g
 
 
 def load_stations(graph, path):
@@ -95,14 +123,23 @@ def main():
     ap.add_argument("--seed", type=int, default=8)
     ap.add_argument("--reference-station", default="R0")
     ap.add_argument("--stations", default=str(REPO / "data" / "stations" / "stations_manual.gpkg"))
+    ap.add_argument("--extra-stations", nargs="*", default=[],
+                    help="more station GeoPackages (layer 'stations'), e.g. "
+                         "data/stations/stations_e8.gpkg")
+    ap.add_argument("--human-cost", action="store_true",
+                    help="terrain truth and MVP on E3 x E1 sand (api.planner.graph)")
+    ap.add_argument("--suffix", default=None, help="appended to every output file name")
     ap.add_argument("--base-dir", default=str(REPO / "data" / "base"))
     ap.add_argument("--out-dir", default=str(REPO / "data" / "baselines"))
     args = ap.parse_args()
 
+    if args.suffix is None:
+        args.suffix = ("_human" if args.human_cost else "") +             ("_e8" if any("e8" in Path(p).name for p in args.extra_stations) else "")
+    sfx = args.suffix
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
-    graph = Graph.from_base_dir(args.base_dir)
+    graph = build_graph(args.base_dir, args.human_cost)
     main_cc = graph.main_component()
     print(f"graph ready ({time.time() - t0:.1f}s)")
     rng = np.random.default_rng(args.seed)
@@ -118,6 +155,9 @@ def main():
     habitats += [int(v) for v in rng.choice(cc_nodes, size=args.n_habitats, replace=False)]
 
     stations = load_stations(graph, args.stations)
+    for path in args.extra_stations:
+        stations += load_stations(graph, path)
+    print(f"cost model: {graph.cost_model}; {len(stations)} stations")
     goals = [(s["id"], s["type"], s["node"]) for s in stations]
     goals += [(f"rnd{i}", "random", int(v))
               for i, v in enumerate(rng.choice(cc_nodes, size=args.n_goals, replace=False))]
@@ -144,15 +184,17 @@ def main():
               f"{time.time() - t1:.1f}s")
 
     summary = {"habitats": len(habitats), "goals": len(goals), "seed": args.seed,
-               "stations": len(stations),
+               "stations": len(stations), "cost_model": graph.cost_model,
+               "baseline_calibration": "flat E3: 389.6 J/m, 293 W (blind to sand)",
+               "station_files": [Path(args.stations).name] + [Path(p).name for p in args.extra_stations],
                "levels": {k: summarise(v) for k, v in levels.items()},
                "levels_stations_only": {k: summarise([r for r in v if r["goal_type"] != "random"])
                                         for k, v in levels.items()}}
-    (out / "baselines_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (out / f"baselines_summary{sfx}.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     keys = ["habitat_index", "habitat", "level", "budget_j", "farthest_loop_j", "goal",
             "goal_type", "method", "safe", "really_feasible", "any_route_feasible",
             "estimate_j", "real_j", "optimal_j", "length_m", "time_s"]
-    with open(out / "baselines_goals.csv", "w", newline="", encoding="utf-8") as f:
+    with open(out / f"baselines_goals{sfx}.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
@@ -169,13 +211,13 @@ def main():
             fc = profile_geojson(graph, path, turn, ev.r_e, b, graph.crs_wkt, method=m,
                                  goal=ref["id"], said_safe=bool(verdicts[m]["safe"]),
                                  estimate_wh=round(verdicts[m]["estimate_j"] / J_PER_WH, 3))
-            (out / f"{m.split('_', 1)[0].lower()}_{m.split('_', 1)[1]}.geojson").write_text(
+            (out / f"{m.split('_', 1)[0].lower()}_{m.split('_', 1)[1]}{sfx}.geojson").write_text(
                 json.dumps(fc), encoding="utf-8")
         mvp = round_trip(graph, habitats[0], ref["node"], Budget())
         fc = profile_geojson(graph, mvp["path"], mvp["turn_index"], ev.r_e, b, graph.crs_wkt,
                              method="MVP_e4", goal=ref["id"], said_safe=bool(verdicts["MVP_e4"]["safe"]),
                              estimate_wh=round(verdicts["MVP_e4"]["estimate_j"] / J_PER_WH, 3))
-        (out / "mvp_e4.geojson").write_text(json.dumps(fc), encoding="utf-8")
+        (out / f"mvp_e4{sfx}.geojson").write_text(json.dumps(fc), encoding="utf-8")
 
     for k, s in summary["levels"].items():
         print(f"\n== budget {k} of the farthest round trip ==")
