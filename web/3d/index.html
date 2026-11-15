@@ -298,7 +298,7 @@
     <button id="rehearse" disabled>Rehearse</button>
     <div class="muted" id="rehearse-note">No route to rehearse yet.</div>
     <!-- Walk anywhere at eye height, with the keys (walk.js). Works without a plan too. -->
-    <button id="walk" title="First person anywhere in the box: W A S D or arrows, mouse to look">Walk freely</button>
+    <button id="walk" title="First person anywhere in the box: W/S or Up/Down to walk, A/D to step sideways, Left/Right arrows to turn, mouse to look">Walk freely</button>
     <!-- Shown only while there is no plan. The page never plans by itself (api.js). -->
     <div id="plan-default-box" hidden>
       <button id="plan-default">Plan with default settings</button>
@@ -354,7 +354,8 @@
       control's usual action. More and Panel keep focus on their button when opened or closed.
       Esc closes the top card or message and pauses. Exit leaves and returns focus to Rehearse.<br>
       Drag to look around, double-click to look forward again. Click a pin for its card.<br>
-      <b>Walking freely:</b> W A S D or arrows to move, click the view and move the mouse to look,
+      <b>Walking freely:</b> W/S or Up/Down to walk forward/back, A/D to step sideways,
+      Left/Right arrows to turn (also while walking), click the view and move the mouse to look,
       Shift to run, F for fast travel, C for the view from behind, Esc to leave.</div>
     <!-- The free-flight view as an address (view_link.js) and the picture as a PNG file. -->
     <div id="share">
@@ -467,7 +468,7 @@
     <button id="wk-chase" aria-pressed="false" title="See the astronaut from behind (C)">Chase view</button>
     <button id="wk-exit" title="Back to free flight, as it was (Esc)">Exit</button>
   </div>
-  <div id="wk-keys" class="muted">W A S D or arrows: move · Shift: run · F: fast · C: chase view · Esc: exit</div>
+  <div id="wk-keys" class="muted">W/S or ↑/↓: forward/back · A/D: step sideways · ←/→: turn · Shift: run · F: fast · C: chase view · Esc: exit</div>
   <div id="wk-hint" class="muted"></div>
   <div id="walk-pad">
     <button data-walk="forward" aria-label="Walk forward">▲</button>

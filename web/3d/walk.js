@@ -1,10 +1,11 @@
 // "Walk freely" mode of the 3D map (issue #109).
 //
-// Walk anywhere in the box at eye height, like a game: W A S D or the arrow keys move,
-// the mouse looks (click the view to capture it; Esc frees it, a second Esc leaves),
-// Shift runs, F toggles fast travel, C the view from behind. On a touch screen an
-// arrow pad and buttons do the same, and dragging looks around. The rehearsal (which
-// walks the route on its own clock) is a separate mode and is not changed by this one.
+// Walk anywhere in the box at eye height, like a game: W/S or Up/Down walk forward/back,
+// A/D step sideways and Left/Right turn. The mouse looks (click the view to capture it;
+// Esc frees it, a second Esc leaves). Shift runs, F toggles fast travel, C the view from
+// behind. On a touch screen an arrow pad moves the walker, buttons switch modes, and
+// dragging looks around. The rehearsal (which walks the route on its own clock) is a
+// separate mode and is not changed by this one.
 // The numbers (speeds, limits, distance to the route) come from walk_model.js; this file
 // owns what the mode does to the page while it is on, and puts everything back on exit:
 //   - camera: first person, the eye EYE_HEIGHT above the ground; "Chase view" shows the
@@ -39,7 +40,7 @@ const CHASE_PITCH = [3 * DEG, 80 * DEG];
 const CHASE_FLOOR = 2;             // m: the chase camera stays this far above the ground
 const MAX_FRAME = 0.1;             // s: a frame never counts for more (tab in the background)
 const SWING = 0.3;                 // rad: leg swing; the legs are stiff, so more lifts the feet
-const MOVE_CODES = new Set(Object.values(W.KEYS).flat());
+const WALK_CODES = new Set(Object.values(W.KEYS).flat());
 const PAD = ['forward', 'back', 'left', 'right'];
 
 const el = id => document.getElementById(id);
@@ -66,7 +67,7 @@ export class Walk {
     this.toRoute = null;           // m to the nearest leg of the route, or null without one
     this.speedNow = 0;             // m/s of the last frame
     this.walker = null;            // the astronaut, seen only in the chase view
-    this._keys = new Set();        // KeyboardEvent.code of the movement keys held
+    this._keys = new Set();        // KeyboardEvent.code of the movement and turn keys held
     this._pad = new Set();         // pad buttons held
     this._shift = false;
     this._facing = 0;              // heading of the astronaut's body
@@ -238,10 +239,16 @@ export class Walk {
 
   get mode() { return this.fast ? 'fast' : this.run || this._shift ? 'run' : 'walk'; }
 
-  // One frame: move with the keys held, place the camera. True when the view changed.
+  // One frame: turn and move with the keys held, place the camera. True when the view changed.
   update(dt) {
     if (!this.active) return false;
     const step = Math.min(Math.max(dt, 0), MAX_FRAME);
+    const yaw = W.turn(this.yaw, this._keys, step);
+    if (yaw !== this.yaw) {
+      this.yaw = yaw;
+      this._facing = yaw;
+      this._dirty = true;                       // turning on the spot also needs a frame
+    }
     const axes = W.moveAxes([...this._keys, ...this._pad]);
     const speed = W.speedOf({run: this.run || this._shift, fast: this.fast});
     let moved = 0;
@@ -374,7 +381,7 @@ export class Walk {
     if (e.ctrlKey || e.metaKey || e.altKey || typing(e.target)) return;
     if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { this._shift = down; return; }
     this._shift = e.shiftKey;
-    if (MOVE_CODES.has(e.code)) {
+    if (WALK_CODES.has(e.code)) {
       if (down) this._keys.add(e.code); else this._keys.delete(e.code);
       e.preventDefault();                      // an arrow on a slider would move it too
       return;
