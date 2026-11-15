@@ -3,7 +3,7 @@
 the optimum and running time.
 
 Run from the repo root:
-    python src/orienteering/e6_benchmark.py [--quick] [--no-real] [--figure-only]
+    python src/orienteering/e6_benchmark.py [--quick] [--no-real] [--figure-only] [--summary-only]
 
 Instance sets:
     random_energy / random_windows : 10 random instances per N in (10, 14, 18), E5 rules
@@ -16,6 +16,7 @@ Instance sets:
                                      nominal and 120 min; optimum from the DP or CP-SAT
 Writes data/e6/e6_results.json (one row per instance and method), data/e6/e6_table.csv
 (the summary table for the team's results table) and paper/figures/e6_fig1_gap_runtime.png.
+e6_results.json also has "overall": per method, every instance with a proven optimum pooled.
 """
 import argparse
 import csv
@@ -57,11 +58,23 @@ def main():
     ap.add_argument("--quick", action="store_true", help="2 instances per size, for a smoke test")
     ap.add_argument("--no-real", action="store_true", help="skip the E5 instances (no terrain data)")
     ap.add_argument("--figure-only", action="store_true", help="redraw the figure from e6_results.json")
+    ap.add_argument("--summary-only", action="store_true",
+                    help="recompute summary and overall from the rows in e6_results.json, without solving")
     args = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     FIG.mkdir(parents=True, exist_ok=True)
     if args.figure_only:
         figure(json.loads((OUT / "e6_results.json").read_text(encoding="utf-8"))["summary"])
+        return
+    if args.summary_only:
+        out = json.loads((OUT / "e6_results.json").read_text(encoding="utf-8"))
+        rows = out.pop("rows")
+        out.pop("overall", None)
+        out["summary"] = summarise(rows)
+        out["overall"] = overall(rows)
+        out["rows"] = rows
+        (OUT / "e6_results.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
+        print(json.dumps(out["overall"], indent=1))
         return
 
     instances = []
@@ -95,7 +108,7 @@ def main():
            "ga": {"population": ga.POPULATION, "generations": ga.GENERATIONS,
                   "max_no_improve": ga.MAX_NO_IMPROVE, "elite": ga.ELITE, "tournament": ga.TOURNAMENT,
                   "mutation": ga.MUTATION},
-           "summary": summary, "rows": rows}
+           "summary": summary, "overall": overall(rows), "rows": rows}
     (OUT / "e6_results.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
     with open(OUT / "e6_table.csv", "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=list(summary[0]))
@@ -154,6 +167,22 @@ def summarise(rows):
                         "max_gap_pct": round(100 * float(gaps.max()), 2),
                         "median_time_s": round(float(np.median(times)), 3),
                         "max_time_s": round(float(times.max()), 3)})
+    return out
+
+
+def overall(rows):
+    """Per method, over every instance whose optimum is proven (all sets pooled): the team's
+    results table reads overall.<method>.optimal_share *100."""
+    out = {}
+    for method in METHODS:
+        sel = [r for r in rows if r["method"] == method and r["optimum_proven"]]
+        if not sel:
+            continue
+        gaps = np.array([r["gap"] for r in sel])
+        out[method] = {"instances": len({(r["set"], r["instance"]) for r in sel}), "runs": len(sel),
+                       "optimal_share": round(float((gaps < 1e-9).mean()), 4),
+                       "mean_gap_pct": round(100 * float(gaps.mean()), 2),
+                       "max_gap_pct": round(100 * float(gaps.max()), 2)}
     return out
 
 
