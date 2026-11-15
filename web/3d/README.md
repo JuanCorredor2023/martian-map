@@ -106,12 +106,17 @@ or press "Reload plan". With no saved plan the terrain still works.
 
   | | Keyboard and mouse | Touch screen |
   |---|---|---|
-  | Move | W A S D or the arrow keys | the arrow pad (hold) |
+  | Walk forward/back | W/S or Up/Down arrows | the up/down arrow pad (hold) |
+  | Step sideways | A/D | the left/right arrow pad (hold) |
+  | Turn | Left/Right arrows (also while walking) | drag |
   | Look | click the view, then move the mouse (where the browser will not capture it: drag) | drag |
   | Run (3 m/s) | hold Shift, or "Run" | "Run" |
   | Fast travel (20 m/s) | F, or "Fast" | "Fast" |
   | View from behind (the astronaut) | C, or "Chase view" | "Chase view" |
   | Leave | Esc (the first Esc frees a captured mouse), or "Exit" | "Exit" |
+
+  Left/Right turn at 90°/s (a quarter turn in one second), using elapsed frame time.
+  Release the arrow to stop turning. Turning also works while walking and adds to mouse look.
 
   Walking is 1 m/s, the eye 1.7 m above the ground, the relief locked at ×1. The walker stays
   1 m inside the box edge and out of the habitat dome. The route is a path on the ground,

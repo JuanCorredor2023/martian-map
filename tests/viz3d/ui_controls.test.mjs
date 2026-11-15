@@ -449,15 +449,17 @@ test('30. Walk freely: W A S D or arrows, Shift, F, C, Esc and the touch pad', (
   buttons('walk', 'wk-run', 'wk-fast', 'wk-chase', 'wk-exit');
   present('walk-bar', 'wk-keys', 'wk-hint');
   for (const id of ['walk', 'wk-run', 'wk-fast', 'wk-chase', 'wk-exit']) wired(id, 'click');
-  // Keys by KeyboardEvent.code. A and D step sideways; the left and right arrows step
-  // sideways too today and turn after block 3 of #124: either way they stay bound.
+  // Keys by KeyboardEvent.code. A and D step sideways; Left and Right turn the walker.
   const moves = {forward: ['KeyW', 'ArrowUp'], back: ['KeyS', 'ArrowDown'], left: ['KeyA'], right: ['KeyD']};
   for (const [way, codes] of Object.entries(moves)) {
     for (const c of codes) assert.ok(W.KEYS?.[way]?.includes(c), `web/3d/walk_model.js: ${c} no longer moves ${way}`);
   }
-  for (const c of ['ArrowLeft', 'ArrowRight']) {
-    assert.ok(Object.values(W.KEYS ?? {}).flat().includes(c), `web/3d/walk_model.js: ${c} does nothing any more`);
+  for (const [way, code] of [['turnLeft', 'ArrowLeft'], ['turnRight', 'ArrowRight']]) {
+    assert.deepEqual(W.KEYS?.[way], [code], `web/3d/walk_model.js: ${code} must turn, without A/D`);
+    assert.deepEqual(W.moveAxes([code]), {forward: 0, right: 0}, `${code} must not strafe`);
   }
+  assert.deepEqual(W.moveAxes(['KeyA']), {forward: 0, right: -1}, 'A must strafe left');
+  assert.deepEqual(W.moveAxes(['KeyD']), {forward: 0, right: 1}, 'D must strafe right');
   inCode('walk', /\bW\.KEYS\b/, 'the walk no longer moves with the keys of walk_model.js');
   inCode('walk', /'keydown'/, 'the walk no longer listens to the keys');
   inCode('walk', /\bshiftKey\b|'Shift(?:Left|Right)'/, 'Shift no longer runs');
