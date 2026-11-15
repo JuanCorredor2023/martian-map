@@ -89,6 +89,24 @@ On the training blocks the values are similar (r = 0.68 per cell, 0.74 at 10 m),
 
 **Cost:** 0.93 M parameters against 43.9 M (47 times fewer). The whole box takes 8.6 s against 362 s for the teacher (42 times faster).
 
+**Effect on the plan** (`src/dl_rocas/route_effect.py` → `data/e9/route_effect.json`).
+- **Set-up:**
+  - E4's graph, with the habitat at the box centre.
+  - 28 goals: the 13 manual stations and the 15 E8 contacts.
+  - Minimum-cost round trips with arc energy E3 × (1 + k · cover of the arrival cell).
+  - k has no source; it is a sensitivity sweep, and k = 0 is the E4 route.
+
+| k | Route cells with cover ≥ 0.25 | Goals whose route crosses one | Boulder area stepped on (m², sum of cover) | E3 energy vs k = 0, median / max | Length vs k = 0, max |
+|---|---:|---:|---:|---:|---:|
+| 0 (E4) | 15 | 3 | 45.2 | 0 / 0 | 0 m |
+| 1 | 5 | 1 | 30.9 | +0.00 % / +0.12 % | +1 m |
+| 3 | 5 | 1 | 24.9 | +0.01 % / +0.53 % | +8 m |
+| 10 | 3 | 1 | 21.1 | +0.06 % / +1.22 % | +16 m |
+
+- **Cheap to avoid:** the E4 routes already cross few boulders, and pricing them removes most of the rest for almost no energy. With k = 10, the boulder area along the 28 round trips halves (45 → 21 m²) for a median energy change of +0.06 % and at most +16 m of walking.
+- **Low cost for planning:** boulders are a hazard that costs very little to avoid in this box. Pricing them changes local detours, not which stations fit the budget.
+- **Unknown weight:** the right k is unknown, which is why `rocas.tif` is offered as a layer and not wired into the cost.
+
 ![Figure 1](../figures/e9_fig1_teacher.png)
 *Figure 1. (a) BoulderNet detections on a 125 m zoom at the north-west corner (scarp with debris). (b) Teacher rock cover over the box, 10 m windows; the cyan square is the zoom. `src/dl_rocas/paper_figures.py`.*
 
@@ -142,6 +160,7 @@ Inputs: `gh release download base-grid-v2` into `data/base/`, and `data/06_bould
 <env>/python src/dl_rocas/distill.py train     # 45 min on a T1000
 <env>/python src/dl_rocas/distill.py predict   # 9 s
 <env>/python src/dl_rocas/evaluate_student.py  # classification metrics, 2 min
+python src/dl_rocas/route_effect.py            # effect on E4 round trips, any env with scipy + geopandas
 # 60-epoch comparison (overwrites data/e9/student.pt; keep the 30-epoch one aside first)
 <env>/python src/dl_rocas/distill.py train --epochs 60     # 90 min on a T1000
 <env>/python src/dl_rocas/distill.py predict --out data/e9/w32_e60/rocas.tif
@@ -158,6 +177,7 @@ In `data/e9/` (not in git):
 - `teacher_cover_1m.tif`
 - `student.pt`
 - `student_metrics.json`, `student_classification.json`
+- `route_effect.json`
 - **`rocas.tif`** and `rocas.json`
 - `summary.json`
 - `w16/`: the dropped student
