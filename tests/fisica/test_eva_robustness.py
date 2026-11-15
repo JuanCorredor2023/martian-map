@@ -131,6 +131,7 @@ def test_export_saved_tour_matches_exact_directed_return_paths(tmp_path, monkeyp
     from fisica.edge_cost import NEIGHBOURS, edge_costs
     from grafos.graph import Graph
     from fisica.eva_robustness import export_saved_plan
+    from fisica import eva_robustness
     t, e, _ = edge_costs(np.tile(np.arange(5) * .1, (3, 1)))
     g = Graph({"energy_j": e, "time_s": t}, NEIGHBOURS,
               transform=(1., 0., 100., 0., -1., 50.))
@@ -153,6 +154,15 @@ def test_export_saved_tour_matches_exact_directed_return_paths(tmp_path, monkeyp
     path.write_text(json.dumps(saved))
     monkeypatch.setitem(sys.modules, "api", SimpleNamespace(planner=SimpleNamespace(
         graph=lambda *args: g, e1_weights_path=lambda *args: None)))
+    # The graph above is synthetic. Its provenance must be synthetic too: do not
+    # hash the real DEM/grid (which do not exist in a clean checkout).
+    metadata = tmp_path / "metadata"
+    metadata.mkdir()
+    for name in ("grid.json", "crs.wkt", "dem_1m.tif", "slope_deg.tif"):
+        (metadata / name).write_bytes(b"synthetic graph metadata: " + name.encode())
+    real_digest = eva_robustness.file_sha256
+    monkeypatch.setattr(eva_robustness, "file_sha256",
+                        lambda path: real_digest(metadata / Path(path).name))
     plan = export_saved_plan(path, tmp_path / "input.json", segment_m=2)
     assert sum(e.predicted_wh for e in plan.events) == pytest.approx(used[-1])
     assert sum(e.science for e in plan.events) == 5
