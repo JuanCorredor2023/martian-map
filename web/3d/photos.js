@@ -4,9 +4,11 @@
 // Curiosity's Navcam photos (the catalogue of block 1, read by photos_model.js) are
 // pinned at the stops where the rover took them. This file owns what the page does with
 // them, and puts everything back when the photo view is left:
-//   - pins: one per stop, on a MarkerLayer of their own (main.js makes it). Hidden while
-//     the rehearsal runs (setVisible) and while the photo view is on, so they do not sit
-//     on the very terrain being compared.
+//   - pins: one per stop, on a MarkerLayer of their own (main.js makes it). Off until main.js
+//     shows them (its "Show photo stops" box starts unticked: the 100 pins of the 383 photos
+//     covered the route, #124); opening a photo view turns them on, so they are there after
+//     Exit, wherever the photo was opened from. Hidden while the rehearsal runs (setVisible)
+//     and while the photo view is on, so they do not sit on the very terrain being compared.
 //   - card: the photo of one view, a button per view of the stop (its compass word),
 //     the facts and "View from here". Where stops overlap, chooseStop() lists them first.
 //   - photo view: the camera flies to where the rover camera was, with the relief at
@@ -53,13 +55,14 @@ const headingDeg = photo => ((Math.round(photo.heading / DEG) % 360) + 360) % 36
 export class PhotoLayer {
   // markers: a MarkerLayer of its own for the photo pins; relief: {lock(reason),
   // unlock(k)} from main.js; showCard/hideCard: card.js; isBusy(): true while the
-  // rehearsal runs; onChange(): something to draw.
+  // rehearsal runs; onChange(): something to draw; onShowPins(): the photo view turned
+  // the pins on by itself (main.js ticks its box).
   constructor({terrain, controls, camera, canvas, relief, sunView, markers, showCard, hideCard,
-               onChange = () => {}, isBusy = () => false}) {
+               onChange = () => {}, isBusy = () => false, onShowPins = () => {}}) {
     Object.assign(this, {terrain, controls, camera, canvas, relief, sunView, markers, showCard, hideCard,
-                         onChange, isBusy});
+                         onChange, isBusy, onShowPins});
     this.model = null;             // parseCatalog() result once load() worked
-    this.visible = true;           // what setVisible() asked for the pins
+    this.visible = false;          // what setVisible() asked for the pins (off until asked)
     this.opacity = DEFAULT_OPACITY;            // % of the overlay, kept from one photo view to the next
     this._view = null;             // the photo view while it is on (see _start)
     this._card = false;            // a card of this layer is shown
@@ -240,6 +243,12 @@ export class PhotoLayer {
     this._view = {saved: {pose: controls.pose(), near: camera.near, k: terrain.k, sun: {...sunView.start}},
                   photo: null, views: [], index: 0, pose: null, flight: null, square: null,
                   flyingUntil: 0, failed: false};
+    // A photo opened by link or from a card turns the photo stops on: hidden while the view
+    // is on (_showPins), they are there after Exit.
+    if (!this.visible) {
+      this.visible = true;
+      this.onShowPins();
+    }
     controls.cancel();
     this.relief.lock(RELIEF_REASON);
     camera.near = NEAR;

@@ -124,7 +124,7 @@ const PLAN_MESSAGES = [
    plain: n => `Planned again ${n} ${n === '1' ? 'time' : 'times'} with less energy, so the astronaut can get back from every point`},
   // api/main.py plan(): no stations and no goal
   {re: /^fixed test route \(Curiosity trajectory\)/, warn: true,
-   plain: () => "Sample route (Curiosity's path), not a plan: add stations in the 2D planner to plan a walk"},
+   plain: () => "Sample route (Curiosity's path), not a plan: add stations in the planner to plan a walk"},
   {re: /^service_energy_wh_per_min is null\b/, warn: true,
    plain: () => 'The energy for the work at the stations is not given, so the plan cannot be called energy-feasible'},
 ];

@@ -6,10 +6,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
+import '../../web/terms.js';
 import * as P from '../../web/3d/plan_model.js';
 import * as R from '../../web/3d/rehearse_model.js';
 import { loadRubric, requestWalkback, walkbackRequest } from '../../web/3d/api.js';
 import * as G from '../../web/guide_core.js';
+
+const T = globalThis.TERMS;                 // the team's glossary (#166): names and number formats
 
 const fixture = name => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
 const E4 = fixture('plan_e4.json'), FIXED = fixture('plan_fixed_route.json'), TOUR = fixture('plan_tour_e5.json');
@@ -148,7 +151,7 @@ test('no profile: time is distance at an assumed 1 m/s, and the text says so', (
   assert.equal(s.profile, null);
   assert.equal(s.leg, null);
   assert.equal(R.energyReadout(s.profile, 900), null);
-  assert.equal(R.progressText(model, s), '1:40 of 5:32 (assumed 1 m/s) · 100 of 332 m');
+  assert.equal(R.progressText(model, s), 'EVA 1:40 of 5:32 (assumed 1 m/s) · 100 of 332 m');
   // The route has repeated vertices (steps of 0 m): they take no time and break nothing.
   for (let i = 0; i < route.coords.length; i++) {
     const at = model.stateAt(model.times[i]);
@@ -218,8 +221,8 @@ test('heading: looks 12 m ahead, never past a stop, and is held on the last metr
   const half = model.stateAt(80);                            // half-way through the wait: half-way round
   assert.equal(half.standing, true);
   close(Math.abs(R.angleDelta(half.heading, 90 * DEG)), 90 * DEG, 1e-6);
-  assert.equal(R.progressText(model, half), '1:20 of 2:40 · at a stop · 50 of 100 m');
-  assert.equal(R.progressText(model, model.stateAt(130)), '2:10 of 2:40 · returning · 70 of 100 m');
+  assert.equal(R.progressText(model, half), 'EVA 1:20 of 2:40 · at a stop · 50 of 100 m');
+  assert.equal(R.progressText(model, model.stateAt(130)), 'EVA 2:10 of 2:40 · returning · 70 of 100 m');
 });
 
 test('stops: a tour has several, taken from the answer; skipped stations are not stops', () => {
@@ -288,7 +291,7 @@ test('real E5 tour: eight stops where the answer puts them, each with its 10 min
   assert.equal(model.stateAt(model.stops[3].leave + 5).leg, 'outbound');
   assert.equal(model.stateAt(model.stops[7].arrive + 300).leg, 'outbound');
   assert.equal(model.stateAt(model.stops[7].leave + 5).leg, 'return');
-  assert.equal(R.progressText(model, model.stateAt(6000)), '100:00 of 111:27 · returning · 862 of 1392 m');
+  assert.equal(R.progressText(model, model.stateAt(6000)), 'EVA 100:00 of 111:27 · returning · 862 of 1392 m');
   // Every vertex is where the profile says, with the answer's own values.
   for (let i = 0; i < route.coords.length; i += 9) {
     const s = model.stateAt(ts[i]);
@@ -310,9 +313,10 @@ test('walking the whole E5 tour: same limits as the round trip, through eight st
   assert.ok(w.standingTurn < 1, `turn in one 0.1 s step at a stop: ${w.standingTurn} deg`);   // measured 0.41
 });
 
-test('energy bar and texts: the same numbers and words as the 2D planner', () => {
+test('energy bar and texts: the numbers of the 2D planner, in the words and formats of the glossary', () => {
   const {route, model} = modelOf(E4);
-  // showRouteIdx() of web/index.html, written out again on the raw answer.
+  // showRouteIdx() of web/index.html, written out again on the raw answer; the names and the
+  // number formats of web/terms.js (#166): whole Wh, "spare", "home in" in whole minutes.
   const r = {...E4.features[0].properties}, usable = r.usable_wh;
   const mm = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
   for (const i of [0, 1, 250, 535, 536, 537, 800, 1072]) {
@@ -321,34 +325,65 @@ test('energy bar and texts: the same numbers and words as the 2D planner', () =>
     const state = model.stateAt(r.t_s[i]), bar = R.energyReadout(state.profile, model.usableWh);
     close(bar.usedPct, pct(used), 1e-9); close(bar.rvPct, pct(rv), 1e-9); close(bar.freePct, pct(free), 1e-9);
     close(bar.usedPct + bar.rvPct + bar.freePct, 100, 1e-9);
-    assert.equal(bar.lines[0], `Energy used ${used.toFixed(1)} Wh · return needs ${rv.toFixed(1)} Wh · ` +
-                               `free ${free.toFixed(0)} of ${usable.toFixed(0)} Wh`);
+    assert.equal(bar.lines[0], `Energy used ${used.toFixed(0)} Wh · return needs ${rv.toFixed(0)} Wh · ` +
+                               `spare ${free.toFixed(0)} of ${usable.toFixed(0)} Wh`);
     assert.equal(bar.lines[1], `O₂ used ${r.o2_used_l[i].toFixed(1)} L (metabolic equivalent) · ` +
-                               `back in ${(r.rv_time_s[i] / 60).toFixed(1)} min`);
+                               `home in ${Math.round(r.rv_time_s[i] / 60)} min`);
     assert.equal(bar.energyLeft, Math.round(usable - used));               // what the 2D planner sends to /walkback
     assert.equal(R.progressText(model, state),
-                 `${mm(r.t_s[i])} of ${mm(r.t_s.at(-1))} · ${i >= r.turn_index ? 'returning' : 'outbound'} · ` +
+                 `EVA ${mm(r.t_s[i])} of ${mm(r.t_s.at(-1))} · ${i >= r.turn_index ? 'returning' : 'outbound'} · ` +
                  `${model.distances[i].toFixed(0)} of ${route.lengthM.toFixed(0)} m`);
   }
-  assert.equal(R.progressText(model, model.stateAt(1000)), '16:40 of 40:03 · at R0 · 666 of 1334 m');
+  assert.equal(R.progressText(model, model.stateAt(1000)), 'EVA 16:40 of 40:03 · at R0 · 666 of 1334 m');
   assert.equal(R.clock(59.6), '1:00');                       // the 2D planner would write 0:60
   // With no usable budget in the answer there is no bar, and nothing breaks.
   assert.equal(R.energyReadout(model.stateAt(0).profile, null), null);
-  // On arrival the time to return can come out a hair under zero: 0.0, never "-0.0" (#124).
-  assert.equal(R.energyReadout({used_wh: 447.5, rv_wh: 0, o2_used_l: 80, rv_time_s: -1e-9}, 900).lines[1],
-               'O₂ used 80.0 L (metabolic equivalent) · back in 0.0 min');
+  // On arrival the time and the energy to return can come out a hair under zero: 0, never a
+  // minus sign (#124).
+  const home = R.energyReadout({used_wh: 447.4, rv_wh: -2e-5, o2_used_l: 80, rv_time_s: -1e-9}, 900);
+  assert.equal(home.lines[0], 'Energy used 447 Wh · return needs 0 Wh · spare 453 of 900 Wh');
+  assert.equal(home.lines[1], 'O₂ used 80.0 L (metabolic equivalent) · home in 0 min');
 });
 
-test('time home: the words of the tablet meter, from its seconds, never "home in -0.0 min"', () => {
+test('time home: the words of the tablet meter, from its seconds, in whole minutes and never negative', () => {
   // guide_core's meters() of the same E4 answer, as the rehearsal reads them (back.s, back.text).
   const r = G.routeFromPlan({plan: E4});
   for (const i of [0, 1, 250, 535, 536, 800, r.coords.length - 1]) {
     const back = G.meters(r, i).back;
     assert.equal(R.homeInText(back.s), back.text);
   }
-  assert.equal(R.homeInText(754), 'home in 12.6 min');
-  assert.equal(R.homeInText(-1e-9), 'home in 0.0 min');      // toFixed alone writes "-0.0"
-  assert.equal(R.homeInText(-0), 'home in 0.0 min');
+  assert.equal(R.homeInText(754), 'home in 13 min');         // 12.6 min: whole minutes, as the glossary
+  assert.equal(R.homeInText(754), T.homeIn(754).toLowerCase());
+  assert.equal(R.homeInText(-1e-9), 'home in 0 min');        // a hair under zero on arrival
+  assert.equal(R.homeInText(-0), 'home in 0 min');
+  assert.equal(R.homeInText(-40), 'home in 0 min');          // never "-1 min"
+});
+
+test('the player and the panel say the names of the glossary, and the band the tablet\'s banner', () => {
+  // web/3d/index.html without its comments (HTML and CSS): what the page shows.
+  const page = readFileSync(new URL('../../web/3d/index.html', import.meta.url), 'utf8')
+    .replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  const N = T.NAMES;
+  // The meter labels exactly as the tablet shows them (web/guide.html).
+  for (const label of [N.spare, `${N.home} · ${N.homeLimit}`, N.evaLeft, N.radio]) {
+    assert.ok(page.includes(`>${label}</span>`), `no meter label "${label}"`);
+  }
+  // The main buttons of the player, the way into the rehearsal and the link back to the planner.
+  const button = id => new RegExp(`<button id="${id}"[^>]*>([^<]*)</button>`).exec(page)?.[1] ?? '';
+  assert.match(button('rh-home'), new RegExp(`${N.returnHome}$`));
+  assert.match(button('rh-detour'), new RegExp(`${N.offRoute}$`));
+  assert.match(button('rh-storm'), new RegExp(`${N.storm}$`));
+  assert.equal(button('rehearse'), N.rehearse);
+  assert.ok(page.includes(`href="/">← ${N.planner}</a>`), 'the link back is not the planner\'s name');
+  // The storm band: the headline of the tablet's banner, pending and once the way home is known.
+  const band = /<div id="rh-storm-band"[^>]*>([^<]*)<\/div>/.exec(page)?.[1];
+  const headline = html => /<b>([^<]*)<\/b>/.exec(html)?.[1];
+  assert.equal(band, headline(G.STORM_PENDING));
+  assert.equal(band, headline(G.stormHtml({realUgy: 2.2, x50Ugy: 54})));
+  assert.equal(band, `${N.storm.toUpperCase()} · ${N.returnHome.toLowerCase()} now`);
+  for (const old of ['Time home (limit 30 min)', 'go home now', '2D planner', 'Detour', 'Rehearse the route', 'free<']) {
+    assert.ok(!page.includes(old), `web/3d/index.html still says "${old}"`);
+  }
 });
 
 test('a way home of one point (Return home or the storm pressed at the habitat): the walker stands there', () => {
@@ -369,13 +404,62 @@ test('a way home of one point (Return home or the storm pressed at the habitat):
     assert.equal(s.standing, false);
     assert.equal(s.heading, null);                         // no direction: the view keeps its own
     assert.equal(s.profile.used_wh, 12.5);
-    assert.equal(R.progressText(model, s), '0:00 of 0:00 · 0 of 0 m');
+    // The player keeps the EVA clock (#124): asked 2:05 into the EVA, it says so, and that
+    // the walker is home, not a way home of "0:00 of 0:00". On its own clock (no options)
+    // the route would read as a route of no time.
+    assert.equal(R.progressText(model, s, {evaStart: 0, homeStart: 125}), 'EVA 2:05 · at the habitat');
+    assert.equal(R.progressText(model, s), 'EVA 0:00 of 0:00 · 0 of 0 m');
   }
   assert.deepEqual(model.cameraAt(0), home);
   assert.equal(model.headingAt(0), null);
   close(R.eyeAltitude(d => ground(...model.cameraAt(d)), 0, model.length), ground(...home) + R.EYE_HEIGHT, 1e-9);
   // A route that has a direction still has a heading everywhere.
   assert.ok(Number.isFinite(modelOf(E4).model.stateAt(0).heading));
+});
+
+test('player clock: the EVA clock goes on after Return home, the storm or a rejoin; the way home is a stretch of it', () => {
+  // Routes built as rehearse.js _walkRoute builds them: a guide_core route whose clock
+  // starts where the walker was (seconds on the plan's clock), and the EVA started at 0.
+  const straight = (n, t0, seconds) => {
+    const coords = Array.from({length: n + 1}, (_, i) => [8143000 + i, -284000]);
+    const t = coords.map((_, i) => t0 + i * seconds / n);
+    return R.buildRehearsal({kind: 'route', coords, turnIndex: null, stops: [], totals: {usable_wh: 900},
+                             profile: {t_s: t, used_wh: t.map(v => v / 10), rv_time_s: t.map(v => t0 + seconds - v),
+                                       rv_wh: coords.map((_, i) => n - i)}}, []);
+  };
+  // Return home pressed 100:02 into the EVA: 160 m and 2:51 to the habitat. The stretch has
+  // the glossary's name, "return home" (it said "way home" before #166).
+  const home = straight(160, 6002, 171), opts = {evaStart: 0, homeStart: 6002};
+  assert.equal(R.progressText(home, home.stateAt(6002), opts), 'EVA 100:02 · return home 0:00 of 2:51 · 0 of 160 m');
+  assert.equal(R.progressText(home, home.stateAt(6124), opts), 'EVA 102:04 · return home 2:02 of 2:51 · 114 of 160 m');
+  assert.equal(R.progressText(home, home.stateAt(6173), opts), 'EVA 102:53 · return home 2:51 of 2:51 · 160 of 160 m');
+  // Before #124 the same state read as the way home's own clock, from 0:00.
+  assert.equal(R.progressText(home, home.stateAt(6124)), 'EVA 2:02 of 2:51 · 114 of 160 m');
+  // A detour on the way home (60 s later): the rejoined way home is longer, and the stretch
+  // still counts from the first time home was asked.
+  const rejoined = straight(120, 6062, 150);
+  assert.equal(R.progressText(rejoined, rejoined.stateAt(6092), opts), 'EVA 101:32 · return home 1:30 of 3:30 · 24 of 120 m');
+  // A rejoin of the plan (the detour 25:00 into the EVA): the rest of the plan, so the EVA
+  // clock of the plan's new end; never 0:00.
+  const plan = straight(800, 1500, 1000);
+  assert.equal(R.progressText(plan, plan.stateAt(1500), {evaStart: 0}), 'EVA 25:00 of 41:40 · 0 of 800 m');
+  assert.equal(R.progressText(plan, plan.stateAt(1600), {evaStart: 0, homeStart: null}), 'EVA 26:40 of 41:40 · 80 of 800 m');
+  // The planned route itself: the same numbers as always, with "EVA" in front.
+  const {model} = modelOf(E4);
+  assert.equal(R.progressText(model, model.stateAt(1000), {evaStart: model.start}), 'EVA 16:40 of 40:03 · at R0 · 666 of 1334 m');
+});
+
+test('maneuver distance: written big as on the tablet, "350 m" or "Now"', () => {
+  assert.equal(R.maneuverDistance('in 350 m'), '350 m');
+  assert.equal(R.maneuverDistance('in 1250 m'), '1250 m');
+  assert.equal(R.maneuverDistance('now'), 'Now');
+  // Every vertex of the E4 route, from guide_core's own banner text.
+  const r = G.routeFromPlan({plan: E4});
+  for (let i = 0; i < r.coords.length; i++) {
+    const {distText} = G.nextManeuver(r, i);
+    assert.equal(R.maneuverDistance(distText), distText === 'now' ? 'Now' : distText.slice(3));
+    assert.match(R.maneuverDistance(distText), /^(Now|\d+ m)$/);
+  }
 });
 
 test('eye height: follows the ground averaged along the path, never under 1.6 m', () => {

@@ -2,8 +2,9 @@
 //   node --test tests/viz3d/
 //
 // Simplifying the interface must not drop a feature that works. For each of the 31
-// features of the 3D view (the list of #124, in its order), and for the adaptive walkback
-// that #160 added to the rehearsal (32), this reads the files and checks
+// features of the 3D view (the list of #124, in its order), for the adaptive walkback
+// that #160 added to the rehearsal (32), and for the "Panel" and "More" buttons that block 2
+// of #124 put in the player (33), this reads the files and checks
 // that the feature's control or way in is still there and still wired: the element ids of
 // web/3d/index.html (buttons stay buttons, inputs stay inputs), the handlers behind them,
 // the URL parameters, the ?check= modes and the keys. Layout and colours are not checked,
@@ -177,6 +178,14 @@ test('1. free flight: drag, right-drag or Shift + drag, wheel and touch; ?drag=p
   inCode('controls', /e\.button === 2/, 'the right button no longer moves the map');
   inCode('controls', /e\.shiftKey/, 'Shift + drag no longer moves the map');
   inCode('controls', /type:\s*'two'/, 'two fingers no longer move, pinch and twist');
+  // The page can be zoomed on a phone (#124: WCAG 1.4.4), but not from the view: a pinch
+  // there is the camera's zoom, so the view keeps every touch for itself.
+  const viewport = TAGS.find(t => t.tag === 'meta' && t.attrs.name === 'viewport');
+  assert.ok(viewport, 'web/3d/index.html has no viewport meta');
+  const vp = Object.fromEntries((viewport.attrs.content ?? '').split(',').map(p => p.split('=').map(s => s.trim().toLowerCase())));
+  assert.ok(!(Number(vp['maximum-scale']) < 2) && !['no', '0'].includes(vp['user-scalable']),
+            `the viewport stops zooming the page again: "${viewport.attrs.content}"`);
+  assert.match(PAGE, /#view\s*\{[^}]*\btouch-action:\s*none\b/, 'a pinch on the view would zoom the page: #view lost touch-action: none');
 });
 
 test('2. compass (face north) and home (reset the view)', () => {
@@ -270,6 +279,11 @@ test('13. the Sun follows the EVA clock while rehearsing', () => {
   // The note may move to the player and change its words (#124, block 2): any module but the checks.
   assert.ok(Object.entries(JS).some(([file, src]) => file !== 'checks' && /[`'"][^`'"]*EVA clock/.test(src)),
             'no module says "EVA clock" any more');
+  // The panel is hidden while rehearsing (#124, block 2): the player repeats its Sun line.
+  present('rh-sun');
+  assert.ok(inner('player').includes('id="rh-sun"'), '#rh-sun is no longer in the player');
+  inCode('rehearse', /['"]rh-sun['"]/, 'the player no longer shows the Sun line');
+  inCode('rehearse', /['"]sun-note['"]/, 'the player no longer repeats the Sun note ("Following the EVA clock")');
 });
 
 test('14. Relief only and Shadows; ?shadows=0', () => {
@@ -297,6 +311,16 @@ test('16. rover photo stops: pins and cards', () => {
   inputs('photos-show');
   present('photos-note');
   wired('photos-show', 'change');
+  // Off when the page opens (#124: 100 pins covered the route). Opening a photo turns them on,
+  // so they are there after the photo view: ?photo=, a stop's card and a station's card all go
+  // through enter(), and main.js ticks the box when it does.
+  assert.equal(element('photos-show').attrs.checked, undefined, '#photos-show starts ticked again');
+  const enter = bodyOf('photos', 'enter');
+  const reached = [enter, ...[...enter.matchAll(/\bthis\.([\w$]+)\(/g)].map(m => bodyOf('photos', m[1]))];
+  assert.ok(reached.some(text => /\bthis\.visible\s*=\s*true\b/.test(text) && /\bthis\.onShowPins\(/.test(text)),
+            'web/3d/photos.js: opening a photo no longer turns the photo stops on');
+  inCode('main', /\bonShowPins:[^;]*\bui\(\s*'photos-show'\s*\)\.checked\s*=\s*true\b/,
+         'a photo view that turns the stops on no longer ticks "Show photo stops"');
   inCode('main', /import\(\s*'\.\/photos\.js'\s*\)/, 'the rover photos are no longer loaded');
   inCode('main', /\bphotoMarkers\.pickAll\(/, 'a click no longer picks a photo stop');
   inCode('main', /\bphotos\.openGroup\(/, 'a photo stop no longer opens its card');
@@ -386,6 +410,14 @@ test('27. Return home, Detour and Solar storm', () => {
   buttons('rh-home', 'rh-detour', 'rh-storm');
   present('rh-alert', 'rh-note');
   for (const id of ['rh-home', 'rh-detour', 'rh-storm']) wired(id, 'click');
+  // The storm also shows beyond the player (#124 b): a band on top and a vignette, page
+  // elements that the rehearsal shows and hides. Nothing goes into the 3D scene for it
+  // (sun.js repaints the sky, ?check=rehearse compares the scene): only the walker does.
+  present('rh-storm-band', 'rh-tint');
+  inCode('rehearse', /['"]rh-storm-band['"]/, 'the storm band is no longer shown');
+  inCode('rehearse', /['"]rh-tint['"]/, 'the storm vignette is no longer shown');
+  assert.equal((JS.rehearse.match(/\bscene\.add\(/g) || []).length, 1,
+               'web/3d/rehearse.js adds something besides the walker to the 3D scene');
 });
 
 test('28. end summary card and the walk log (POST /walks)', () => {
@@ -397,6 +429,13 @@ test('28. end summary card and the walk log (POST /walks)', () => {
   inCode('rehearse', /\bG\.postWalk\(/, 'the walk is no longer kept for the debrief');
   assert.match(GUIDE, /fetch\(\s*["']\/walks["']\s*,\s*\{\s*method:\s*["']POST["']/,
                'web/guide_core.js no longer posts the walk to /walks');
+  // At the habitat the rehearsal stays on (#124, row 20): leaving would lose the summary,
+  // the replay and the Sun of the end. The end card offers "Replay" and "Exit".
+  const arrive = methodWith('rehearse', /You have arrived at the habitat/);
+  assert.ok(arrive, 'web/3d/rehearse.js no longer says the walker has arrived');
+  assert.doesNotMatch(arrive, /\bthis\.exit\(/, 'web/3d/rehearse.js: arriving at the habitat leaves the rehearsal');
+  cardAction('rehearse', 'this\\.replay', 'the end card no longer offers "Replay"');
+  cardAction('rehearse', 'this\\.exit', 'the end card no longer offers "Exit"');
 });
 
 test('29. replay from the end', () => {
@@ -463,14 +502,49 @@ test('32. adaptive walkback (#160): the ×k demo button, the meter at your pace,
     .some(text => /\bG\.K_TRUE_CHOICES\b/.test(text));
   assert.ok(clicks.some(cycles), '#rh-ktrue: its click no longer cycles the demo choices of k (G.K_TRUE_CHOICES)');
   assert.match(GUIDE, /export const K_TRUE_CHOICES\s*=/, 'web/guide_core.js no longer offers the demo choices of k');
-  // "Spare energy at your pace": hidden until the first answer of POST /walkback/update.
-  present('rh-k-label', 'rh-m-k', 'rh-v-k');
+  // "Spare energy at your pace": hidden until the first answer of POST /walkback/update;
+  // its state word apart from the value, as the other meters (#124, block 2).
+  present('rh-k-label', 'rh-m-k', 'rh-v-k', 'rh-w-k');
   assert.equal(element('rh-k-track').attrs.role, 'meter', '#rh-k-track is no longer a meter');
   inCode('rehearse', /\bG\.adaptiveStep\(/, 'the rehearsal no longer learns k as it plays');
   // RETURN NOW comes from guide_core and shows in #rh-alert (the storm wins).
   inCode('rehearse', /\bG\.kAlarmMessage\(/, 'the rehearsal no longer raises RETURN NOW');
   // The adaptive rows of "Plan against the walk".
   inCode('rehearse', /\badaptiveCardRows\(/, 'the end summary no longer has the adaptive rows');
+});
+
+test('33. while rehearsing: "Panel" brings the side panel back, "More" holds the rest of the player (#124, block 2)', () => {
+  buttons('rh-panel', 'rh-more');
+  for (const id of ['rh-panel', 'rh-more']) assert.ok(inner('player').includes(`id="${id}"`), `#${id} is no longer in the player`);
+  // A handler's text and the methods of the module that it calls.
+  const reach = (file, text) => [text, ...[...text.matchAll(/(?<![\w$])(?:this\.)?([\w$]+)\(/g)]
+    .map(m => bodyOf(file, m[1]))].join('\n');
+  // "Panel": its click shows or hides #info through a class of the body of its own (the
+  // photo view's, photo-view, also hides the map layer), and leaving takes the class away.
+  const panel = listenersOf('rh-panel').filter(l => l.type === 'click').map(l => reach(l.file, l.text)).join('\n');
+  const cls = /document\.body\.classList\.toggle\(\s*'([\w-]+)'/.exec(panel)?.[1];
+  assert.ok(cls, '#rh-panel: its click no longer shows or hides the side panel (a class of the body)');
+  assert.notEqual(cls, 'photo-view', "#rh-panel uses the photo view's class, which also hides the map layer");
+  assert.match(PAGE, new RegExp(`body\\.${literal(cls)}\\s+#info\\s*\\{[^}]*display:\\s*none`),
+               `web/3d/index.html: body.${cls} no longer hides #info`);
+  assert.match(reach('rehearse', bodyOf('rehearse', 'exit')), new RegExp(`classList\\.(?:remove|toggle)\\([^)]*'${literal(cls)}'`),
+               'web/3d/rehearse.js: leaving the rehearsal no longer brings the side panel back');
+  // "More": a disclosure (aria-expanded, aria-controls) over the box of the other controls.
+  const more = element('rh-more'), box = more.attrs['aria-controls'];
+  assert.ok(more.attrs['aria-expanded'] !== undefined && box && ELEMENTS.has(box),
+            '#rh-more no longer says what it opens (aria-expanded, aria-controls)');
+  wired('rh-more', 'click');
+  const under = tags(inner(box)).map(t => t.attrs.id).filter(Boolean);
+  for (const id of ['rh-chase', 'rh-recentre', 'rh-speed', 'rh-voice', 'rh-ktrue']) {
+    assert.ok(under.includes(id), `#${id} is no longer under "More"`);
+  }
+  // One row of main buttons, none of them folded; the ×k demo button no longer beside Return home.
+  const main = tags(inner('rh-main')).map(t => t.attrs.id);
+  for (const id of ['rh-play', 'rh-home', 'rh-detour', 'rh-storm']) {
+    assert.ok(main.includes(id), `#${id} is no longer in the main row of the player`);
+    assert.ok(!under.includes(id), `#${id} is folded under "More"`);
+  }
+  assert.ok(!main.includes('rh-ktrue'), 'the ×k demo button is back beside Return home');
 });
 
 test('every id that the 3D code looks up is in the page, or made by the code', () => {

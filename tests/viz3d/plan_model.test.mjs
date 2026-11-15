@@ -240,7 +240,7 @@ test('plan messages of the three real answers, in plain words, as the panel show
     {text: "Power used at the stations: 205 W (the planner's default)", warn: false}]);
   // The fixed route is not a plan, and its energy cannot be judged: both stay warnings.
   assert.deepEqual(P.planMessages(P.parsePlan(FIXED).warnings), [
-    {text: "Sample route (Curiosity's path), not a plan: add stations in the 2D planner to plan a walk", warn: true},
+    {text: "Sample route (Curiosity's path), not a plan: add stations in the planner to plan a walk", warn: true},
     {text: 'The energy for the work at the stations is not given, so the plan cannot be called energy-feasible',
      warn: true}]);
   assert.deepEqual(P.planMessages(P.parsePlan(tourPlan()).warnings), [{text: '2 of 3 stations visited', warn: false}]);

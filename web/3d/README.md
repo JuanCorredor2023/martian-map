@@ -34,6 +34,12 @@ or press "Reload plan". With no saved plan the terrain still works.
 - Compass (top right, a button that the keyboard reaches too): face north. Under it, the frame
   (four corners): back to the opening view. The house icon is only the rehearsal's "Return home".
 - **Relief slider**: ×1 is the DEM; ×1.5 to ×5 exaggerate only the local relief.
+- **Panel**: only *Plan* is open when the page opens, at every screen size; *Sun*, *Map layer*,
+  *Rover photos* and *About this view* are one click on their title away (the photo view hides
+  them and gives them back as they were). No text under 12 px. On touch screens every control
+  of the panel (section titles, buttons, ticks with their words, fields, slider thumbs) is at
+  least 44 px tall. The page can be zoomed on a phone by pinching a panel; a pinch on the view
+  is the 3D's own zoom.
 - **Plan**: where the plan comes from, length, time and energy; the plan's own messages in
   plain words, with their numbers ("8 of 13 stations visited · science value 37 · order
   R3 → R2 → …", "Left out, they do not fit in the limits: …", "Power used at the stations:
@@ -41,7 +47,7 @@ or press "Reload plan". With no saved plan the terrain still works.
   route, a failed request, a point the planner moved, a sample route that is not a plan, a
   message the page does not know). Which planner made it and the project codes the API
   writes stay out of the panel (`planMessages` in `plan_model.js`; the source is in
-  `viz3d.plan`). "Reload plan"; "Rehearse the route". "Plan with default settings" appears
+  `viz3d.plan`). "Reload plan"; "Rehearse". "Plan with default settings" appears
   only when there is no plan, and makes the server plan and save (it replaces the last plan
   of the 2D planner).
 - **Pins**: click one for its card; "Fly here" views it from 60 m. Stations a tour did not
@@ -50,24 +56,49 @@ or press "Reload plan". With no saved plan the terrain still works.
   the terrain may still hide it); "View the rover photo" opens its photo view. With none that
   near, the card says so. At a rehearsal stop the card shows the same photo, without the button
   and without moving the walker or the clock.
-- **Guide** (the arm tablet's logic, shared in `web/guide_core.js`): the next maneuver
-  with its distance, voice on/off, the tablet's meters with its labels ("Spare energy" after
-  walking home, "Time home (limit 30 min)", "Radio", "EVA time left" against the plan's
+- **Guide** (the arm tablet's logic, shared in `web/guide_core.js`): the next maneuver as
+  the tablet shows it (the arrow, the distance big, "350 m" or "Now", the instruction under
+  it), voice on/off, the tablet's meters with its labels ("Spare energy" after
+  walking home, "Home in · limit 30", "Radio", "EVA time left" against the plan's
   maximum duration and, once the walk has learned it, "Spare energy at your pace" with this
-  astronaut's own energy use, X2), each value with the tablet's state word before it (OK, LOW
-  or TURN BACK; OK, TURN SOON or OVER 30 MIN for the time home) and its bar in that state's
-  colour, a RETURN NOW alert when the way home no longer fits at that use (screen readers
+  astronaut's own energy use, X2), each value with the state word before it (OK, LOW or TURN
+  BACK on every meter), bold in its state's colour, and its bar in that colour; the time
+  home reads "home in 12 min", as on the tablet; the radio row says
+  "checking…" until the server answers (no jump), and goes if there is no radio data; a
+  RETURN NOW alert when the way home no longer fits at that use (screen readers
   announce it, as the storm alert),
-  station tasks with "Done, continue", "Return home", "Detour" (demo: 25 m off the route,
+  station tasks with "Done, continue", "Return home", "Off route" (demo: 25 m off the route,
   then rejoin), "Solar storm" (demo: automatic way home with the dose) and "Use ×k" (demo:
   the simulated energy use against the model, 1.0 / 1.2 / 1.5 / 0.8). A way home is
-  drawn red and a rejoin orange; it replaces the walked route until "Exit".
-- **Rehearsal**: play / pause (space bar), ×1 to ×180, scrubber, "Chase view" (the astronaut
-  seen from behind), drag to look around, double-click or "Recentre" to look forward, "Exit".
+  drawn red and a rejoin orange; it replaces the walked route until "Exit". The solar storm
+  also shows beyond the player: a red band across the top with the tablet's banner ("SOLAR
+  STORM · return home now") and a red vignette over the view, page elements (nothing is
+  added to the 3D scene); both go at the habitat, on "Replay" and on "Exit".
+- **Words and numbers**: the 3D takes its names, state words and number formats from the
+  team's glossary, `web/terms.js` (#166), as the HUD, the tablet and the wrist card do: one
+  name per idea ("Return home", "Off route", "Rehearse", "Planner"), whole minutes and Wh
+  everywhere, m:ss only on the player's clock line.
+- **Rehearsal**: the side panel is hidden while rehearsing, so the scene shows; "Panel" in the
+  player opens it (and closes it) without leaving. The player has the maneuver on top, with
+  "More", "Panel" and "Exit" beside it; one row of main buttons: play / pause (space bar),
+  "Return home", "Off route", "Solar storm"; under "More": "Chase view" (the astronaut seen from
+  behind), "Recentre", the speed (×1 to ×180), voice, "Use ×k" and the energy numbers. Then
+  the scrubber, the clock line, the panel's Sun line (local solar time, the Sun's height and
+  light, "Following the EVA clock: …") and the 2D planner's energy bar. The clock line is the
+  EVA clock, "EVA 3:02 of 111:27 · outbound · 132 of 1392 m"; after "Return home" or the
+  storm it goes on and the way home is a stretch of it, "EVA 102:04 · return home 2:02 of 2:51 ·
+  120 of 160 m" (after a rejoin, the EVA's new end), while the scrubber covers the new route.
+  Drag to look around; double-click or "Recentre" looks forward.
   Esc closes what is on top (the card, or a message) and pauses; it never leaves the rehearsal,
   which would lose the end summary: only "Exit" does.
   It pauses at every stop with the station's card; on pause it draws the walkback lines from
-  there (red: 30 min return, cyan: energy-safe area). The relief is locked at ×1 and the Sun
+  there and says the way home from there ("Return home from here: ✔ 3 min (limit 30) · ✔ 14
+  Wh, 869 Wh spare after it", red line: 30 min from home, cyan: energy-safe area). At the
+  habitat it stays in the rehearsal: the storm alert ends, the player shrinks (the maneuver
+  says "Home"), and the card "Plan against the walk" has "Replay" (from the start, as a new
+  walk with its own summary) and "Exit"; Play (now "↺ Replay") and the space bar replay too,
+  "Summary" shows the card again after closing it, and the scrubber goes back. On touch
+  screens the player's buttons are at least 44 px tall. The relief is locked at ×1 and the Sun
   follows the EVA clock.
 - **Walk freely** (Plan section; works without a plan too): walk anywhere in the box in first
   person, like a game. It starts next to the habitat, facing the way the route leaves (with
@@ -103,14 +134,17 @@ or press "Reload plan". With no saved plan the terrain still works.
   Nothing is asked from the server until a layer is picked; one the server cannot give says
   "Unavailable: …". It stays on while rehearsing and with "Relief only"; the photo view hides
   it until "Exit".
-- **Rover photos**: orange camera pins where Curiosity's Navcam took photos ("Show photo stops"
-  hides them; they are hidden while rehearsing). A pin opens the stop's card: the photo, one
-  button per view, date, sol, local time, direction and credit. Pins on top of each other
-  offer a list of stops. "View from here" puts the camera where the Navcam was (relief ×1, the
-  Sun of the photo's sol and time) and lays the corrected photo over the view: the slider
-  fades it, "Previous"/"Next" change view, "Realign" flies back after a drag, "Exit" (or
-  Escape) puts camera, relief and Sun back as they were. A camera pose that does not fit the
-  ground (under it, or more than 4 m above it) is said in the bar, not corrected.
+- **Rover photos**: orange camera pins at the stops where Curiosity's Navcam took photos, off
+  when the page opens (they covered the route): "Show photo stops" shows them, and opening a
+  photo (`?photo=`, the 2D planner's "Open in 3D", "View the rover photo" on a station's card)
+  turns them on, so they are there after "Exit". They are hidden while rehearsing. A pin opens
+  the stop's card: the photo, one button per view, date, sol, local time, direction and credit.
+  Pins on top of each other offer a list of stops. "View from here" puts the camera where the
+  Navcam was (relief ×1, the Sun of the photo's sol and time) and lays the corrected photo over
+  the view: the slider fades it, "Previous"/"Next" change view, "Realign" flies back after a
+  drag, "Exit" (or Escape) puts camera, relief and Sun back as they were. A camera pose that
+  does not fit the ground (under it, or more than 4 m above it) is said in the bar, not
+  corrected.
 - **About this view**: "Copy link to this view" (the address of the free-flight view, with
   relief, sol, time and the shadows switch) and "Save image" (the picture without the
   panels, as a PNG, through the browser's download).
@@ -132,7 +166,7 @@ All optional; they combine with `&`.
 | `plan=default` | on load, ask the server for a plan with the default settings. **It replaces the saved plan**, like the button |
 | `fps=1` | draw every frame and show frames per second in the readout |
 | `spin=1` | slowly orbit the camera (to measure speed without touching anything) |
-| `photo=<id>` | open a rover photo (its Navcam image id) in the photo view |
+| `photo=<id>` | open a rover photo (its Navcam image id) in the photo view; the photo stops are shown after it. An id that is not in the catalogue opens the *Rover photos* section, which says so |
 | `check=<name>` | run a check (below) and show its result as JSON |
 
 ## Checks in the page
@@ -148,12 +182,12 @@ check in the address the page does not ask for the best time to leave: the Sun s
 |---|---|
 | `shading` | is the terrain lit from the right side? (lit from N, S, E, W against the slopes) |
 | `route` | is the route 0.3 m above the drawn ground at relief ×1, ×3 and ×5, as long as the plan says, with the pins where the plan puts them? |
-| `rehearse` | the whole walk in steps of 0.1 s: eye height, turns, distance from the route, pauses at the stops; does leaving put everything back? |
+| `rehearse` | the whole walk in steps of 0.1 s: eye height, turns, distance from the route, pauses at the stops (and the clock line at each, "EVA …"); does leaving put everything back? |
 | `sun` | is the light where the Sun of Mars is at five times of the sol; morning against afternoon; does the Sun follow the rehearsal? |
 | `guide` | does the rehearsal carry the arm-tablet guide? banner and meters at start, middle and end; Return home, detour and solar storm (asks the server); the plan is back after exit |
 | `shadows` | rendered shadows against a ray march over the mesh, 07:00, 15:00 and 17:00 at ×1 and ×5 (about 12 s; 7 s in the low preset) |
-| `photos` | for three photos of different sols (`&ids=a,b,c` to choose): camera position, eye height, heading, pitch and field against the catalogue, relief ×1, the photo's Sun, the photo on the centred square; does Exit put everything back? Whether photo and terrain agree: `src/viz3d/photo_skyline.py` |
-| `stations` | for every station of the plan: its nearest rover photo (or that there is none within 150 m) as its card shows it; then each rehearsal stop: the photo is in the card, the clock, the walker and the tasks stay as they were, and the photo pins are hidden |
+| `photos` | for three photos of different sols (`&ids=a,b,c` to choose): camera position, eye height, heading, pitch and field against the catalogue, relief ×1, the photo's Sun, the photo on the centred square; does Exit put everything back? It leaves the photo stops on, as opening any photo does. Whether photo and terrain agree: `src/viz3d/photo_skyline.py` |
+| `stations` | for every station of the plan: its nearest rover photo (or that there is none within 150 m) as its card shows it; then each rehearsal stop: the photo is in the card, the clock, the walker and the tasks stay as they were, and the photo pins are hidden (since #124 the stops start off, so this holds even if the rehearsal did not hide them) |
 | `walk` | "Walk freely" driven through its own key, pad and drag handlers: speeds walking, running, fast, diagonal, backwards and with the pad; the eye above the ground after every step; a drag turns the view as much as in free flight, the pitch stops at ±85°; fast travel straight at each box edge and at the habitat dome; the chase view; does leaving (Escape, and Exit from the chase view) put everything back? |
 | `layers` | is each map layer on the right 1 m cells? Each one alone from straight above (1 px a cell) against the image the 2D shows: share within 3 levels, best shift within ±3 cells, error if flipped north–south; again at relief ×5; the slope tiles over the plan's limit against the steep cells; "Relief only" keeps the layer, the photo view hides it; terrain and page as before (about 8 s) |
 
@@ -266,7 +300,10 @@ already present and logs size and SHA-256 in `navcam_p3/_download_log.json`. Tes
 - "Copy link" writes to the clipboard only on `localhost` or https; from another machine of
   the local network the link is shown in a box to copy by hand.
 - "Save image" saves the canvas at its size on screen (times the pixel ratio, at most 2;
-  1.5 in the low preset): terrain, route and pins, without the panels, the card or the player.
+  1.5 in the low preset): terrain, route and pins, without the panels, the card or the player
+  (nor the storm's band and vignette, which are page elements).
+- The player's Sun line repeats the panel's Sun section as text (`rehearse.js` reads it after
+  the Sun moves); it follows that section's wording.
 - The pixel ratio is read when the page loads: moving the window to a screen with another
   density needs a reload.
 - Speed was measured on one laptop (60 fps in both presets); no tablet was measured.

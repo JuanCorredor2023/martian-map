@@ -10,7 +10,7 @@
 .photo-source { display: inline-block; margin-top: 6px; font-size: 12px; }
 .photo-stops { display: grid; gap: 4px; }
 .photo-stops button { width: 100%; text-align: left; }
-.photo-stops button span { display: block; font-size: 11px; overflow-wrap: anywhere; }
+.photo-stops button span { display: block; font-size: 12px; overflow-wrap: anywhere; }
 #card .card-rows dd { overflow-wrap: anywhere; }       /* photo ids are long */
 
 /* A station's card: its nearest rover photo, small (the card is the station's), then the
@@ -20,7 +20,7 @@
                      border-radius: 4px; background: #1c222b; object-fit: contain; }
 .photo-preview .photo-missing { padding: 10px 8px; }
 .photo-preview-text { font-size: 12px; line-height: 1.35; }
-.photo-preview-meta { font-size: 11px; overflow-wrap: anywhere; }
+.photo-preview-meta { font-size: 12px; overflow-wrap: anywhere; }
 
 .photo-views button, .photo-stops button, #photo-bar button {
   padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: #1c222b;

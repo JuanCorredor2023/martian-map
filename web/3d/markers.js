@@ -14,12 +14,12 @@ import * as THREE from 'three';
 
 const TEXTURE_SCALE = 2;           // canvas pixels per CSS pixel: sharp on dense screens
 const DOME_RADIUS = 4;             // m
-const STYLE = {
+const STYLE = {                    // font: label size in CSS pixels, 12 or more (#124)
   station: {font: 12, pole: 22, filled: false},
   goal: {font: 14, pole: 34, filled: true},
   habitat: {font: 12, pole: 14, filled: false},
-  point: {font: 11, pole: 16, filled: false},
-  photo: {font: 11, pole: 10, filled: false},     // rover photo stops (P3): short, under the stations
+  point: {font: 12, pole: 16, filled: false},
+  photo: {font: 12, pole: 10, filled: false},     // rover photo stops (P3): short, under the stations
 };
 const PANEL = 'rgba(16, 20, 26, 0.9)';     // the page's panel colour
 

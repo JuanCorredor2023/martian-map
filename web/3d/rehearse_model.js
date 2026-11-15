@@ -1,4 +1,5 @@
-// Rehearsal model of the 3D map, with no dependencies (tested with `node --test`).
+// Rehearsal model of the 3D map, with no dependencies but the team's glossary (tested with
+// `node --test`).
 //
 // Turns a parsed route (plan_model.js) into "where is the walker at playback time t":
 //   - Time base: the profile's t_s when the answer has one. A stop is charged to the
@@ -20,7 +21,12 @@
 //     walker standing there: no length and no time.
 // Distances are metres along the true route; x east, y north (Mars CRS); headings in
 // radians from north towards east, as in camera_math.js.
+// What the screen says takes its names and number formats from the shared glossary,
+// web/terms.js (#166), as the HUD, the arm tablet and the wrist card do.
+import '../terms.js';
 import { cumulativeLength } from './plan_model.js';
+
+const T = globalThis.TERMS;
 
 export const EYE_HEIGHT = 1.7;         // m above the shown ground
 export const MIN_EYE = 1.6;            // m: floor of the eye above the ground right under it
@@ -46,11 +52,9 @@ export function angleDelta(to, from) {
   return d;
 }
 
-// Minutes and seconds as the 2D planner writes them (m:ss).
-export function clock(seconds) {
-  const s = Math.max(0, Math.round(seconds));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
+// Minutes and seconds (m:ss), the glossary's clock: only for the clock line of the player
+// (progressText). Every other time the 3D shows is in whole minutes (T.min).
+export const clock = T.clock;
 
 // Index of the last element <= value in an ascending array (0 if none).
 function lastAtMost(array, value, last = array.length - 1) {
@@ -419,29 +423,29 @@ export function eyeAltitude(ground, d, length) {
   return Math.max(sum / count + EYE_HEIGHT, ground(d) + MIN_EYE);
 }
 
-// Minutes with one decimal, never "-0.0": on arrival the time left to walk can come out a
-// hair under zero (rounding), and toFixed writes that as "-0.0" (#124).
-const minutesText = seconds => (Math.max(0, seconds) / 60).toFixed(1);
-
-// The value of the guide's "Time home" meter, in guide_core's words ("home in 12.3 min",
-// meters().back.text), written here from its seconds (meters().back.s) so that the 3D
-// never shows "home in -0.0 min".
+// The value of the tablet's "Home in" meter in its own words, "home in 12 min"
+// (guide_core meters().back.text): the glossary's name and whole minutes, written here from
+// its seconds (meters().back.s). Never negative: on arrival the time left to walk can come
+// out a hair under zero (rounding).
 export function homeInText(seconds) {
-  return `home in ${minutesText(seconds)} min`;
+  return `${T.NAMES.home.toLowerCase()} ${T.min(Math.max(0, seconds))}`;
 }
 
 // Energy bar and its text for the values of a state, with the 2D planner's arithmetic
-// and wording (showRouteIdx in web/index.html). values: state.profile; usable in Wh.
-// Returns null when there is nothing to show.
+// (showRouteIdx in web/index.html) and the glossary's names and numbers: whole Wh, "spare"
+// for what is left after returning, "home in" in whole minutes. values: state.profile;
+// usable in Wh. Returns null when there is nothing to show.
 export function energyReadout(values, usable) {
   if (!values || values.used_wh == null || values.rv_wh == null || !(usable > 0)) return null;
   const used = values.used_wh, rv = values.rv_wh, free = Math.max(0, usable - used - rv);
   const pct = v => Math.max(0, 100 * v / usable);
-  const lines = [`Energy used ${used.toFixed(1)} Wh · return needs ${rv.toFixed(1)} Wh · ` +
-                 `free ${free.toFixed(0)} of ${usable.toFixed(0)} Wh`];
+  // At the habitat the energy to return can come out a hair below zero (-2e-5 Wh): never
+  // write a minus sign. "spare" is the word of the HUD's key for the same bar.
+  const lines = [`Energy used ${T.wh(Math.max(0, used))} · return needs ${T.wh(Math.max(0, rv))} · ` +
+                 `spare ${Math.round(free)} of ${T.wh(usable)}`];
   const more = [];
   if (values.o2_used_l != null) more.push(`O₂ used ${values.o2_used_l.toFixed(1)} L (metabolic equivalent)`);
-  if (values.rv_time_s != null) more.push(`back in ${minutesText(values.rv_time_s)} min`);
+  if (values.rv_time_s != null) more.push(homeInText(values.rv_time_s));
   if (more.length) lines.push(more.join(' · '));
   return {used, rv, free, usable, usedPct: pct(used), rvPct: pct(rv), freePct: pct(free), lines,
           energyLeft: Math.round(usable - used)};
@@ -468,12 +472,34 @@ export function kAlarmAction({returnNow, storm, home, showing}) {
   return 'keep';
 }
 
-// First line of the player: time, leg and distance.
-export function progressText(model, state) {
-  const parts = [`${clock(state.time - model.start)} of ${clock(model.duration)}`];
+// The clock line of the player: the EVA clock, the leg and the distance. A way home or a
+// rejoin is a new route that starts where the walker was, but the EVA clock goes on (#124):
+//   evaStart   the EVA's start on the plan's clock (the planned route's start; by default
+//              this route's own, which is right for the planned route)
+//   homeStart  when the way home began (Return home or the solar storm), or null. The way
+//              home is then a stretch of the EVA, from that moment to the habitat.
+// "EVA 3:02 of 111:27 · outbound · 132 of 1392 m"; after a rejoin, the EVA's new end;
+// on the way home, by the glossary's name, "EVA 102:04 · return home 2:02 of 2:51 · 120 of
+// 160 m", and "EVA 2:05 · at the habitat" when the way home is a single point (pressed at
+// the habitat, #115). This line is the rehearsal clock: the only text of the 3D in m:ss.
+export function progressText(model, state, {evaStart = model.start, homeStart = null} = {}) {
+  const eva = `EVA ${clock(state.time - evaStart)}`;
+  const metres = `${state.distance.toFixed(0)} of ${model.length.toFixed(0)} m`;
+  if (homeStart !== null && homeStart !== undefined) {
+    if (!(model.length > 0)) return `${eva} · at the habitat`;
+    return `${eva} · ${T.NAMES.returnHome.toLowerCase()} ${clock(state.time - homeStart)} of ` +
+           `${clock(model.end - homeStart)} · ${metres}`;
+  }
+  const parts = [`${eva} of ${clock(model.end - evaStart)}`];
   if (model.assumedSpeed !== null) parts[0] += ` (assumed ${model.assumedSpeed.toFixed(0)} m/s)`;
   if (state.standing && state.stop) parts.push(`at ${state.stop.station ? state.stop.station.id : 'a stop'}`);
   else if (state.leg) parts.push(state.leg === 'return' ? 'returning' : 'outbound');
-  parts.push(`${state.distance.toFixed(0)} of ${model.length.toFixed(0)} m`);
+  parts.push(metres);
   return parts.join(' · ');
+}
+
+// The distance to the next maneuver as the arm tablet writes it, big (web/guide.html):
+// guide_core's "in 350 m" as "350 m", and "now" as "Now".
+export function maneuverDistance(distText) {
+  return distText === 'now' ? 'Now' : String(distText ?? '').replace(/^in /, '');
 }
