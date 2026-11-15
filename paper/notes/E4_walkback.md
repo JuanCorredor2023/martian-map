@@ -1,6 +1,6 @@
 # E4 · Graph, return-energy layer R(v) and walkback routes
 
-Owner: Aaron (`@aahg1105`) · Issues: #7, #8, #65 · PRs: #39 (E4), #56 (baselines), human-cost PR · Status: E4 and baselines done · Last update: 2026-11-15
+Owner: Aaron (`@aahg1105`) · Issues: #7, #8, #65 · PRs: #39 (E4), #56 (baselines), #90 (baselines with the human cost) · Status: E4 and baselines done · Last update: 2026-11-15
 
 ## Question
 From any cell of the study box, what is the minimum metabolic energy needed to walk back to the habitat, R(v)? And what is the best round trip habitat → goal → habitat such that, at every point, what has been used plus what is still needed to get home fits the budget, now with energy, EVA duration and oxygen as limits at the same time?
@@ -152,7 +152,9 @@ All numbers come from `src/grafos/paper_figures.py` → `data/e4/summary.json` (
 - **Visual check:** in Figure 1, R(v) grows away from the habitat and jumps across the ridges, and the safe areas follow the valleys and stop at the steep walls.
 
 ## Limitations
-- **Costs come from the 1 m DEM only.** Its effective resolution does not resolve the boxwork ridges ([base grid note](base_grid.md)), and E2 found that DEM features do not explain the route inside the boxwork (AUC ≈ 0.53, [E2 note](E2_curiosity_traverse.md)). The numbers in Results use E3 only; sand enters through the human cost (E1 × E8, PR #58), compared for the baselines in "With the human cost". Rocks (E9) are not in the cost.
+- **Costs come from the 1 m DEM only.** Its effective resolution does not resolve the boxwork ridges ([base grid note](base_grid.md)), and E2 found that DEM features do not explain the route inside the boxwork (AUC ≈ 0.53, [E2 note](E2_curiosity_traverse.md)). The numbers in Results use E3 only; sand enters through the human cost (E1 × E8, PR #58), compared for the baselines in "With the human cost".
+  - Rocks (E9) are not in the nominal cost. `src/grafos/rock_risk.py` (X1, #102) can multiply arc energy by 1 + k · (mean + λ · std) of the boulder cover, but k = λ = 0 by default: E1 found no held-out price for boulders (#108).
+  - The sensitivity of E4's round trips to that term is in the [E9 note](E9_boulders.md) (sections "Effect on the plan" and "Uncertainty layer").
 - **Blocking and edge limits are E3 defaults** (30° cell, 20° move). The 3.6 % of walkable cells outside the main component are islands created mostly by the cell block.
 - **Suit figures** are planning numbers taken from NASA conference papers seen through search summaries. They must be checked in the full texts before the paper cites them as facts. `q` (leakage/purge) has no source and is 0.
 - **Exactness under binding limits:** with the limits binding, the exact search is capped at 50,000 labels (~30 s), and the result can be a lagrangian route with a reported gap. Pure-Python label-setting on 4 M nodes is the bottleneck. Numba or C++ for that loop only is the option if exact answers are needed in the HUD.
@@ -162,7 +164,10 @@ All numbers come from `src/grafos/paper_figures.py` → `data/e4/summary.json` (
 ## What other pieces can use
 - **E5 (Diana):** `Graph.cost_matrix(nodes, "energy_j")` gives the directed station-to-station matrix (one Dijkstra per station). `check_walkback(graph, path, rv_j, usable_j)` validates a tour and returns the first point of no return.
 - **E12 (Juan):** read `data/e4/rv_time_s.tif` (minimum return time in seconds, same habitat and snap) instead of a separate Dijkstra. Agreed on the board on 2026-11-14. The route profile carries `t_s` per vertex.
-- **API/HUD (Sebas):** `rv.tif` (Wh), `safe.tif` and `e4_route.geojson`, with per-vertex `used_wh`, `rv_wh`, `t_s`, `o2_used_l` and `slack_wh`. The planner takes energy, duration and O2 limits, which need new fields in `/plan` (contract change in #2).
+- **API/HUD (Sebas):** `rv.tif` (Wh), `safe.tif` and `e4_route.geojson`, with per-vertex `used_wh`, `rv_wh`, `t_s`, `o2_used_l` and `slack_wh`.
+  - `/plan` calls `labels.round_trip` live with the energy, `max_duration_min` and `o2_budget_l` limits (PR #48), on the same `Graph` with E3 or the human cost (PR #58).
+  - `/walkback` draws the time analogue of baseline B2: fixed 1.35 km and 1.7 km circles against the 30 min red line (PR #60). About a third of what the circle calls safe cannot get back in time ([product note](product_api_hud.md)), consistent with B2 being the worst baseline here.
+- **X2 adaptive walkback (JB, #101):** the reserve during the walk is k_p90 × R(v), with R(v) from this note's reversed Dijkstra. A uniform k scales every E3 arc, so the way home does not change ([X2 note](X2_adaptive_walkback.md)).
 - **Results table (Juan, #16):** `data/baselines/baselines_summary.json` (false-safe counts per method and budget level) and `baselines_goals.csv` (one row per habitat × budget × goal × method). Human-cost version with E8 stations: `baselines_summary_human_e8.json` and `baselines_goals_human_e8.csv`, its E3 twin `_e8`, and the side-by-side `baselines_compare_human.json`.
 - **Demo (Sebas):** Figure 3 is the one-picture argument: a fixed radius calls almost half of its "safe" area impossible at a 50 % budget.
 
