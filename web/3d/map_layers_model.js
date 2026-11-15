@@ -75,7 +75,7 @@ export const LAYERS = [
                    sidebar: 'linear-gradient(90deg, rgba(250,246,235,0), rgb(250,246,235))',
                    text: 'Sand detected', ticks: ['0', 'sand fraction per 1 m cell', '1'],
                    unit: 'sand fraction per 1 m cell',
-                   caption: 'A cautious detector: when it marks sand it is right about 91 % of the time, ' +
+                   caption: 'A cautious detector: when it marks sand it is right about 92 % of the time, ' +
                             'but it misses a lot of sand.'})},
   {id: 'cost', label: 'Walking cost', source: 'png', slider: 0.75,
    title: 'Energy to cross each 1 m cell (Santee 2001, Mars gravity)',

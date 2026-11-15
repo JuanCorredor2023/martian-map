@@ -79,7 +79,7 @@ test('legend data copied from the HUD, literally', () => {
     unit: '°', note: null});
   assert.deepEqual(g('sand'), {kind: 'gradient', css: 'rgb(250,246,235)',
     sidebar: 'linear-gradient(90deg, rgba(250,246,235,0), rgb(250,246,235))', border: null, text: 'Sand detected',
-    caption: 'A cautious detector: when it marks sand it is right about 91 % of the time, but it misses a lot of sand.',
+    caption: 'A cautious detector: when it marks sand it is right about 92 % of the time, but it misses a lot of sand.',
     ticks: ['0', 'sand fraction per 1 m cell', '1'], unit: 'sand fraction per 1 m cell', note: null});
   assert.deepEqual(g('cost'), {kind: 'gradient', css: 'linear-gradient(90deg,#000004,#8c2981,#fe9f6d,#fcfdbf)',
     sidebar: 'linear-gradient(90deg, #000004, #3b0f70, #8c2981, #de4968, #fe9f6d, #fcfdbf)', border: null,
