@@ -17,13 +17,13 @@
 import { DEFAULT_LIMITS } from './api.js';
 
 // Slope legend of the HUD (CSS .legend, web/index.html): the colours the 2D legend shows.
+// Since #149 they are the tiles' own colours from 0 to 45° (SLOPE_RAMP below).
 export const SLOPE_LEGEND_RAMP = [
-  {deg: 0, rgb: [46, 155, 62]}, {deg: 15, rgb: [242, 212, 58]},
-  {deg: 30, rgb: [242, 140, 40]}, {deg: 45, rgb: [215, 48, 31]},
+  {deg: 0, rgb: [26, 152, 80]}, {deg: 15, rgb: [254, 224, 139]},
+  {deg: 30, rgb: [244, 109, 67]}, {deg: 45, rgb: [165, 0, 38]},
 ];
 // Colours actually in the slope tiles: SLOPE_RAMP of src/gis/tiles.py (gdaldem
-// color-relief, linear between stops). They differ from the legend above; decode tiles
-// with this one.
+// color-relief, linear between stops), up to 90°; decode tiles with this one.
 export const SLOPE_TILE_RAMP = [
   {deg: 0, rgb: [26, 152, 80]}, {deg: 15, rgb: [254, 224, 139]}, {deg: 30, rgb: [244, 109, 67]},
   {deg: 45, rgb: [165, 0, 38]}, {deg: 90, rgb: [80, 0, 20]},
@@ -59,8 +59,8 @@ export const LAYERS = [
                    text: 'Habitat antenna in sight', caption: 'the habitat antenna is in sight',
                    note: 'Line of sight on the 1 m terrain model (cautious).'})},
   {id: 'slope', label: 'Slope', source: 'tiles', slider: 0.5, title: null,
-   legend: legend({kind: 'gradient', css: 'linear-gradient(90deg,#2e9b3e,#f2d43a,#f28c28,#d7301f)',
-                   sidebar: 'linear-gradient(90deg, #2e9b3e 0%, #f2d43a 33%, #f28c28 66%, #d7301f 100%)',
+   legend: legend({kind: 'gradient', css: 'linear-gradient(90deg,#1a9850 0%,#fee08b 33.3%,#f46d43 66.7%,#a50026 100%)',
+                   sidebar: 'linear-gradient(90deg, #1a9850 0%, #fee08b 33.3%, #f46d43 66.7%, #a50026 100%)',
                    text: 'Slope, 0° to 45°', ticks: ['0°', '15°', '30°', '45°+'], unit: '°'})},
   {id: 'steep', label: 'Too steep to cross', source: 'png', slider: 1, title: null,
    legend: legend({kind: 'hatch', css: HATCH, sidebar: HATCH, border: '1px solid rgba(255,255,255,.25)',
