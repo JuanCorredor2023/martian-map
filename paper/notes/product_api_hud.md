@@ -27,6 +27,15 @@ How does the planner reach the jury: which service exposes the terrain, the cost
 - Layers: ortho, hillshade, slope (opacity slider made linear: deck.gl applies `opacity^(1/2.2)`, compensated by raising the slider value to 2.2), E8 sand, radio coverage (E11), THEMIS night thermal, E3 cost with legend, steep-cell block with on/off and a 15–60° slider, route, start and stations. Cursor readout in Mars metres and grid cell.
 - All map layers lie on one plane, so they are drawn in list order with the depth test off (`depthCompare: "always"`). With the depth test on, coplanar layers fought on a real GPU (patches after turning the slope tiles off and on under the thermal layer); headless rendering did not show it.
 
+### Rover photos in the HUD (P3b, #103, Juan with handoff)
+Sebas and JB handed over the HUD parts this needed (#103). `web/index.html` gained four things:
+- the *Rover photos* box in *1 Terrain* (off by default) with one orange dot per Curiosity photo stop;
+- the photo card (views, photo, date, sol, local time, camera, direction, credit, *Open in 3D*);
+- the view wedges of the open stop;
+- a photo line under each station in *2 Stations* that opens the card.
+
+The logic lives in `web/hud_photos.js`, which reuses the 3D page's `web/3d/photos_model.js`; the HUD only draws. Wedges and dots are drawn after the plan and before the stations, so the stations stay on top, and a placing mode keeps the map click. The layer is optional and loads in the background. Without the module or the catalogue the box is disabled, its note says "Unavailable: …", and nothing else changes. Details and checks: `paper/notes/P3_rover_photos.md`.
+
 ### Usability pass on the HUD (2026-11-15)
 The first HUD grew one control at a time. An audit at laptop size (1366 × 768, headless Edge screenshots) found:
 - one 2,060 px column of controls inside a 696 px scroller;
@@ -301,6 +310,7 @@ Source: `api/walkback.py` fields, computed in the session that produced this not
 - **E4 (Aaron):** `/plan`, `/walkback` and the guide share his `Graph` (`api.planner.graph(base, limit, human)`); the baselines can use the human-cost graph the same way.
 - **E11 (JB):** the HUD and both views of the walk read `/comms/check` per route vertex; the 3D route coloured by radio state (item 4 of #76) is open for Juan.
 - **P1/P3 (Juan):** `web/guide_core.js` is the guide's single source; the 3D rehearsal and the photo view can add to it without forking the logic.
+- **P3b (Juan):** the HUD's station list gives each station's nearest rover photo; `stationPhotoLine` in `web/hud_photos.js` could give the tablet's station cards the same line.
 - **E8 (JB):** Curiosity measurement sites are the ground truth for the ridge/hollow maps.
 - **E12 (Juan):** the HUD reads `data/e12/` from his release `e12-dose-v1` (produced by `src/radiation/`); the walkback R_T at the astronaut is the same return time his alert uses (they agree within 0.0002 s).
 
