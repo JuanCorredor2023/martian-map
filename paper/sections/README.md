@@ -4,7 +4,7 @@ The paper is written here in Markdown (#127). It is assembled from the notes in 
 
 ## Who writes what
 
-Each owner drafts only **areas that are already finished** (note in "done"). Pieces still in progress (E6 ACO/GA in #91, the #120 experiments, E12 on the real route) are added when they land. Each file starts with a comment giving its owner, its source notes and its status (`to draft` → `drafted` → `reviewed`).
+Each owner drafts only **areas that are already finished** (note in "done"). Pieces still in progress (the #120 experiments: C2 in #156 and C5 in #161, not merged; C4 not started) are added when they land. E6's ACO and GA (#94) and E12 on E5's tours (#147) are in. Each file starts with a comment giving its owner, its source notes and its status (`to draft` → `drafted` → `reviewed`).
 
 | File | Section | Owner |
 |---|---|---|

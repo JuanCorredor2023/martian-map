@@ -37,6 +37,11 @@ Why EVA planning on Mars needs terrain-aware, energy-aware routes; the boxwork a
 - The 30 min red line against fixed-radius rules (about a third of the circle is falsely safe) → [product](notes/product_api_hud.md), *E4 note*
 - What binds in the box: time, not energy; the rubric decides only when time is short; radio line of sight leaves about 41 % of a 120 min tour without direct radio → [product](notes/product_api_hud.md), [E3](notes/E3_metabolic_cost.md), *E5 and E11 notes*
 
+- Every planned tour keeps its walkback, and a refusal says why (#119): 16 tours pass the walkback and are proven optima; at 40 Wh the diagnosis names the shortfall and the advised budget (62.8 Wh) fits → [E5](notes/E5_orienteering.md)
+- Light changes which stations are visited, not only when to leave (#111): full points for departures 05:00–14:45, none from 17:45; a different set at 06:00 → [E5](notes/E5_orienteering.md), [P6](notes/P6_departure_time.md)
+- The way home and the rejoin checked on one path for energy, time and O2 (#151) → [product](notes/product_api_hud.md)
+- Adaptive walkback in simulation (X2) and the paired evaluation C1 → [X2](notes/X2_adaptive_walkback.md), [C1](notes/C1_eva_robustness.md)
+
 ## 5. Discussion
 What the validation does and does not show; limitations collected from every note; future work. Negative results to keep: E1 finds no held-out price for boulders (#108), and the GP adds no accuracy over a simple smoothing (X1); no boulder term enters the nominal cost.
 
