@@ -12,4 +12,4 @@
 - **Simulation.** Radio is pure line of sight. The dose was computed on a provisional route. The adaptive walkback is validated in simulation only. Its 90 % interval is overconfident when consumption errors are correlated in time, so k_p90 is a margin, not a guarantee.
 - **Scope.** Station values encode an expert ranking, not measurements, and service time and power are placeholders. Everything is one 2 × 2 km box and, for most numbers, one habitat.
 
-**Future work.** A filter that handles correlated errors, and a joint energy, time and O2 return (#120). Robustness to DEM errors (E7). Recomputing the dose on the planner's route. A planning cost for time without radio. A larger area with a two-level grid (rover between zones, walking within them).
+**Future work.** A filter that handles correlated errors, and a joint energy, time and O2 return (#119, evaluated in #120; C1 did not implement the operational return). Robustness to DEM errors (E7). Recomputing the dose on the planner's route. A planning cost for time without radio. A larger area with a two-level grid (rover between zones, walking within them).
