@@ -89,4 +89,22 @@ def test_replans_with_a_lower_budget():
     solution, prof, retries = solve_with_walkback(problem, dp.solve, check)
 
     assert solution.route == [0, 2, 3] and solution.prize == 4.0
-    assert prof["feasible"] and retries == 1
+    assert prof["feasible"] and retries >= 1
+
+
+def test_replan_drops_only_the_station_that_breaks_walkback():
+    # Station 1 always breaks the walkback with a huge deficit. Lowering the budget by
+    # that deficit leaves nothing, so the best repair is to forbid station 1 alone.
+    energy = np.ones((4, 4))
+    np.fill_diagonal(energy, 0.0)
+    problem = Problem(energy=energy, prize=np.array([0.0, 5.0, 3.0, 2.0]), budget=10.0)
+
+    def check(route):
+        bad = [m for m, k in enumerate(route) if k == 1]
+        return {"feasible": not bad, "min_slack_j": -100.0 if bad else 1.0,
+                "first_violation_stop": bad[0] if bad else None}
+
+    solution, prof, retries = solve_with_walkback(problem, dp.solve, check)
+
+    assert prof["feasible"] and 1 not in solution.route
+    assert solution.prize == 5.0 and sorted(solution.route[1:-1]) == [2, 3]

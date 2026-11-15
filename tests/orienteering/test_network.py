@@ -99,6 +99,27 @@ def test_time_matrix_follows_the_energy_leg():
     assert t[0, 0] == 0.0
 
 
+def test_matrix_cache_reuses_pairs():
+    graph = grid_graph(3, 6)
+    calls = []
+    search = graph.costs_from
+    graph.costs_from = lambda *a, **k: calls.append(a[0]) or search(*a, **k)
+    first = type("S", (), {"row": np.array([0, 1, 2]), "col": np.array([0, 3, 5])})
+    more = type("S", (), {"row": np.array([0, 1, 2, 2]), "col": np.array([0, 3, 5, 1])})
+
+    e1, t1 = station_matrices(graph, first)
+    assert len(calls) == 3
+    e2, t2 = station_matrices(graph, first)
+    assert len(calls) == 3                                 # same stations: no new search
+    assert np.array_equal(e1, e2) and np.array_equal(t1, t2)
+    e1[0, 1] = -1.0                                        # callers can't corrupt the cache
+    assert station_matrices(graph, first)[0][0, 1] != -1.0
+
+    e3, _ = station_matrices(graph, more)                  # one new station: every source has a new pair
+    assert len(calls) == 3 + 4
+    assert np.array_equal(e3[:3, :3], e2)
+
+
 def test_matrix_is_directed():
     graph = grid_graph(1, 3, east_cost=2.0)
     stations = type("S", (), {"row": np.array([0, 0]), "col": np.array([0, 2])})

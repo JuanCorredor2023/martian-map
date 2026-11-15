@@ -128,6 +128,8 @@ Writes the E5 route to a GeoPackage in the CRS of the DEM (contract #2), two lay
                the solver's schedule: arrival_time_s, wait_s (waiting for a window to
                open) and departure_time_s, and the route its duration_s and wait_s.
                Without it the times are walking plus service, with no waits.
+    wait_power_w : power while waiting for a window (W); the waits' energy is added to
+                   the totals (wait_energy_wh) and to the energy on arrival at later stops
     walkback : safety.tour_walkback profile, optional. With it the stops get rv_wh
                (energy to walk back to the habitat) and slack_wh (energy left after
                that, once the stop's service is done), and the route walkback_ok and
@@ -137,7 +139,7 @@ service_energy_wh, travel_time_s (walking), duration_s (walking, waits and servi
 Returns the path of the file.
 """
 def write_route_gpkg(out_path, graph, stations, solution, path, stop_index, usable_j,
-                     service_power_w=0.0, timeline=None, walkback=None):
+                     service_power_w=0.0, timeline=None, walkback=None, wait_power_w=0.0):
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -150,7 +152,6 @@ def write_route_gpkg(out_path, graph, stations, solution, path, stop_index, usab
     svc_s = np.where(served, stations.service_s[route_st], 0.0)
     svc_j = svc_s * service_power_w
     done_s = np.r_[0.0, np.cumsum(svc_s)[:-1]]
-    done_j = np.r_[0.0, np.cumsum(svc_j)[:-1]]
 
     at = np.asarray(stop_index)
     if timeline is not None and timeline["arrival"] is not None:
@@ -162,6 +163,8 @@ def write_route_gpkg(out_path, graph, stations, solution, path, stop_index, usab
         wait = np.zeros(len(at))
         departure = arrival + svc_s
     duration = float(departure[-1]) if len(departure) else 0.0
+    wait_j = wait * wait_power_w
+    done_j = np.r_[0.0, np.cumsum(svc_j + wait_j)[:-1]]
 
     rows, cols = graph.cell(path)
     xs, ys = graph.cell_to_xy(rows, cols)
@@ -173,9 +176,10 @@ def write_route_gpkg(out_path, graph, stations, solution, path, stop_index, usab
     route = gpd.GeoDataFrame({
         "solver": [solution.solver],
         "prize": [float(solution.prize)],
-        "energy_wh": [(float(energy[-1]) + svc_j.sum()) / 3600.0],
+        "energy_wh": [(float(energy[-1]) + svc_j.sum() + wait_j.sum()) / 3600.0],
         "walk_energy_wh": [float(energy[-1]) / 3600.0],
         "service_energy_wh": [svc_j.sum() / 3600.0],
+        "wait_energy_wh": [wait_j.sum() / 3600.0],
         "travel_time_s": [float(time_s[-1])],
         "duration_s": [duration],
         "wait_s": [float(wait.sum())],
@@ -204,6 +208,7 @@ def write_route_gpkg(out_path, graph, stations, solution, path, stop_index, usab
         "length_m": length[at],
     }, geometry=[Point(stations.x[k], stations.y[k]) for k in solution.route], crs=graph.crs_wkt)
 
+    route["cost_model"] = [str(getattr(graph, "cost_model", "E3"))]
     if walkback is not None:
         route["walkback_ok"] = [bool(walkback["feasible"])]
         route["min_slack_wh"] = [float(walkback["min_slack_j"]) / 3600.0]

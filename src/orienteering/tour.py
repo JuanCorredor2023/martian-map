@@ -29,7 +29,8 @@ from grafos.walkback import J_PER_WH  # noqa: E402
 from orienteering.data_io import Stations  # noqa: E402
 from orienteering.network import route_path, station_matrices  # noqa: E402
 from orienteering.problem import Problem, evaluate_route  # noqa: E402
-from orienteering.safety import return_costs, solve_with_walkback, tour_walkback  # noqa: E402
+from orienteering.safety import (return_costs, solve_with_walkback, stop_energy,  # noqa: E402
+                                 tour_walkback)
 from orienteering.solvers import MAX_STATIONS, SOLVERS  # noqa: E402
 
 J_PER_LITER_O2 = KJ_PER_LITER_O2 * 1000.0
@@ -77,16 +78,16 @@ def plan_tour(req, graph, solver="dp"):
 
     def check(route):
         path, stop_index = route_path(graph, stations, route, dis)
-        stop_service = [service_j[k] if k not in route[:m] else 0.0 for m, k in enumerate(route)]
-        checked["path"], checked["stop_index"] = path, stop_index
-        return tour_walkback(graph, path, stop_index, stop_service, rv_j, energy_limit_j)
+        checked[tuple(route)] = (path, stop_index)
+        return tour_walkback(graph, path, stop_index, stop_energy(problem, route), rv_j,
+                             energy_limit_j)
 
     solution, walkback, retries = solve_with_walkback(problem, SOLVERS[solver], check)
     if not solution.route or len(set(solution.route)) == 1:
         raise NoFeasibleRoute("no station fits in the energy, duration and O2 limits")
 
     route = solution.route
-    path, stop_index = checked["path"], checked["stop_index"]
+    path, stop_index = checked[tuple(route)]
     timeline = evaluate_route(problem, route)
 
     walk_t = graph.path_cost(path, "time_s")

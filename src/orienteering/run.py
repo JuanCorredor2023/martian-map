@@ -20,7 +20,8 @@ from orienteering.data_io import (ROUTE_PATH, STATIONS_LAYER, STATIONS_PATH,  # 
 from orienteering.network import (load_graph, place_habitat, reachable_stations,  # noqa: E402
                                   route_path, station_matrices)
 from orienteering.problem import Problem, evaluate_route  # noqa: E402
-from orienteering.safety import return_costs, solve_with_walkback, tour_walkback  # noqa: E402
+from orienteering.safety import (return_costs, solve_with_walkback, stop_energy,  # noqa: E402
+                                 tour_walkback)
 from orienteering.solvers import MAX_STATIONS, SOLVERS  # noqa: E402
 
 
@@ -37,12 +38,20 @@ def main(argv=None):
                     help="metabolic power while working at a station (same default as E4; proposed in #2)")
     ap.add_argument("--max-duration-min", type=float, default=None,
                     help="maximum EVA duration, back at the habitat (default: no limit; same flag as E4)")
+    ap.add_argument("--wait-power-w", type=float, default=0.0,
+                    help="metabolic power while waiting for a time window (default 0: waiting costs no energy)")
+    ap.add_argument("--human-cost", action="store_true",
+                    help="E3 x E1 sand price, the cost /plan uses (needs releases e1-sand-v1 and e8-v0)")
     ap.add_argument("--solver", choices=sorted(SOLVERS), default="dp")
     ap.add_argument("--out", default=ROUTE_PATH, help="GeoPackage for the route (layers route and stops)")
     args = ap.parse_args(argv)
     t0 = time.time()
 
-    graph, main_cc = load_graph()
+    try:
+        graph, main_cc = load_graph(human=args.human_cost)
+    except FileNotFoundError as err:
+        raise SystemExit(f"error: {err}")
+    print(f"cost model: {graph.cost_model}")
     stations = read_stations(graph, args.stations, layer=args.layer, prize_col=args.prize_col)
 
     try:
@@ -72,15 +81,15 @@ def main(argv=None):
     service_j = stations.service_s * args.service_power_w
     problem = Problem(energy=dis, prize=stations.prize, budget=budget_j, time=tim,
                       service_s=stations.service_s, service_j=service_j,
-                      windows=stations.windows, max_duration_s=max_duration_s)
+                      windows=stations.windows, max_duration_s=max_duration_s,
+                      wait_power_w=args.wait_power_w)
     rv_j = return_costs(graph, graph.node(hr, hc))
     checked = {}
 
     def check(route):
         path, stop_index = route_path(graph, stations, route, dis)
-        stop_service = [service_j[k] if k not in route[:m] else 0.0 for m, k in enumerate(route)]
-        checked["path"], checked["stop_index"] = path, stop_index
-        return tour_walkback(graph, path, stop_index, stop_service, rv_j, budget_j)
+        checked[tuple(route)] = (path, stop_index)
+        return tour_walkback(graph, path, stop_index, stop_energy(problem, route), rv_j, budget_j)
 
     try:
         solution, walkback, retries = solve_with_walkback(problem, SOLVERS[args.solver], check)
@@ -88,12 +97,13 @@ def main(argv=None):
         raise SystemExit(f"solver {args.solver}: {err}")
 
     served_j = sum(service_j[k] for k in set(solution.route))
+    waited_j = sum(stop_energy(problem, solution.route)) - served_j if solution.route else 0.0
     print(f"{len(stations)} stations, usable budget {budget_j / J_PER_WH:.0f} Wh, solver {solution.solver} "
           f"({solution.runtime_s:.2f} s), total {time.time() - t0:.1f} s")
     print(f"habitat at ({hx:.1f}, {hy:.1f}); prize {solution.prize:g}, "
           f"spent {solution.energy / J_PER_WH:.1f} Wh "
-          f"(walking {(solution.energy - served_j) / J_PER_WH:.1f}, service {served_j / J_PER_WH:.1f} "
-          f"at {args.service_power_w:g} W)")
+          f"(walking {(solution.energy - served_j - waited_j) / J_PER_WH:.1f}, service {served_j / J_PER_WH:.1f} "
+          f"at {args.service_power_w:g} W, waiting {waited_j / J_PER_WH:.1f} at {args.wait_power_w:g} W)")
     for k in solution.route:
         print(f"  {stations.id[k]:>8} ({stations.type[k]}): x={stations.x[k]:.1f} "
               f"y={stations.y[k]:.1f} prize={stations.prize[k]:g}")
@@ -109,15 +119,15 @@ def main(argv=None):
 
     if walkback["feasible"]:
         print(f"walkback ok: smallest slack {walkback['min_slack_j'] / J_PER_WH:.1f} Wh"
-              + (f" (after {retries} re-plans with a lower budget)" if retries else ""))
+              + (f" (after {retries} re-plans)" if retries else ""))
     else:
         bad = stations.id[solution.route[walkback["first_violation_stop"]]]
         print(f"WARNING: walkback fails before reaching {bad} (slack {walkback['min_slack_j'] / J_PER_WH:.1f} Wh) "
               f"after {retries} re-plans")
 
-    path, stop_index = checked["path"], checked["stop_index"]
+    path, stop_index = checked[tuple(solution.route)]
     out = write_route_gpkg(args.out, graph, stations, solution, path, stop_index, budget_j,
-                           args.service_power_w, timeline, walkback)
+                           args.service_power_w, timeline, walkback, args.wait_power_w)
     print(f"route written to {out} ({len(path)} cells, {time.time() - t0:.1f} s total)")
     return solution
 

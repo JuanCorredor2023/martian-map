@@ -25,6 +25,8 @@ Orienteering instance over n stations.
               start, the window bounds the departure; when end == start, the closing time
               of the start also bounds the return.
     max_duration_s : the route must be back at end, service included, by this time
+    wait_power_w : metabolic power while waiting for a window to open (W); 0 by default,
+                   i.e. waiting costs time but no energy, until the team agrees a value
 Every station of the route is served once, start included; the final return to the
 start (end == start) is not served again.
 """
@@ -40,6 +42,7 @@ class Problem:
     service_j: np.ndarray | None = None
     windows: np.ndarray | None = None
     max_duration_s: float | None = None
+    wait_power_w: float = 0.0
 
     @property
     def n(self):
@@ -73,7 +76,8 @@ class Solution:
 """
 Walks a route through the problem's rules, the same way every solver applies them.
 Returns a dict:
-    energy : J, walking plus service (each distinct station served once)
+    energy : J, walking plus service (each distinct station served once) plus waiting
+             (wait time x problem.wait_power_w)
     duration : s, time at which the route ends (None if problem.time is missing)
     arrival, begin, depart : (len(route),) times at each stop (None without problem.time);
                              begin - arrival is the wait for the window to open
@@ -110,6 +114,8 @@ def evaluate_route(problem, route):
     duration = float(depart[-1]) if n_stops else 0.0
     if problem.max_duration_s is not None:
         feasible &= duration <= problem.max_duration_s
+    if problem.wait_power_w:
+        result["energy"] += float(problem.wait_power_w) * float((begin - arrival).sum())
     result.update(duration=duration, arrival=arrival, begin=begin, depart=depart,
                   feasible=bool(feasible))
     return result

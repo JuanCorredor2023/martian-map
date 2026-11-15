@@ -18,11 +18,44 @@ from orienteering.data_io import BASE_DIR  # noqa: E402
 Loads the E4 graph from data/base (edges_e3.npz, grid.json, crs.wkt) and the mask
 of its largest strongly connected component (the cells you can go to and come back
 from), from Graph.main_component (cached in the graph).
+human=True uses the human cost, the same one /plan uses: E3 energy x E1's terrain
+factor of the arrival cell (fisica.human_cost, weights in data/e1/e1_weights.json from
+release e1-sand-v1, which also needs data/e8 from release e8-v0). Time is unchanged.
 Returns (graph, main_cc) with main_cc a bool array of the grid's shape.
 """
-def load_graph(base_dir=BASE_DIR):
-    graph = Graph.from_base_dir(base_dir)
+def load_graph(base_dir=BASE_DIR, human=False):
+    graph = human_graph(base_dir) if human else Graph.from_base_dir(base_dir)
+    graph.cost_model = "E3 x E1 sand (human)" if human else "E3"
     return graph, graph.main_component()
+
+
+"""
+E4 graph with the human cost, built like api/planner.graph(base, 30.0, human=True):
+E3 edges (edges_e3.npz) with every arc's energy multiplied by E1's terrain factor of
+the cell it enters. Raises FileNotFoundError if E1's weights or E3's edges are missing.
+"""
+def human_graph(base_dir=BASE_DIR):
+    import json
+
+    from fisica.human_cost import human_edge_costs, load_rasters, load_weights, terrain_factor
+
+    base = Path(base_dir)
+    weights = base.parent / "e1" / "e1_weights.json"
+    edges = base / "edges_e3.npz"
+    if not weights.exists():
+        raise FileNotFoundError(f"{weights} not found: gh release download e1-sand-v1 (and e8-v0)")
+    if not edges.exists():
+        raise FileNotFoundError(f"{edges} not found: run src/fisica/build_cost_layers.py first")
+
+    with np.load(edges) as z:
+        energy, time_s, neighbours = z["energy_j"], z["time_s"], z["neighbours"]
+    spec = load_weights(weights)
+    factor = terrain_factor(spec, load_rasters(spec, base), energy.shape[1:])
+    energy = human_edge_costs(energy, factor, [tuple(int(v) for v in n) for n in neighbours])
+    grid = json.loads((base / "grid.json").read_text(encoding="utf-8"))
+    return Graph({"energy_j": energy, "time_s": time_s}, neighbours,
+                 transform=tuple(grid["grid_1m"]["affine"]),
+                 crs_wkt=(base / "crs.wkt").read_text(encoding="utf-8").strip())
 
 
 """
@@ -56,25 +89,63 @@ def station_matrix(graph, stations, weight="energy_j"):
 Energy and time matrices between stations, both measured along the same legs:
 energy[i][j] is the minimum energy from station i to station j, and time[i][j] is
 the walking time along that minimum-energy leg (not the fastest leg), so the
-solver's times match the route that is actually walked. One Dijkstra per station.
-Unreachable pairs are np.inf in both.
+solver's times match the route that is actually walked. Unreachable pairs are np.inf.
+Each (station, station) value is cached per graph object, so a repeated plan with the
+same stations (/plan requests, sensitivity runs) needs no Dijkstra at all; a Dijkstra
+only runs from a station that has a pair not seen before. The cache holds pair values
+only (a few bytes each), never the 4 M-cell search results. Returns new arrays.
 """
 def station_matrices(graph, stations):
-    ids = graph.node(stations.row, stations.col)
+    ids = [int(v) for v in graph.node(stations.row, stations.col)]
     n = len(ids)
-    energy = np.full((n, n), np.inf)
-    time = np.full((n, n), np.inf)
+    pairs = _pair_cache(graph)
 
+    for src in dict.fromkeys(ids):
+        if any((src, dst) not in pairs for dst in ids if dst != src):
+            dist, pred = graph.costs_from(src, "energy_j", predecessors=True)
+            for dst in dict.fromkeys(ids):
+                if dst == src or (src, dst) in pairs:
+                    continue
+                e = float(dist[dst])
+                t = np.inf
+                if np.isfinite(e):
+                    leg = follow(pred, dst, end=src)[::-1]
+                    t = float(graph.path_cost(leg, "time_s")[-1])
+                pairs[(src, dst)] = (e, t)
+
+    energy = np.zeros((n, n))
+    time = np.zeros((n, n))
     for i, src in enumerate(ids):
-        dist, pred = graph.costs_from(int(src), "energy_j", predecessors=True)
-        energy[i] = dist[ids]
         for j, dst in enumerate(ids):
-            if i == j:
-                time[i, j] = 0.0
-            elif np.isfinite(energy[i, j]):
-                leg = follow(pred, int(dst), end=int(src))[::-1]
-                time[i, j] = graph.path_cost(leg, "time_s")[-1]
+            if src != dst:
+                energy[i, j], time[i, j] = pairs[(src, dst)]
     return energy, time
+
+
+_CACHE = {}
+_CACHE_GRAPHS = 4
+
+
+"""
+Pair cache for one graph object: {(source node, destination node): (energy J, time s)}.
+Keeps at most _CACHE_GRAPHS graphs (e.g. /plan's plain and human-cost graphs). The graph
+itself is kept in the entry, so an id() reused by another object can't match.
+"""
+def _pair_cache(graph):
+    entry = _CACHE.get(id(graph))
+    if entry is None or entry[0] is not graph:
+        if len(_CACHE) >= _CACHE_GRAPHS:
+            _CACHE.pop(next(iter(_CACHE)))
+        entry = (graph, {})
+        _CACHE[id(graph)] = entry
+    return entry[1]
+
+
+"""
+Empties the station-matrix cache (e.g. after the graph's costs change in place).
+"""
+def clear_matrix_cache():
+    _CACHE.clear()
 
 
 """

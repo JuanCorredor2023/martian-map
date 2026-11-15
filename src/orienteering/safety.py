@@ -20,6 +20,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from grafos.walkback import check_walkback  # noqa: E402
 
+from orienteering.problem import evaluate_route  # noqa: E402
+
+
+"""
+Energy spent AT each stop of a route (J): its service (each station once) plus the
+energy of waiting there for its window (wait time x problem.wait_power_w), with the
+same rules as problem.evaluate_route. This is what tour_walkback adds at each stop.
+"""
+def stop_energy(problem, route):
+    svc = problem.service_j if problem.service_j is not None else np.zeros(problem.n)
+    energy = [float(svc[k]) if k not in route[:m] else 0.0 for m, k in enumerate(route)]
+    if problem.wait_power_w and problem.time is not None:
+        timeline = evaluate_route(problem, route)
+        waits = np.asarray(timeline["begin"]) - np.asarray(timeline["arrival"])
+        energy = [e + float(problem.wait_power_w) * float(w) for e, w in zip(energy, waits)]
+    return energy
+
 
 """
 R(v) for every cell: minimum energy (J) to walk from the cell back to the habitat
@@ -75,22 +92,79 @@ def tour_walkback(graph, path, stop_index, stop_service_j, rv_j, usable_j):
 
 
 """
-Solves the problem and checks the walkback of the tour; if it fails, lowers the
-budget by the deficit (minus the smallest slack) and solves again, so the next tour
-spends less. The trivial tour (stay at the habitat) always passes, so this ends.
+Solves the problem and checks the walkback of the tour. If it fails, two repairs are
+tried from that tour, breadth first:
+    - lower the budget by the deficit (minus the smallest slack), so the tour spends less;
+    - forbid the station of the first violation (not the start or end), so the tour
+      can keep its budget and drop only the station that breaks the walkback.
+The best feasible tour found within max_retries extra solves is returned; since the
+budget-only repair is one of the branches, this is never worse than lowering the budget
+alone. The trivial tour (stay at the habitat) always passes.
     solve : solver function, solve(problem) -> Solution
     check : function route -> walkback profile (tour_walkback for that route)
-Returns (solution, profile, retries); profile is None if no route fits at all.
+Returns (solution, profile, retries); profile is None if no route fits at all. If no
+feasible tour is found, the last one tried is returned with its failing profile.
 """
 def solve_with_walkback(problem, solve, check, max_retries=5):
-    budget = problem.budget
-    solution, profile = None, None
-    for retry in range(max_retries + 1):
-        solution = solve(replace(problem, budget=budget))
-        if not solution.route:
-            return solution, None, retry
-        profile = check(solution.route)
-        if profile["feasible"]:
-            return solution, profile, retry
-        budget -= -profile["min_slack_j"] + 1.0
-    return solution, profile, max_retries
+    solution = solve(problem)
+    if not solution.route:
+        return solution, None, 0
+    profile = check(solution.route)
+    if profile["feasible"]:
+        return solution, profile, 0
+
+    best = None
+    last = (solution, profile)
+    frontier = list(repairs(problem, problem.budget, frozenset(), solution, profile))
+    seen = set(frontier)
+    retries = 0
+    while frontier and retries < max_retries:
+        budget, forbidden = frontier.pop(0)
+        retries += 1
+        candidate = solve(restricted(problem, budget, forbidden))
+        if not candidate.route:
+            continue
+        prof = check(candidate.route)
+        if prof["feasible"]:
+            if best is None or candidate.prize > best[0].prize:
+                best = (candidate, prof)
+            continue
+        last = (candidate, prof)
+        for option in repairs(problem, budget, forbidden, candidate, prof):
+            if option not in seen:
+                seen.add(option)
+                frontier.append(option)
+
+    if best is not None:
+        return best[0], best[1], retries
+    return last[0], last[1], retries
+
+
+"""
+The two repairs of a tour that fails the walkback: (lower budget, same forbidden set)
+and, when the violation is at a station other than the start or end, (same budget,
+that station forbidden as well).
+"""
+def repairs(problem, budget, forbidden, solution, profile):
+    options = [(budget - (-profile["min_slack_j"] + 1.0), forbidden)]
+    stop = profile.get("first_violation_stop")
+    if stop is not None and stop < len(solution.route):
+        k = solution.route[stop]
+        if k not in (problem.start, problem.end) and k not in forbidden:
+            options.append((budget, forbidden | {k}))
+    return options
+
+
+"""
+The problem with another budget and some stations made unreachable (their rows and
+columns of the energy matrix set to infinity). Station indices do not change.
+"""
+def restricted(problem, budget, forbidden):
+    if not forbidden:
+        return replace(problem, budget=budget)
+    energy = np.array(problem.energy, dtype=float, copy=True)
+    for k in forbidden:
+        energy[k, :] = np.inf
+        energy[:, k] = np.inf
+        energy[k, k] = 0.0
+    return replace(problem, budget=budget, energy=energy)
