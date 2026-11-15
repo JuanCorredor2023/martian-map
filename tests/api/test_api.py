@@ -317,3 +317,30 @@ def test_plan_refuses_a_tour_that_fails_the_walkback(monkeypatch):
     r = client.post("/plan", json=plan_body(stations=st))
     assert r.status_code == 422
     assert "fails the walkback" in r.json()["detail"] and "vertex 1" in r.json()["detail"]
+
+
+def test_weather_from_rems():
+    from api import weather
+    if weather.find_feed(REPO / "data") is None:
+        pytest.skip("REMS feed (rems-v1) not downloaded")
+    w = client.get("/weather", params={"sol": 4711, "eva_min": 120}).json()
+    d = w["day"]
+    assert d["sol"] == 4711 and d["earth_date"] == "2025-11-06"
+    assert d["air_min_c"] < d["air_max_c"] and d["ground_min_c"] < d["ground_max_c"]
+    assert 11 < d["daylight_h"] < 13                       # near the equator: ~12 h of light
+    assert any("fits in daylight" in n for n in w["notes"])
+    lo, hi = w["campaign"]["sols"]
+    assert all(lo <= p["sol"] <= hi for p in w["campaign"]["series"])
+    assert w["campaign"]["n_sols"] > 200
+    near = client.get("/weather", params={"sol": 10_000}).json()["day"]   # beyond the feed
+    assert near["sol"] == w["sol_range"][1] and near["requested_sol"] == 10_000
+    assert client.get("/weather", params={"sol": 0}).status_code == 422
+
+
+def test_data_sources_counts_only_what_is_on_disk():
+    d = client.get("/data_sources").json()
+    assert d["n_types"] == len(d["sources"]) >= 3          # the challenge asks for 3 or more
+    assert d["n_missions"] == len({s["mission"] for s in d["sources"]})
+    assert {"Orbital image", "Elevation"} <= {s["type"] for s in d["sources"]}
+    planned = {p["type"] for p in d["planned"]}
+    assert not planned & {s["type"] for s in d["sources"]}   # planned is never counted
