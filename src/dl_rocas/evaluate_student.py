@@ -2,6 +2,7 @@
 ground, against the teacher in the box and against human labels on Mars?
 
   python src/dl_rocas/evaluate_student.py      (bouldernet env) -> data/e9/student_classification.json
+  python src/dl_rocas/evaluate_student.py --student data/e9/w32_e60/student.pt       --out data/e9/w32_e60/student_classification.json     (another student)
 
 A. Pixels (0.25 m), validation blocks of the box. Positive = teacher score >= 0.5
    on that pixel. ROC-AUC, average precision (area under precision-recall), and
@@ -91,18 +92,24 @@ def object_scores(pred_lab, true_rles):
                 f1=2 * prec * rec / (prec + rec) if prec + rec else 0.0)
 
 
-def load_student(device):
-    ck = torch.load(STUDENT, map_location=device, weights_only=True)
+def load_student(device, path=STUDENT):
+    ck = torch.load(path, map_location=device, weights_only=True)
     m = TinyUNet(ck["width"]).to(device)
     m.load_state_dict(ck["state"])
     return m.eval()
 
 
 def main():
+    import argparse
     import rasterio
     from pycocotools import mask as mask_util
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--student", default=str(STUDENT))
+    ap.add_argument("--out", default=str(OUT / "student_classification.json"))
+    args = ap.parse_args()
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = load_student(device)
+    model = load_student(device, args.student)
     out = {}
 
     with rasterio.open(REPO / "data" / "base" / "ortho_gray_025.tif") as src:
@@ -206,7 +213,7 @@ def main():
     print(f"D 1 m cells (rocky = teacher cover >= 0.25, {yc.mean():.4f} of cells): "
           f"AUC {auc_c:.3f} AP {ap_c:.3f}")
 
-    path = OUT / "student_classification.json"
+    path = Path(args.out)
     path.write_text(json.dumps(out, indent=1), encoding="utf-8")
     print("wrote", path)
 

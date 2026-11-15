@@ -20,6 +20,7 @@ Where are the boulders in the 2 × 2 km study box, and can a CNN about 50 times 
    - **Spatial split:** the box is cut into 8 × 8 blocks of 250 m, and 13 of the 64 blocks (a fixed diagonal pattern, every 5th; ~20 %) are validation. Crops never straddle blocks. The checkpoint with the lowest validation loss is kept.
 5. **`rocas.tif`** (`distill.py predict`). The student runs on the whole orthophoto in 1024 px tiles; a 32 px overlap is discarded so there are no seams. The per-pixel probability is averaged over each 4 × 4 px block, giving the fraction of each 1 m cell covered by boulders. It is written as float32 on the base grid, with NaN where any pixel of the cell is nodata.
 6. **Tried and dropped:** a narrower student (widths 16/32/64, 0.23 M parameters, 20 epochs). It ran in 4.4 s, but it agreed less with the teacher on validation (r = 0.56 per 1 m cell, 0.60 at 10 m) and overestimated the mean cover (0.42 % against 0.33 %); outputs in `data/e9/w16/`.
+7. **Longer training, kept aside:** the same student and settings trained for 60 epochs instead of 30 (`--epochs 60`, everything else equal, `pos_weight` 1). It is better at finding boulders and worse as a density map (Results). `rocas.tif` stays with the 30-epoch student; the 60-epoch one is in `data/e9/w32_e60/`.
 
 ## Results
 Sources: `data/e9/summary.json` (written by `src/dl_rocas/paper_figures.py`), `data/e9/teacher_check_mars.json`, `data/e9/boulders_teacher.json`, `data/e9/student_metrics.json`, `data/e9/rocas.json`.
@@ -63,6 +64,29 @@ On the training blocks the values are similar (r = 0.68 per cell, 0.74 at 10 m),
 - **Mars patches:** on the authors' patches, never seen by the student, it finds 31 % of the hand-labelled boulders, against 59 % for the teacher. The validation + test patches alone give F1 0.28 for the student and 0.65 for the teacher.
 - **What it is good for:** the student is a usable **density** map, not a boulder detector. Use `boulders_teacher.gpkg` when individual boulders matter.
 
+**More epochs: better detection, worse calibration.** Same student (0.93 M parameters) and settings, 30 against 60 epochs. Sources: `data/e9/w32/` and `data/e9/w32_e60/` (`student_metrics.json` from `distill.py train`, `student_classification.json` from `evaluate_student.py`). All on validation blocks or on the authors' Mars patches.
+
+| | 30 epochs (`rocas.tif`) | 60 epochs |
+|---|---:|---:|
+| Best validation loss (soft BCE) | 0.0095 | 0.0088 |
+| Boulder F1 vs human labels (49 Mars patches) | 0.27 (P 0.24, R 0.31) | **0.41** (P 0.37, R 0.47) |
+| Boulder F1 vs teacher | 0.33 (P 0.26, R 0.46) | **0.37** (P 0.27, R 0.55) |
+| Pixel AP vs teacher (ROC-AUC) | **0.47** (0.986) | 0.45 (0.986) |
+| Cover r vs teacher, 1 m / 10 m | **0.66 / 0.66** | 0.65 / 0.64 |
+| Cover MAE per 1 m cell | 0.0040 | **0.0034** |
+| Mean cover (teacher 0.33 %) | **0.35 %** | 0.24 % |
+| Whole box | 8.6 s | 8.7 s |
+
+- **Why detection improves:**
+  - With more steps at a falling learning rate, the student draws tighter, better separated blobs. On the validation blocks it splits the same ground into 792 boulder regions against 704 at 30 epochs (393 teacher boulders): neighbouring boulders that were merged come out as separate ones.
+  - Recall and precision of single boulders both rise, so F1 against human labels goes from 0.27 to 0.41. It is still well below the teacher's 0.66.
+- **Why calibration gets worse:**
+  - The tighter blobs drop the doubtful pixels at boulder edges and in clusters. Some of those are boulder in the teacher's soft target.
+  - The mean cover falls from 0.35 % to 0.24 %, about 27 % below the teacher's 0.33 %. The per-cell error is smaller (MAE 0.0034), because the many empty cells get closer to 0. But the rocky cells are underestimated: pixel AP and cover correlation drop slightly.
+- **Choice:** `rocas.tif` is used as a density (HUD layer, possible cost factor), where a calibrated mean matters more than separating boulders. It therefore keeps the 30-epoch student.
+  - If single boulders are needed, the teacher's polygons remain the better source.
+  - The trade-off itself is a result: in this distillation, training longer moves the student from a density estimator towards a detector.
+
 **Cost:** 0.93 M parameters against 43.9 M (47 times fewer). The whole box takes 8.6 s against 362 s for the teacher (42 times faster).
 
 ![Figure 1](../figures/e9_fig1_teacher.png)
@@ -87,7 +111,7 @@ On the training blocks the values are similar (r = 0.68 per cell, 0.74 at 10 m),
 - **Domain:** the teacher saw 49 Mars patches and none from Gale. Its precision and recall here are unknown (no labels in the box). The numbers in the check table are for the authors' Mars patches only.
 - **Distillation is relative:** the student is scored mainly against the teacher; its errors add to the teacher's. Against human labels on Mars it reaches boulder F1 0.27, against 0.66 for the teacher (Results).
   - It agrees moderately (r = 0.66). It spreads cover into a halo around clusters and marks some linear ridge edges where the teacher found nothing (Figure 2b).
-  - A larger student or longer training would probably help, since training and validation scores are close.
+  - Longer training improves boulder detection but costs calibration (60 against 30 epochs, Results). A larger student or more pseudo-labels from outside the box, where the teacher can run, are the untested options.
 - **Age of the image:** detail from 2006–2011 imagery; boulders that moved since then are not represented.
 - **Unequal timing:** the teacher's time includes polygonising the masks and covers every pixel about four times (50 % overlap). The student's time is inference on the GPU only. The speed-up compares the two pipelines as used, not the two networks on equal input.
 - **No route cost yet:** `rocas.tif` is not in any route cost. How much a given cover should slow or block a walker has no source here.
@@ -101,7 +125,7 @@ On the training blocks the values are similar (r = 0.68 per cell, 0.74 at 10 m),
 - **E12 / results table (Juan):** the numbers in Results come from `data/e9/summary.json`.
 
 ## Reproduce
-Detectron2 needs its own conda env (it does not install in the API env):
+Detectron2 needs its own conda env (it does not install in the API env); exact versions in `src/dl_rocas/requirements_bouldernet.txt`:
 ```
 conda create -n bouldernet python=3.11 -y
 <env>/python -m pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu124
@@ -118,6 +142,10 @@ Inputs: `gh release download base-grid-v2` into `data/base/`, and `data/06_bould
 <env>/python src/dl_rocas/distill.py train     # 45 min on a T1000
 <env>/python src/dl_rocas/distill.py predict   # 9 s
 <env>/python src/dl_rocas/evaluate_student.py  # classification metrics, 2 min
+# 60-epoch comparison (overwrites data/e9/student.pt; keep the 30-epoch one aside first)
+<env>/python src/dl_rocas/distill.py train --epochs 60     # 90 min on a T1000
+<env>/python src/dl_rocas/distill.py predict --out data/e9/w32_e60/rocas.tif
+<env>/python src/dl_rocas/evaluate_student.py --student data/e9/student.pt --out data/e9/w32_e60/student_classification.json
 python src/dl_rocas/paper_figures.py           # any env with rasterio, geopandas, matplotlib, torch
 ```
 If GDAL plugin errors show up, the API env's `GDAL_DRIVER_PATH` is leaking into the `bouldernet` env; unset it.
@@ -133,5 +161,7 @@ In `data/e9/` (not in git):
 - **`rocas.tif`** and `rocas.json`
 - `summary.json`
 - `w16/`: the dropped student
+- `w32/`: the delivered student (copy of the files above)
+- `w32_e60/`: the 60-epoch student, kept aside
 
 Figures: `paper/figures/e9_fig1_teacher.png`, `paper/figures/e9_fig2_student.png`.
