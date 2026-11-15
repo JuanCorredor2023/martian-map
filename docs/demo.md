@@ -4,11 +4,11 @@ The demo is a FastAPI backend (`api/`) that serves the HUD (`web/index.html`) an
 
 ## 1. Set up (once per machine)
 
-1. **Terrain (30 s).** Tab *1 Terrain*: the photo from orbit with *Slope* on top; switch on *Sand detected*. Say that the 1 m DEM does not resolve the boxwork ridges, but the 0.25 m image does. Press the chip under the title, *7 data types from 4 missions* (HiRISE image and DEM, and CRISM minerals, from MRO; OMEGA from Mars Express; THEMIS night thermal from Mars Odyssey; Curiosity's traverse, RAD and REMS from MSL), counted only when used. Optionally switch on *Night temperature*: at 81 m it does not see the sand patches (rank correlation 0.00), an honest negative.
+1. **Python packages** (normal terminal, not admin; inside the team's environment):
    ```
    python -m pip install -r api/requirements.txt
    ```
-2. **What a step costs (45 s).** Still in *Terrain*, turn on *Walking cost*. In *3 Plan → More options*, *Charge extra energy on sand* multiplies E3's energy by E1's sand price (up to +11.5 % on sand), the one terrain term learned from Curiosity's route that held up on unseen data. The cost is Santee 2001 with Mars gravity only in the slope term. Whole-power scaling fails the lunar check (52 W against 292 W on flat ground). The cheapest metre is a gentle descent (338.75 J/m), not flat ground.
+2. **Data.** Nothing large is in git. Download the releases from the repo root (`gh auth login` first). Then check what is missing:
    ```
    python -m api.check_data
    ```
@@ -52,8 +52,8 @@ No internet is needed at demo time: deck.gl is vendored in `web/vendor/` and all
 
 This follows the guide's demo script (zero-to-hero REV3, section 51). The sidebar's tabs are the order of work: **1 Terrain → 2 Stations → 3 Plan → 4 Walk**, plus **Context**. The legend on the map (*On the map*) lists only what is drawn. The labels are in plain words; hover one to see the piece behind it (E3, E8, E11…).
 
-1. **Terrain (30 s).** HiRISE ortho with the slope layer on top; switch on *Sand detected (E8)*. Say that the 1 m DEM does not resolve the boxwork ridges, but the 0.25 m image does. Open the line under the title: *7 data types from 4 missions* (HiRISE image and DEM, and CRISM minerals, from MRO; OMEGA from Mars Express; THEMIS night thermal from Mars Odyssey; Curiosity's traverse, RAD and REMS from MSL), counted only when used. Optionally switch on *Night thermal (THEMIS)*: at 81 m it does not see E8's sand patches (rank correlation 0.00), an honest negative.
-2. **What a step costs (45 s).** Turn on *E3 walking cost*. *Human cost* (EVA limits) multiplies E3's energy by E1's sand price (up to +11.5 % on sand), the one terrain term learned from Curiosity's route that held up on unseen data. The cost is Santee 2001 with Mars gravity only in the slope term. Whole-power scaling fails the lunar check (52 W against 292 W on flat ground). The cheapest metre is a gentle descent (338.75 J/m), not flat ground.
+1. **Terrain (30 s).** Tab *1 Terrain*: the photo from orbit with *Slope* on top; switch on *Sand detected*. Say that the 1 m DEM does not resolve the boxwork ridges, but the 0.25 m image does. Press the chip under the title, *7 data types from 4 missions* (HiRISE image and DEM, and CRISM minerals, from MRO; OMEGA from Mars Express; THEMIS night thermal from Mars Odyssey; Curiosity's traverse, RAD and REMS from MSL), counted only when used. Optionally switch on *Night temperature*: at 81 m it does not see the sand patches (rank correlation 0.00), an honest negative.
+2. **What a step costs (45 s).** Still in *Terrain*, turn on *Walking cost*. In *3 Plan → More options*, *Charge extra energy on sand* multiplies E3's energy by E1's sand price (up to +11.5 % on sand), the one terrain term learned from Curiosity's route that held up on unseen data. The cost is Santee 2001 with Mars gravity only in the slope term. Whole-power scaling fails the lunar check (52 W against 292 W on flat ground). The cheapest metre is a gentle descent (338.75 J/m), not flat ground.
 3. **Steep cells (20 s).** Move *Never cross cells steeper than N°* (30° by default; 20° puts 30 % of the area off limits). This is the decision that changes routes the most (E3 sensitivity).
 4. **Science stations (45 s).** Tab *2 Stations* lists 13 stations. Three are Curiosity's real drill sites (Nevado Sajama ridge, Valle de la Luna hollow, Altadena); the rest are candidates. *Science value by type* (ridge 5, hollow 4, contact 4, Curiosity site 3) is editable live; its literature review is in `docs/research/`. *Load automatic* adds JB's 15 stations found by E8 (rock next to boxwork sand patches), unsaved. *Add stations by clicking the map* shows on the map what a click will do; Esc stops it.
 5. **Plan (60 s).** Tab *3 Plan*: set *Longest walk*, *Energy budget* and *Reserve kept unused*, and press *Plan the walk*. E5 (Diana) chooses which stations and in what order, exactly (DP, or CP-SAT above 20 stations); E4 (Aaron) gives each leg and checks the walkback at every vertex. The summary shows how much of each limit the walk uses, the visiting order and the stations left out; the map numbers the stations in visiting order and fades the ones left out. With the 13 stations and 1,000 Wh: 120 min visits 8; 60 min keeps only the 3 highest-scoring ridges, so the rubric decides when time is short. Press *▶ Rehearse it*: tab *4 Walk* opens and plays the route. The budget bar splits energy into used, needed to return and free. It only shrinks, and the arrow shows the heading.
@@ -77,7 +77,7 @@ This follows the guide's demo script (zero-to-hero REV3, section 51). The sideba
 
 - [ ] `python -m pytest tests -q` and `node --test tests/web/ tests/viz3d/` pass on the demo machine.
 - [ ] `python -m api.check_data` passes; the releases are the final versions.
-- [ ] Server started from `main`; press *Plan EVA* once before presenting (warm cache: the first plan takes 10–30 s).
+- [ ] Server started from `main`; press *Plan the walk* once before presenting (warm cache: the first plan takes 10–30 s).
 - [ ] The browser was reloaded with Ctrl+F5 after the last `git pull` (it caches the JavaScript modules).
 - [ ] Every piece's paper note is up to date (`paper/notes/`, AGENTS.md rule 7).
 - [ ] Rehearse the walkthrough above twice with the timer, speakers on (guide voice).
