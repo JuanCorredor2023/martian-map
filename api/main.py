@@ -23,6 +23,7 @@ from . import planner
 from . import tour
 from . import radiation as rad
 from . import data_sources
+from . import minerals
 from . import weather
 from . import walkback as wb
 from .plan import (PlanRequest, RejoinRequest, ReturnHomeRequest, WalkbackRequest, feature,
@@ -171,6 +172,16 @@ def weather_summary(sol: int = Query(weather.DEFAULT_SOL, ge=1),
     if path is None:
         raise HTTPException(status_code=404, detail="REMS feed missing: data/rems/ (release rems-v1)")
     return weather.summary(path, sol, eva_min)
+
+
+@app.get("/minerals")
+def minerals_summary(radius_km: float = Query(100.0, gt=0, le=minerals.KEEP_RADIUS_KM)):
+    """Orbital mineral detections (CRISM/OMEGA) around the box: regional context only."""
+    path = minerals.find(DATA)
+    if path is None:
+        raise HTTPException(status_code=404,
+                            detail="mineral detections missing: data/minerals/ (release minerals-v1)")
+    return minerals.summary(path, radius_km)
 
 
 @app.get("/data_sources")
