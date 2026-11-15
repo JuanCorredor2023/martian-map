@@ -27,6 +27,31 @@ How does the planner reach the jury: which service exposes the terrain, the cost
 - Layers: ortho, hillshade, slope (opacity slider made linear: deck.gl applies `opacity^(1/2.2)`, compensated by raising the slider value to 2.2), E8 sand, radio coverage (E11), THEMIS night thermal, E3 cost with legend, steep-cell block with on/off and a 15–60° slider, route, start and stations. Cursor readout in Mars metres and grid cell.
 - All map layers lie on one plane, so they are drawn in list order with the depth test off (`depthCompare: "always"`). With the depth test on, coplanar layers fought on a real GPU (patches after turning the slope tiles off and on under the thermal layer); headless rendering did not show it.
 
+### Usability pass on the HUD (2026-11-15)
+The first HUD grew one control at a time. An audit at laptop size (1366 × 768, headless Edge screenshots) found:
+- one 2,060 px column of controls inside a 696 px scroller;
+- no sign of where to start;
+- a plan result written as a wall of team jargon ("E5 tour (live, E5 plan_tour (src/orienteering))"), with plain facts flagged ⚠ like errors;
+- internal codes (E3, E8, E11, E12) in the labels;
+- red, cyan and white lines on the map with no legend.
+
+The redesign keeps every function and every element id, and changes how they are reached:
+- **Tabs that follow the order of work:** a docked sidebar with *1 Terrain → 2 Stations → 3 Plan → 4 Walk*, plus *Context* (radiation, weather, minerals, data sources). Each tab opens with one sentence on what it is for. No tab is taller than about 950 px, and *Save* and *Next* stay in reach in the stations tab. Empty states say what to do next.
+- **The plan in numbers:** a status line ("The astronaut can get back from every point"), four figures with a bar showing how much of each limit is used (stations, time, energy, distance), the visiting order as chips in the station colours, and the stations left out with the reason. Engine, cost model and service power go under *Details*. A request that cannot fit says what to change, not the raw error.
+- **A legend on the map** listing only what is drawn. The safety lines (30 min, reachable area, fixed-distance circles) are drawn only on the *Walk* tab, so the plan view shows the route and the stations alone. The energy-safe boundary is now green; it used to be almost the route's cyan.
+- **Readable map marks:** the route has a dark casing; planned stations carry "3. R2" labels, and the ones left out are faded. Labels that would overlap at the current zoom are hidden by priority (plan order, then science value) and return when zooming in. deck.gl's `CollisionFilterExtension` hid every label in this setup and was dropped for that 15-line rule.
+- **Map-click modes are visible:** adding a station, placing the astronaut and moving the habitat are toggle buttons. While one is on, a banner on the map says what a click will do; Esc or changing tab turns it off, so a stray click never adds a station.
+- **Plain words:** "Sand detected", "Walking cost", "Radio coverage", "Never cross cells steeper than 30°", "Longest walk", "Reserve kept unused"; the piece codes stay in tooltips.
+- **Sized to the screen:** the opening zoom fits the study area to the stage (1366 to 1920 px wide), and under 860 px the map goes on top of the panel.
+
+Checks, all in headless Edge driven over the DevTools protocol:
+- the whole flow at 1366 × 768, 1920 × 1080 and 800 × 900 with no console errors;
+- a plan that cannot fit;
+- adding a station by a real click on the map, and Esc;
+- the radio link, *Rehearse it*, and arrow keys between tabs.
+
+The design rules applied by hand are those of the Impeccable skill pack (hierarchy, plain copy, no nested cards or glass panels, visible focus, numbered labels only for a real sequence) [Impeccable]; it was not installed.
+
 ### Multi-station tour (E5 on E4, `api/tour.py`)
 With stations and no explicit goal, `/plan` delegates to E5's `orienteering.tour.plan_tour(req, graph)` (Diana, in `main` since #37; #64 here). It passes the same shared E4 graph (E3 or human cost) and only renames the output for the HUD and the guide (the habitat is dropped from the visiting order).
 - E5 solves the tour exactly: a bitmask DP up to 20 nodes, CP-SAT (OR-Tools) above. Its limits are energy, service time, maximum EVA duration and O2. E4 gives the legs and the walkback is checked at every vertex; E5 re-plans if it fails.
