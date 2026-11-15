@@ -76,6 +76,13 @@ The rover drove over less than half the predicted sand of its alternatives, in e
 ### Use downstream (E1, E2)
 From Juan's E1 (PR #57): with start and goal given, a sand-only cost beats distance on unseen route blocks (4 of 5) with a stable positive price, and the driven route crosses about 8 % less sand than the model's routes. It is the first layer that helps out of sample; the DEM layers do not. Per cell (E2 logistic, 50 m corridor) adding sand only moves the AUC from 0.526 to 0.531 (4 of 5 blocks), within noise, because most cells have sand = 0; over the whole box, 0.730 to 0.726.
 
+### v1 attempt: can a threshold recover the missed sand? (issue #93)
+Source: `data/e8/sand_calibration.json`, `missed_sand_gallery.png` (`calibrate_sand.py`, `missed_sand_gallery.py`). The sand probability was saved (`predict_unet.py --prob-only`) and the rule "sand if p_sand >= t" was scored on the 240 blind points with the same area-weighted estimators; t was chosen on one random half and scored on the other (200 repeated 2-fold splits). Even at t = 0.05, out-of-sample recall only moves from 0.110 to **0.115** (95 % band 0.087–0.161; precision 0.916). At the 39 missed sand points p_sand has median **0.004** (8 % above 0.05): the network is not uncertain there, it is confidently wrong, an error inherited from the weak labels (sand = grey-blue). Figure: [e8_fig5_threshold.png](../figures/e8_fig5_threshold.png).
+
+The missed sand looks different ([e8_fig6_missed_sand.png](../figures/e8_fig6_missed_sand.png)): reddish-brown, smooth or mixed with gravel, without the grey-blue tone. It is likely dust-covered sand, which at 0.25 m resembles smooth bedrock. The labeller was not consistent on these points either: only **22 of 39** were also called sand in pass 1 (56 %). A confident bias cannot be fixed by uncertainty methods (MC dropout, CVaR costs, uncertainty sampling), and new labels of this class would be unreliable, so no v1 was trained (negative result).
+
+**Post-hoc reading (not the original design):** `sand.tif` is a high-precision map of dark grey-blue sand — likely loose, active basaltic sand, the kind Curiosity avoided (see Curiosity's route above). Dust-covered sand is not mapped.
+
 ### Does the DEM see the ridges?
 At the pass-1 hand points (27 ridge, 118 sand, 95 background), `tpi` is +0.12 m on ridges and −0.07 m on sand (AUC ridge > sand 0.66), `residual` +0.10 vs −0.08 m (0.68); `slope_deg` and `roughness` show nothing (0.49). The DEM keeps a weak height signal of the walls but not their shape. Used as a filter on predicted ridges (TPI > 0), precision only rose from 15 % to 22.5 %, so it does not rescue the ridge class.
 
@@ -88,7 +95,7 @@ At the pass-1 hand points (27 ridge, 118 sand, 95 background), `tpi` is +0.12 m 
 ## Limitations
 - **One non-expert labeller**, two passes, 240 points. Sand definition was ambiguous in pass 1 (clast mosaics); pass 2 fixed the rule. A second labeller would measure inter-annotator agreement.
 - **The network inherits the rules' errors**: it never saw a hand label during training.
-- Sand recall is low (~11 %): `sand.tif` underestimates sand; the decision rule is `argmax` with class weights, not a calibrated threshold.
+- Sand recall is low (~11 %) and lowering the threshold does not raise it (v1 attempt, #93): `sand.tif` maps dark grey-blue sand only; dust-covered sand is missed.
 - Rover-route AUCs measure usefulness, not correctness; drivers also chose targets for science and operations, and saw the ground at higher resolution.
 - **Image date:** the orthophoto detail comes from 24 HiRISE images acquired 2006–2011 (PSP_001488 to ESP_025368), all before landing and about 13 years before the boxwork campaign (2025), so it shows no rover tracks [HiRISE-Gale]. Small sand patches may have moved since, which adds noise but cannot create the measured avoidance. The LRGB colour was fused onto it in 2025 from HiRISE colour strips whose dates are not listed; the U-Net relies on colour for sand.
 - The validation region was narrowed from SW to SW-S after training-only previews (no validation labels seen).

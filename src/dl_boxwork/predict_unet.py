@@ -1,4 +1,4 @@
-﻿"""Predict the E8 U-Net over the whole bbox (issue #11).
+"""Predict the E8 U-Net over the whole bbox (issue #11).
 
 Sliding 1024 px windows with 128 px overlap; softmax probabilities are averaged where
 windows overlap. Writes the 0.25 m class map and two 1 m layers on the base grid:
@@ -9,6 +9,8 @@ The preview NEVER shows the validation region, so hand labels made there stay bl
 Run from the data/ folder:
   python ../src/dl_boxwork/predict_unet.py [--ckpt e8/unet_v1.pt] [--val SW-S]
   -> e8/pred_classes_025.tif, e8/sand.tif, e8/ridge.tif, e8/predict_summary.json, e8/predict_preview.png
+  python ../src/dl_boxwork/predict_unet.py --prob-only
+  -> only e8/p_sand_025.tif (sand probability x 254, uint8), other outputs untouched
 """
 import argparse
 import json
@@ -38,6 +40,8 @@ parser.add_argument("--ckpt", default="e8/unet_v1.pt")
 parser.add_argument("--val", default="SW-S", choices=["SW-S", "SW-N", "NW", "NE", "SE"])
 parser.add_argument("--win", type=int, default=1024)
 parser.add_argument("--overlap", type=int, default=128)
+parser.add_argument("--prob-only", action="store_true",
+                    help="write only e8/p_sand_025.tif (for threshold calibration) and stop")
 args = parser.parse_args()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -69,6 +73,15 @@ with torch.no_grad():
             prob[:, r:r + win, c:c + win] += p
             count[r:r + win, c:c + win] += 1
 prob /= count
+p8 = profile | {"count": 1, "dtype": "uint8", "nodata": IGNORE, "compress": "deflate", "tiled": True,
+                "blockxsize": 256, "blockysize": 256, "photometric": "minisblack"}
+p8.pop("interleave", None)
+# sand probability, 0-254 (255 is nodata): used by calibrate_sand.py to pick a threshold
+with rasterio.open(OUT / "p_sand_025.tif", "w", **p8) as dst:
+    dst.write(np.round(prob[2] * 254).astype("uint8"), 1)
+if args.prob_only:
+    print("saved e8/p_sand_025.tif (sand probability x 254)")
+    raise SystemExit
 cls = prob.argmax(0).astype("uint8")
 del prob, count
 
