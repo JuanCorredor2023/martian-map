@@ -35,7 +35,15 @@
   hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
   summary { cursor: pointer; margin: 6px 0; }
   details[open] summary { margin-bottom: 8px; }
-  #relief { display: block; width: 100%; margin: 6px 0 0; accent-color: var(--accent); }
+  #relief, #sun-time { display: block; width: 100%; margin: 6px 0 0; accent-color: var(--accent); }
+  .sun-row { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin-bottom: 6px; }
+  #sun-sol { width: 64px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 6px;
+             background: #1c222b; color: var(--text); font: inherit; }
+  #sun-sol:disabled, #sun-time:disabled { opacity: 0.6; }
+  #sun-time-text { color: var(--text); font-variant-numeric: tabular-nums; }
+  #sun-readout { margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
+  .check { display: block; margin-top: 8px; cursor: pointer; }
+  .check input { accent-color: var(--accent); vertical-align: -2px; margin: 0 4px 0 0; }
   #plan-facts { margin: 4px 0; font-variant-numeric: tabular-nums; }
   .key { white-space: nowrap; margin-right: 8px; }
   .key i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; margin-right: 4px;
@@ -119,7 +127,7 @@
   <label class="muted" id="relief-label" for="relief">Relief at true scale</label>
   <input type="range" id="relief" min="1" max="5" step="0.5" value="1" disabled>
   <hr>
-  <!-- Both sections are closed by main.js on small screens so the panel does not cover the map. -->
+  <!-- The sections are closed by main.js on small screens so the panel does not cover the map. -->
   <details id="plan-box" open>
     <!-- The link to the 2D planner shares this line: no extra row in the closed panel. -->
     <summary class="muted">Plan<a class="back" href="/">← 2D planner</a></summary>
@@ -138,6 +146,20 @@
         The result becomes the last plan for the 2D planner and the guide screen.</div>
     </div>
   </details>
+  <!-- The Sun of Mars at the box centre for a sol and a local solar time (sun.js). -->
+  <details id="sun-box" open>
+    <summary class="muted">Sun</summary>
+    <div class="sun-row">
+      <label class="muted" for="sun-sol">Curiosity sol</label>
+      <input type="number" id="sun-sol" min="0" max="9999" step="1" value="4711" inputmode="numeric">
+    </div>
+    <label class="muted" for="sun-time">Local solar time <b id="sun-time-text">15:00</b></label>
+    <input type="range" id="sun-time" min="0" max="1435" step="5" value="900">
+    <div id="sun-readout"></div>
+    <div class="muted" id="sun-note"></div>
+    <label class="check muted" title="Plain grey ground: judge the light without the photo's own shadows">
+      <input type="checkbox" id="relief-only">Relief only (hide the photo)</label>
+  </details>
   <details id="about" open>
     <summary class="muted">About this view</summary>
     <div class="muted">Gale boxwork, 2 × 2 km.<br>
@@ -149,7 +171,9 @@
       to play or pause. Click a pin for its card.</div>
     <hr>
     <div class="muted">The boxwork network is seen in the HiRISE photo (0.25 m). The relief (1 m DEM)
-      shows the hillside, knolls and scarps; it does not resolve the 1–2 m ridges.</div>
+      shows the hillside, knolls and scarps; it does not resolve the 1–2 m ridges.
+      The photo has its own light (HiRISE takes its images in mid-afternoon); the 3D Sun is added
+      on top.</div>
     <hr>
     <div class="muted" id="quality-label"></div>
   </details>
