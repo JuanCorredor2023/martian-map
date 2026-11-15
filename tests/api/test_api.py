@@ -358,3 +358,17 @@ def test_minerals_are_regional_context_only():
     lon, lat = m["box_centre_lonlat"]
     assert 137.3 < lon < 137.5 and -4.9 < lat < -4.7                # Gale, the boxwork
     assert client.get("/minerals", params={"radius_km": 1000}).status_code == 422
+
+
+def test_thermal_themis_layer_and_sand_check():
+    from api import thermal
+    if thermal.find(REPO / "data") is None:
+        pytest.skip("THEMIS tile (themis-v1) not downloaded")
+    png = client.get("/layers/thermal.png")
+    assert png.status_code == 200 and png.content[:4] == b"\x89PNG"
+    t = client.get("/thermal").json()
+    assert t["mission"] == "Mars Odyssey" and 75 < t["m_per_px"] < 90
+    c = t.get("check_vs_e8_sand")
+    if c is not None:                                   # needs E8's sand.tif
+        assert 500 < c["pixels"] < 700                  # ~25 x 25 THEMIS pixels in the box
+        assert abs(c["spearman_brightness_vs_sand"]) < 0.2   # no relation at 81 m

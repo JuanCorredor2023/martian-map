@@ -122,15 +122,16 @@ The HUD can load suggestions **unsaved**; a person reviews them on the orthophot
 - Hollow + contact (8) ties ridge + Curiosity site (8); the E3/E4 cost breaks the tie.
 
 ### Data types combined and surface weather (P4, #44; `api/data_sources.py`, `api/weather.py`)
-The challenge asks for at least three data types. `GET /data_sources` lists the ones the product actually uses, and only counts a source whose file is on disk. The HUD shows the count under the title. Today it is **6 data types from 3 missions**:
+The challenge asks for at least three data types. `GET /data_sources` lists the ones the product actually uses, and only counts a source whose file is on disk. The HUD shows the count under the title. Today it is **7 data types from 4 missions**:
 - orbital image (HiRISE orthophoto, MRO);
 - elevation (HiRISE DEM, MRO);
 - rover traverse (Curiosity localization, MSL);
 - radiation (RAD, MSL);
 - surface weather (REMS, MSL);
-- spectral minerals (CRISM detections, MRO; OMEGA, Mars Express).
+- spectral minerals (CRISM detections, MRO; OMEGA, Mars Express);
+- thermal (THEMIS night IR, Mars Odyssey).
 
-Thermal (THEMIS) and chemistry (ChemCam/APXS) are listed as planned and not counted.
+Chemistry (ChemCam/APXS) is listed as planned and not counted.
 
 `GET /weather?sol=&eva_min=` reads the public REMS feed (release `rems-v1`; 4,745 sols, 1–4995). It returns:
 - the chosen sol: air and ground temperature range, pressure, UV index, sunrise, sunset and hours of daylight;
@@ -148,6 +149,15 @@ Weather is context, not a cost term: REMS gives one value per sol for the whole 
 - *Hydrous Mineral Detections OMEGA/CRISM*: hydrous minerals, with the instrument.
 
 Within 300 km there are 27 distinct detections, after removing the repeated points. **None falls inside the 2 × 2 km box.** Within 100 km there are 7 hydrous detections, 5 phyllosilicate, 1 silica and 1 sulfate. The nearest hydrous one is 16 km to the south-west (OMEGA and CRISM at the same point), and the nearest clay is 30 km to the west. The HUD draws them on a 100 km north-up inset with the box and an approximate Gale rim (centre 5.4° S, 137.8° E, radius 77 km). The layers are global compilations rounded to 0.01–0.1° (0.6–6 km), so they are regional context only, never a per-cell layer or a station score. The box's own minerals come from Curiosity's drills (rubric, `docs/research/station_value_rubric.md`) (`tests/api/test_api.py::test_minerals_are_regional_context_only`).
+
+**Thermal (THEMIS night IR, `api/thermal.py`, `GET /layers/thermal.png`, `GET /thermal`).** One Mars Trek tile covers the whole box: `THEMIS_NightIR_ControlledMosaics_100m_v2_oct2018`, zoom 9 (the deepest), row 269, column 902, about 81 m per pixel, released as `themis-v1`. The HUD shows it over the box interpolated smoothly (cubic, after a 0.6 px Gaussian) between the 81 m pixel centres, on a warm sequential ramp; this shows the broad warm/cool pattern and adds no detail the data lacks. At night, ground that holds heat (rock) is brighter than loose sand. The issue proposed it to confirm E8's sand. **At this scale it does not.**
+- Over the 576 THEMIS pixels fully inside the box, the Spearman rank correlation between night brightness and E8's sand fraction averaged per pixel is −0.001 (permutation p = 0.97, optimistic because neighbouring pixels are alike).
+- The sandiest and least sandy quarters have mean brightness 186.3 and 184.1.
+- Brightness follows slope weakly (+0.14): steeper, rockier ground is slightly warmer at night.
+- The reason is scale: E8's sand patches cover 67–548 m², less than one THEMIS pixel (~6,600 m²).
+- The tile is an 8-bit display product, not a temperature or a thermal inertia.
+
+It stays a context layer and is not a cost term (`tests/api/test_api.py::test_thermal_themis_layer_and_sand_check`).
 
 ## Results
 - Blocked share of the box by the cell limit: 12.4 % at 30°, 29.6 % at 20° (`/layers/blocked`, from `slope_deg.tif`).

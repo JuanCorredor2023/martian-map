@@ -7,10 +7,10 @@ and the product uses it; planned sources are listed apart, never counted.
 
 from pathlib import Path
 
-from . import weather
+from . import thermal, weather
 
 # (data type, instrument, mission(s) joined by " / ", what the product does with it,
-#  path under data/; None = the REMS feed, found by weather.find_feed)
+#  path under data/, or a function data_dir -> path for sources with two homes)
 SOURCES = [
     ("Orbital image", "HiRISE orthophoto, 25 cm", "Mars Reconnaissance Orbiter",
      "base map; sand detected by E8's U-Net", "base/ortho_color_025.tif"),
@@ -21,13 +21,14 @@ SOURCES = [
     ("Radiation", "RAD dosimetry", "Mars Science Laboratory",
      "EVA dose budget and solar storm alert (E12)", "e12/rad_summary.json"),
     ("Surface weather", "REMS", "Mars Science Laboratory",
-     "temperature, UV and daylight of the EVA's sol", None),
+     "temperature, UV and daylight of the EVA's sol", weather.find_feed),
     ("Spectral (minerals)", "CRISM / OMEGA detections", "Mars Reconnaissance Orbiter / Mars Express",
      "regional context: hydrous minerals and clays 16-50 km from the box", "minerals/gale_minerals.geojson"),
+    ("Thermal", "THEMIS night IR, ~81 m", "Mars Odyssey",
+     "context layer; checked against E8's sand (no relation at 81 m)", thermal.find),
 ]
 
 PLANNED = [
-    ("Thermal", "THEMIS night IR, 100 m", "Mars Odyssey"),
     ("Chemistry", "ChemCam / APXS at the drill sites", "Mars Science Laboratory"),
 ]
 
@@ -36,7 +37,7 @@ def summary(data_dir):
     data_dir = Path(data_dir)
     used, missing = [], []
     for kind, instrument, mission, use, rel in SOURCES:
-        path = weather.find_feed(data_dir) if rel is None else data_dir / rel
+        path = rel(data_dir) if callable(rel) else data_dir / rel
         row = {"type": kind, "instrument": instrument, "mission": mission, "use": use}
         (used if path is not None and Path(path).exists() else missing).append(row)
     missions = sorted({m for r in used for m in r["mission"].split(" / ")})
