@@ -2260,7 +2260,7 @@ ui("sources-chip").addEventListener("click", () => {
   showTab("context"); ui("sources").open = true; ui("sources").scrollIntoView({block: "start"});
 });
 ui("show-radius").addEventListener("input", requestWalkback);
-try { const t = localStorage.getItem("hud-tab"); if (t && ui(`panel-${t}`)) showTab(t); } catch { /* no storage */ }
+{ let t = new URLSearchParams(location.search).get("tab"); if (!(t && ui(`panel-${t}`))) try { t = localStorage.getItem("hud-tab"); } catch { /* no storage */ } if (t && ui(`panel-${t}`)) showTab(t); }  // ?tab= (e.g. the landing page's Try it, #173) first, then the last tab used
 ui("wb-energy").addEventListener("change", requestWalkback);
 for (const id of ["block-on", "block-slope"]) ui(id).addEventListener("change", requestWalkback);
 window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
