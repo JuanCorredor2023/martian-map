@@ -48,13 +48,15 @@
   .map-key i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; border: 1px solid #000; }
   #status .retry { margin-left: 8px; min-height: 44px; padding: 0 16px; }
   #alert details.more { margin-top: 4px; font-size: 14px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .map-key i.line { width: 18px; height: 4px; border: 0; border-radius: 2px; vertical-align: 3px; }
 
   /* meters: every bar is "how much is left", with a state word */
   .meter { margin: 4px 0 10px; }
   .meter:last-child { margin-bottom: 2px; }
   .meter-label { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; font-size: 15px; color: var(--muted); }
-  .meter-label .val { color: var(--text); font-variant-numeric: tabular-nums; }
+  .meter-label .val { color: var(--text); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 650; }
+  @media (max-width: 420px) { .meter-label .val { font-size: 17px; } }
   .state { font-weight: 800; letter-spacing: 0.02em; margin-right: 6px; }
   .state.ok { color: var(--good); } .state.low { color: var(--warn); } .state.out { color: var(--bad); }
   .track { height: 16px; background: var(--track); border-radius: 8px; overflow: hidden; margin-top: 4px; border: 1px solid #47525f; }
@@ -89,7 +91,10 @@
   .sheet details { color: var(--muted); font-size: 15px; margin-bottom: 12px; }
   .sheet .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   #walk-verdict { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
-  #walk-table { width: 100%; border-collapse: collapse; font-size: 16px; margin: 6px 0 10px; font-variant-numeric: tabular-nums; }
+  #walk-more { margin: 0 0 10px; font-size: 15px; }
+  #walk-table, #walk-table-more { width: 100%; border-collapse: collapse; font-size: 16px; margin: 6px 0 10px; font-variant-numeric: tabular-nums; }
+  #walk-table-more td { text-align: right; padding: 4px; border-bottom: 1px solid var(--border); }
+  #walk-table-more td:first-child { text-align: left; }
   #walk-table th, #walk-table td { text-align: right; padding: 4px; border-bottom: 1px solid var(--border); }
   #walk-table th:first-child, #walk-table td:first-child { text-align: left; }
   #walk-notes { font-size: 15px; color: var(--muted); margin-bottom: 12px; }
@@ -106,7 +111,8 @@
 </head>
 <body>
 <div id="app">
-  <div id="maneuver" class="card" role="status" aria-live="polite">
+  <div id="sr-man" class="sr-only" role="status" aria-live="polite"></div>
+  <div id="maneuver" class="card">
     <div id="arrow" aria-hidden="true"></div>
     <div id="man-dist">…</div>
     <div id="man-text">Loading the plan</div>
@@ -116,30 +122,30 @@
 
   <div class="card" id="meters">
     <div class="meter">
-      <div class="meter-label"><span>Spare energy after returning</span>
+      <div class="meter-label"><span title="Energy left after walking home from here">Spare energy</span>
         <span><span class="state" id="e-state"></span><span class="val" id="e-val"></span></span></div>
       <div class="track" id="e-track" role="meter" aria-label="Spare energy after returning" aria-valuemin="0" aria-valuemax="100">
         <div id="e-fill" class="fill"></div></div>
     </div>
     <div class="meter" id="k-meter" hidden>
-      <div class="meter-label"><span>Spare energy, learned use (k p90)</span>
+      <div class="meter-label"><span title="Spare energy if you keep using energy the way you have on this walk (90 % estimate of your factor k against the model)">Spare energy at your pace</span>
         <span><span class="state" id="k-state"></span><span class="val" id="k-val"></span></span></div>
       <div class="track" id="k-track" role="meter" aria-label="Spare energy after returning, with this walk's learned energy use" aria-valuemin="0" aria-valuemax="100">
         <div id="k-fill" class="fill"></div></div>
     </div>
     <div class="meter">
-      <div class="meter-label"><span>Margin to the 30 min oxygen line</span>
+      <div class="meter-label"><span title="Time to walk home from here; the emergency oxygen covers 30 min">Time home (limit 30 min)</span>
         <span><span class="state" id="t-state"></span><span class="val" id="t-val"></span></span></div>
       <div class="track" id="t-track" role="meter" aria-label="Margin to the 30 minute emergency-oxygen line" aria-valuemin="0" aria-valuemax="100">
         <div id="t-fill" class="fill"></div></div>
     </div>
     <div class="meter" id="eva-meter" hidden>
-      <div class="meter-label"><span>Walk time left</span>
+      <div class="meter-label"><span>EVA time left</span>
         <span><span class="state" id="v-state"></span><span class="val" id="v-val"></span></span></div>
       <div class="track" id="v-track" role="meter" aria-label="Walk time left" aria-valuemin="0" aria-valuemax="100">
         <div id="v-fill" class="fill"></div></div>
     </div>
-    <div class="radio-line" id="radio-meter" hidden><span>Radio to the habitat</span><b id="r-val"></b></div>
+    <div class="radio-line" id="radio-meter" hidden><span>Radio</span><b id="r-val"></b></div>
   </div>
 
   <div id="map-wrap">
@@ -161,7 +167,7 @@
   <div id="controls">
     <button id="walk-btn"></button>
     <button id="voice-btn" aria-pressed="true"></button>
-    <button id="repeat-btn" title="Say the last instruction again"></button>
+    <button id="repeat-btn" title="Say the current instruction again"></button>
     <button id="home-btn"></button>
   </div>
   <details class="demo" id="demo">
@@ -181,6 +187,7 @@
   <h2 id="walk-title" tabindex="-1">Back at the habitat</h2>
   <div id="walk-verdict"></div>
   <table id="walk-table"></table>
+  <details id="walk-more"><summary>Details</summary><table id="walk-table-more"></table></details>
   <div id="walk-notes"></div>
   <button id="walk-close" style="width:100%">Close</button>
 </div>
@@ -279,6 +286,11 @@ function noPlan() {
 function setLabels() {
   ui("walk-btn").innerHTML = `${icon("play")} Walk`;
   ui("voice-btn").innerHTML = `${icon("speaker")} Voice on`;
+  if (!("speechSynthesis" in window)) {          // say so instead of a "Voice on" that is silent
+    ui("voice-btn").innerHTML = `${icon("mute")} Voice unavailable`;
+    ui("voice-btn").disabled = true;
+    ui("voice-btn").setAttribute("aria-pressed", "false");
+  }
   ui("repeat-btn").innerHTML = `${icon("repeat")} Repeat`;
   ui("home-btn").innerHTML = `${icon("home")} Return home`;
   ui("st-home").innerHTML = `${icon("home")} Go home`;
@@ -359,7 +371,12 @@ function meter(key, m) {
   track.setAttribute("aria-valuetext", `${m.word}, ${m.text}`);
   const word = ui(`${key}-state`);
   word.textContent = m.word; word.className = `state ${m.state}`;
-  ui(`${key}-val`).textContent = m.text;
+  const val = ui(`${key}-val`);
+  if (key === "k" && m.k != null) {
+    const spare = /([\d.]+) Wh$/.exec(m.text);
+    val.textContent = `${spare ? spare[1] : ""} Wh · ×${m.k.toFixed(2)}`;
+    val.title = m.text;
+  } else val.textContent = m.text;
 }
 
 // Crossing into a worse state is said once, as an alert.
@@ -385,6 +402,11 @@ function update(i) {
     ui("arrow").innerHTML = icon(ARROW_ICON[next.arrow] || "up");
     ui("man-dist").textContent = distText === "now" ? "Now" : distText.replace(/^in /, "");
     ui("man-text").textContent = `${next.text} · home in ${(leftS / 60).toFixed(1)} min`;   // same format as the meter
+  }
+  const said = `${ui("man-dist").textContent}. ${ui("man-text").textContent}`;
+  if (ui("sr-man").dataset.text !== ui("man-text").textContent) {      // only when the instruction changes
+    ui("sr-man").dataset.text = ui("man-text").textContent;
+    ui("sr-man").textContent = said;
   }
   for (const text of G.announcements(r, i, spoken)) voice.say(text);
   for (const text of G.radioAnnouncements(r, i, spoken)) {
@@ -577,11 +599,17 @@ function finishWalk() {
   ui("walk-verdict").textContent = wentHome ? `Came home early${s.events.some(e => e.kind === "storm") ? " because of the storm" : ""}: ${missed} station${missed === 1 ? "" : "s"} not visited.`
     : missed ? `Walked the plan, ${missed} station${missed === 1 ? "" : "s"} skipped.` : "Walked as planned.";
   const sign = v => (v > 0 ? "+" : "") + v;
+  // Four rows at a glance (#124); radio, the farthest point off the route and the learned
+  // energy factor stay one tap away under "Details".
+  const row = ([a, b, c]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td>${esc(c)}</td></tr>`;
+  const all = G.summaryRows(s).filter(([a]) => a !== "Farthest from the plan");
+  const MAIN = ["Time", "Energy", "Distance", "Stations"];
   ui("walk-table").innerHTML = "<tr><th></th><th>Plan</th><th>Walked</th></tr>" +
-    G.summaryRows(s).filter(([a]) => a !== "Farthest from the plan")
-      .map(([a, b, c]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td>${esc(c)}</td></tr>`).join("") +
+    all.filter(([a]) => MAIN.includes(a)).map(row).join("");
+  ui("walk-table-more").innerHTML = all.filter(([a]) => !MAIN.includes(a)).map(row).join("") +
     `<tr><td>Farthest off the route</td><td>—</td><td>${s.walked.maxOffRouteM.toFixed(0)} m</td></tr>` +
-    G.adaptiveRows(adaptive).map(([a, b, c]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td>${esc(c)}</td></tr>`).join("");
+    G.adaptiveRows(adaptive).map(row).join("");
+  ui("walk-more").open = false;
   const notes = [];
   if (missed) notes.push(`Not visited: ${s.skipped.join(", ")}${wentHome ? " (went home)" : ""}`);
   const minutes = (s.delta.timeS / 60).toFixed(0);
@@ -610,7 +638,15 @@ ui("voice-btn").addEventListener("click", () => {
   ui("voice-btn").innerHTML = on ? `${icon("speaker")} Voice on` : `${icon("mute")} Voice off`;
   ui("voice-btn").setAttribute("aria-pressed", String(on));
 });
-ui("repeat-btn").addEventListener("click", () => { if (!voice.repeat()) ui("status").textContent = "Nothing to repeat yet."; });
+// Repeat says what matters now: the alert on screen, else the current instruction.
+ui("repeat-btn").addEventListener("click", () => {
+  const alert = ui("alert");
+  const text = !alert.hidden && alert.textContent.trim()
+    ? alert.querySelector("b") ? alert.querySelector("b").textContent : alert.textContent.trim()
+    : route ? `${ui("man-dist").textContent}. ${ui("man-text").textContent}.` : "";
+  if (!text) { ui("status").textContent = "Nothing to repeat yet."; return; }
+  if (!voice.say(text, {priority: "alert"})) ui("status").textContent = text;
+});
 ui("home-btn").addEventListener("click", returnHome);
 ui("st-done").addEventListener("click", () => {
   closeStationCard();
