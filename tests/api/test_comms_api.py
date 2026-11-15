@@ -103,10 +103,12 @@ def test_without_gdal_only_e11_answers_503(monkeypatch):
 
 
 def test_api_starts_when_gdal_is_missing():
-    """Fresh interpreter where `import osgeo` fails: api.main must still import."""
+    """Fresh interpreter where `import osgeo` fails (plain pip install): api.main still
+    imports and the radio stays on, with the NumPy port of GDAL's viewshed."""
     import subprocess
     code = ("import sys; sys.modules['osgeo'] = None; sys.path.insert(0, r'%s'); "
-            "import api.main as m; assert not m.e11.AVAILABLE; "
+            "import api.main as m; assert m.e11.AVAILABLE; "
+            "assert m.e11.comms.ENGINE == 'numpy'; "
             "assert any(r.path == '/plan' for r in m.app.routes); print('ok')" % REPO)
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
                          cwd=REPO, timeout=120)

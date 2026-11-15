@@ -1,11 +1,16 @@
-"""E11 radio line of sight (src/gis/comms.py) on small synthetic DEMs."""
+"""E11 radio line of sight (src/gis/comms.py) on small synthetic DEMs.
+
+Every test runs with both engines: GDAL's ViewshedGenerate (where the bindings are
+installed, conda) and the NumPy port used without them (plain pip install)."""
 
 import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
-from osgeo import gdal
+import rasterio
+from rasterio.crs import CRS
+from rasterio.transform import Affine
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
@@ -13,17 +18,30 @@ sys.path.insert(0, str(REPO / "src"))
 from gis import comms  # noqa: E402
 
 N = 200
+GDAL = comms.gdal
+WKT = (REPO / "docs" / "contracts" / "crs.wkt").read_text(encoding="utf-8")
+
+
+@pytest.fixture(autouse=True, params=["gdal", "numpy"])
+def engine(request, monkeypatch):
+    """Run each test with GDAL's viewshed and with the NumPy port."""
+    if request.param == "gdal" and GDAL is None:
+        pytest.skip("GDAL's Python bindings are not installed")
+    monkeypatch.setattr(comms, "gdal", GDAL if request.param == "gdal" else None)
+    comms.dem.cache_clear()
+    comms._viewshed.cache_clear()
+    yield request.param
+    comms.dem.cache_clear()
+    comms._viewshed.cache_clear()
 
 
 def write_dem(tmp_path, z):
     """dem_1m.tif with origin (0, 0) top-left, 1 m cells, the team's Mars CRS."""
     path = tmp_path / "dem_1m.tif"
-    ds = gdal.GetDriverByName("GTiff").Create(str(path), z.shape[1], z.shape[0], 1,
-                                              gdal.GDT_Float32)
-    ds.SetGeoTransform((0.0, 1.0, 0.0, 0.0, 0.0, -1.0))
-    ds.SetProjection((REPO / "docs" / "contracts" / "crs.wkt").read_text(encoding="utf-8"))
-    ds.GetRasterBand(1).WriteArray(z.astype(np.float32))
-    ds = None
+    with rasterio.open(path, "w", driver="GTiff", height=z.shape[0], width=z.shape[1],
+                       count=1, dtype="float32", crs=CRS.from_wkt(WKT),
+                       transform=Affine(1.0, 0.0, 0.0, 0.0, -1.0, 0.0)) as dst:
+        dst.write(z.astype(np.float32), 1)
     comms.dem.cache_clear()
     comms._viewshed.cache_clear()
     return str(tmp_path)
@@ -110,3 +128,33 @@ def test_pair_separation_limit(tmp_path):
 def test_outside_the_box_raises(wall_dem):
     with pytest.raises(ValueError):
         comms.line_of_sight((-10.0, 10.0), wall_dem)
+
+
+@pytest.mark.skipif(GDAL is None, reason="GDAL's Python bindings are not installed")
+@pytest.mark.parametrize("cell", [(150, 150), (0, 0), (0, 299), (299, 0), (299, 299),
+                                  (2, 150), (150, 297), (37, 211)])
+@pytest.mark.parametrize("antenna_h", [1.7, 3.0, 12.0])
+def test_numpy_port_gives_gdal_cells(tmp_path, engine, cell, antenna_h):
+    """The NumPy port marks exactly the cells GDAL marks, on rough terrain, from the
+    centre, the corners and the edges (curvature on: 3 km wide so it matters)."""
+    if engine != "numpy":
+        pytest.skip("one comparison per case")
+    rng = np.random.default_rng(cell[0] * 1000 + cell[1])
+    z = np.cumsum(np.cumsum(rng.normal(0, 0.4, (300, 300)), 0), 1) / 20
+    z += 30 * np.sin(np.arange(300) / 23)[None, :]
+    path = tmp_path / "dem_1m.tif"
+    with rasterio.open(path, "w", driver="GTiff", height=300, width=300, count=1,
+                       dtype="float32", crs=CRS.from_wkt(WKT),
+                       transform=Affine(10.0, 0.0, 0.0, 0.0, -10.0, 0.0)) as dst:
+        dst.write(z.astype(np.float32), 1)
+    ds = GDAL.Open(str(path))
+    ox, oy = (cell[1] + 0.5) * 10, -(cell[0] + 0.5) * 10
+    out = GDAL.ViewshedGenerate(ds.GetRasterBand(1), "MEM", "", [], ox, oy, antenna_h,
+                                comms.ASTRONAUT_H, 1.0, 0.0, 0.0, 0.0, comms.CURV_COEFF,
+                                GDAL.GVM_Edge, 0.0)
+    ref = out.GetRasterBand(1).ReadAsArray() > 0.5
+    z64 = ds.GetRasterBand(1).ReadAsArray().astype(np.float64)
+    ours = comms.viewshed_numpy(z64, ds.GetGeoTransform(), cell[0], cell[1], antenna_h,
+                                comms.ASTRONAUT_H)
+    assert 0.02 < ref.mean() < 0.98                # the terrain hides part of the box
+    assert np.array_equal(ours, ref)
