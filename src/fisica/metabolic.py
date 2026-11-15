@@ -14,7 +14,7 @@ Conventions (do not change without posting in the contracts issue):
 from math import cos, radians, sin, tan
 
 # Nominal parameters (declared assumptions, guide section 9)
-TOTAL_MASS_KG = 124.2          # total suited mass: astronaut + suit + load (the Pandolf check uses 75 + 47.8 kg)
+TOTAL_MASS_KG = 124.2          # 76.4 kg astronaut (Apollo 14 commander) + 47.8 kg suit (Carr et al. 2003)
 G_MARS = 3.71                  # m/s^2
 G_MOON = 1.62
 G_EARTH = 9.81
@@ -74,7 +74,7 @@ def liters_o2(energy_j):
 # with the Santee (2003) downhill correction CF, as reproduced in the CSRM.
 # Terrestrial model, no gravity term. Never mix it with Santee 2001.
 # ---------------------------------------------------------------------------
-BODY_MASS_KG = 75.0                     # W in Pandolf; the load is L = m - W
+BODY_MASS_KG = 76.4                     # W in Pandolf (Carr et al. 2003); the load is L = m - W = 47.8 kg
 
 
 def pandolf_cf_power(body_kg, load_kg, v_mps, alpha_deg, eta=1.0):

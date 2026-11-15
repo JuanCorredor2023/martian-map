@@ -21,7 +21,7 @@ Why not Pandolf scaled by g_Mars/g_Earth (the CSRM's whole-power scaling)? It fa
 ### Speed, time and energy
 - Speed: Apollo regression V = 0.75 − 0.01·alpha (m/s, alpha in degrees, **signed**: downhill is faster). The CSRM does not say whether alpha is signed; we declare signed and report both in the checks.
 - A move of horizontal length d_h runs d_h / cos(alpha) over the surface, so dt = d_h / (V cos alpha) and E = M · dt (J). Metabolic O2 = E[kJ] / 20.1 kJ/L.
-- Parameters: m = 124.2 kg (total suited mass: astronaut, suit and load), g = 3.71 m/s². The Pandolf comparison uses body 75 kg + load 47.8 kg (122.8 kg); the two masses are not the same split.
+- Parameters: m = 124.2 kg, the Apollo 14 commander's 76.4 kg plus a 47.8 kg suit (cooling garment, suit and life support) [Carr2003]; g = 3.71 m/s². The Pandolf branch uses the same split, W = 76.4 kg and L = 47.8 kg. Until 2026-11-15 it used W = 75 kg (so L = 49.2 kg), as in the guide's section 6; corrected after tracing the 124.2 kg to Carr et al. (2003).
 
 ### Directed edge costs on the grid (`src/fisica/edge_cost.py`)
 - 8-neighbour graph; diagonal moves are √2 m. For each cell and neighbour k: alpha = atan(Δz / d_h) from the DEM, then dt and E as above. Arrays `time_s`, `energy_j`, `alpha_deg` of shape (8, 2000, 2000), float32, NaN = no edge. The graph is **directed**: going up an edge costs more than coming back down.
@@ -41,7 +41,7 @@ Source for every number: `src/fisica/paper_figures.py` → `data/e3/e3_summary.j
 | Quantity | Value | Guide [Guide-REV3] |
 |---|---|---|
 | Flat power, v = 0.75 m/s (Earth, Moon and Mars) | 292.23 W in all three | 292.23 W |
-| Pandolf flat on Earth → whole-power scaling on the Moon | 315.87 W → 52.16 W | 315.87 → 52.16 W |
+| Pandolf flat on Earth → whole-power scaling on the Moon | 316.63 W → 52.29 W (W = 76.4 kg, L = 47.8 kg) | 315.87 → 52.16 W (the guide uses W = 75 kg) |
 | Toy route 5 km (4.1 km flat + 0.9 km horizontal at +10°) | 2215.5 kJ = 615.4 Wh; 110.2 L O2 eq.; 1.91 h | 2215.5 kJ, 615.4 Wh, 110.2 L, 1.91 h |
 | Minimum cost per horizontal metre in ±20°, signed speed | 338.75 J/m at −7.10° | 338.75 J/m at −7.10° |
 | Same with speed from \|alpha\| | 351.00 J/m at −5.41° | 351.00 J/m at −5.41° |
@@ -107,8 +107,8 @@ One parameter at a time from the nominal model (Santee 2001, 124.2 kg, signed Ap
 | speed from |alpha| | 2215 kJ / 1.91 h | 138.4 | 84.4 % | 53.1 % | 93.5 Wh / 15.9 min | 100 % (1 m) |
 | gravity Moon 1.62 | 2071 kJ / 1.91 h | 125.6 | 84.4 % | 63.4 % | 81.8 Wh / 15.7 min | 82 % (17 m) |
 | gravity Earth 9.81 | 2636 kJ / 1.91 h | 145.1 | 84.4 % | 63.4 % | 127.0 Wh / 15.8 min | 100 % (2 m) |
-| model Pandolf + CF | 2892 kJ / 1.91 h | 205.2 | 84.4 % | 63.4 % | 139.9 Wh / 15.8 min | 89 % (16 m) |
-| model Pandolf + CF x g/gE | 1094 kJ / 1.91 h | 77.6 | 84.4 % | 63.4 % | 52.9 Wh / 15.8 min | 89 % (16 m) |
+| model Pandolf + CF | 2840 kJ / 1.91 h | 200.8 | 84.4 % | 63.4 % | 137.8 Wh / 15.8 min | 89 % (16 m) |
+| model Pandolf + CF x g/gE | 1074 kJ / 1.91 h | 75.9 | 84.4 % | 63.4 % | 52.1 Wh / 15.8 min | 89 % (16 m) |
 | cell block 20 deg | 2215 kJ / 1.91 h | 95.3 | 42.9 % | 35.9 % | 94.8 Wh / 16.0 min | 39 % (57 m) |
 | cell block 25 deg | 2215 kJ / 1.91 h | 138.2 | 70.4 % | 45.4 % | 93.6 Wh / 15.8 min | 77 % (17 m) |
 | no cell block | 2215 kJ / 1.91 h | 107.5 | 99.1 % | 92.4 % | 93.3 Wh / 15.7 min | 100 % (1 m) |
@@ -118,7 +118,7 @@ One parameter at a time from the nominal model (Santee 2001, 124.2 kg, signed Ap
 *Figure E3-2. Change against the nominal model of the median return energy, the energy of the route to Nevado Sajama, and the share of the box within 30 min. Labels give the share of each route within 5 m of the nominal route.*
 
 What it shows:
-- **Energy follows mass and model, not time.** Mass changes energy almost proportionally (±17–18 %), and the route stays identical. The metabolic model is the largest energy uncertainty: Pandolf + CF gives +50–52 % and its g-scaled version −43 %, a factor of 2.6 between them. Gravity applied only to the slope term moves the route energy by −12 % (Moon) to +36 % (Earth).
+- **Energy follows mass and model, not time.** Mass changes energy almost proportionally (±17–18 %), and the route stays identical. The metabolic model is the largest energy uncertainty: Pandolf + CF gives +48–49 % and its g-scaled version −44 %, a factor of 2.6 between them. Gravity applied only to the slope term moves the route energy by −12 % (Moon) to +36 % (Earth).
 - **The 30 min line depends only on the speed convention and the cell block,** because E3's speed has no mass, gravity or model term. With speed from |alpha| the share within 30 min falls from 63.4 % to 53.1 %: downhill becomes slower. With the cell block it ranges from 35.9 % (20°) to 92.4 % (no block).
 - **Routes are robust to the physiology, not to the block.** Under every mass, speed and gravity choice, 82–100 % of the route stays within 5 m of the nominal route, and both Pandolf branches keep 89 %. A 20° cell block reroutes it (39 % within 5 m, up to 57 m away) and leaves only 42.9 % of the box able to return.
 - Caveat on the median R_E column: changing the block changes *which* cells can return, so the median is over a different set (20° gives a lower median because only cells near the habitat remain). Read it together with the reachable share.

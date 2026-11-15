@@ -30,7 +30,7 @@ OUT_FIG = REPO / "paper" / "figures" / "e3_fig1_power_and_cost_vs_slope.png"
 m = TOTAL_MASS_KG
 
 
-def pandolf_flat(body_kg=75.0, load_kg=47.8, v=0.75, eta=1.0):
+def pandolf_flat(body_kg=76.4, load_kg=47.8, v=0.75, eta=1.0):
     """Pandolf (1977) on flat ground, alternative branch (guide section 6)."""
     w, l = body_kg, load_kg
     return 1.5 * w + 2.0 * (w + l) * (l / w) ** 2 + eta * (w + l) * 1.5 * v ** 2
