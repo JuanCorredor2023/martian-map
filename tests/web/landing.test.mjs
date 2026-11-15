@@ -20,10 +20,19 @@ function urls(html) {
   return out;
 }
 
+// The user guides are served from docs/ at the same paths (api/main.py mounts them).
+const DOCS = new URL('../../docs/', import.meta.url);
+const GUIDES = ['user_guide', 'user_guide_3d'];
+
 // The file the app's StaticFiles(web/, html=True) serves for a same-origin URL.
 function servedFile(url, base) {
   const path = url.split('#')[0].split('?')[0];
   if (path === '') return null;                       // same-page anchor
+  const guide = GUIDES.find(g => path.startsWith(`/docs/${g}/`));
+  if (guide) {
+    const rest = path.slice(`/docs/${guide}/`.length);
+    return new URL(`${guide}/${rest === '' || rest.endsWith('/') ? rest + 'index.html' : rest}`, DOCS);
+  }
   const target = new URL(path, path.startsWith('/') ? WEB : base);
   if (path.startsWith('/')) target.pathname = WEB.pathname + path.slice(1);
   if (target.pathname.endsWith('/')) target.pathname += 'index.html';
@@ -121,4 +130,15 @@ test('the colour bands still alternate after the paper section', () => {
   const html = read('index.html');
   const bands = [...html.matchAll(/<section class="section( band-alt)?"[^>]*id="([^"]+)"/g)].map(m => [m[2], !!m[1]]);
   for (let i = 1; i < bands.length; i++) assert.notEqual(bands[i][1], bands[i - 1][1], `${bands[i - 1][0]} → ${bands[i][0]}`);
+});
+
+test('the landing page links both user guides: in the header, the hero and their sections', () => {
+  for (const page of PAGES)
+    assert.match(read(page), /<nav[\s\S]*?href="\/docs\/user_guide\/"[\s\S]*?<\/nav>/, `${page}: header link`);
+  const html = read('index.html');
+  const hero = html.match(/<section class="hero"[\s\S]*?<\/section>/)[0];
+  for (const g of GUIDES) assert.match(hero, new RegExp(`href="/docs/${g}/"`), `hero: ${g}`);
+  const section = id => html.match(new RegExp(`<section[^>]*id="${id}"[\\s\\S]*?</section>`))[0];
+  assert.match(section('plan'), /href="\/docs\/user_guide\/"/);
+  assert.match(section('rehearse'), /href="\/docs\/user_guide_3d\/"/);
 });

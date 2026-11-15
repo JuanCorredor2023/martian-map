@@ -294,6 +294,8 @@ strong { font-weight: 650; color: var(--ink); }
   line-height: 1.42;
 }
 .hero .actions { margin-top: 0.5rem; }
+.hero__guides { margin-top: 1rem; color: var(--ink-2); font-size: 0.9375rem; line-height: 1.5; }
+.hero__guides a { font-weight: 600; }
 .hero__shot {
   max-width: calc(82.5rem + 4rem);
   padding-block: clamp(2.5rem, 1.8rem + 3vw, 4.5rem) clamp(3rem, 2rem + 4vw, 6rem);
