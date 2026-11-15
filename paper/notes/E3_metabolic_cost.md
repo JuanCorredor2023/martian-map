@@ -21,7 +21,7 @@ Why not Pandolf scaled by g_Mars/g_Earth (the CSRM's whole-power scaling)? It fa
 ### Speed, time and energy
 - Speed: Apollo regression V = 0.75 − 0.01·alpha (m/s, alpha in degrees, **signed**: downhill is faster). The CSRM does not say whether alpha is signed; we declare signed and report both in the checks.
 - A move of horizontal length d_h runs d_h / cos(alpha) over the surface, so dt = d_h / (V cos alpha) and E = M · dt (J). Metabolic O2 = E[kJ] / 20.1 kJ/L.
-- Parameters: m = 124.2 kg (75 kg astronaut + 47.8 kg suit and load), g = 3.71 m/s².
+- Parameters: m = 124.2 kg (total suited mass: astronaut, suit and load), g = 3.71 m/s². The Pandolf comparison uses body 75 kg + load 47.8 kg (122.8 kg); the two masses are not the same split.
 
 ### Directed edge costs on the grid (`src/fisica/edge_cost.py`)
 - 8-neighbour graph; diagonal moves are √2 m. For each cell and neighbour k: alpha = atan(Δz / d_h) from the DEM, then dt and E as above. Arrays `time_s`, `energy_j`, `alpha_deg` of shape (8, 2000, 2000), float32, NaN = no edge. The graph is **directed**: going up an edge costs more than coming back down.

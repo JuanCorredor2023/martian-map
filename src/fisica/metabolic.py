@@ -14,7 +14,7 @@ Conventions (do not change without posting in the contracts issue):
 from math import cos, radians, sin, tan
 
 # Nominal parameters (declared assumptions, guide section 9)
-TOTAL_MASS_KG = 124.2          # 75 kg astronaut + 47.8 kg suit/load
+TOTAL_MASS_KG = 124.2          # total suited mass: astronaut + suit + load (the Pandolf check uses 75 + 47.8 kg)
 G_MARS = 3.71                  # m/s^2
 G_MOON = 1.62
 G_EARTH = 9.81
