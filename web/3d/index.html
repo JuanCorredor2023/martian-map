@@ -138,6 +138,7 @@
     .player-row { gap: 4px; }
   }
 </style>
+<link rel="stylesheet" href="photos.css">
 </head>
 <body>
 <canvas id="view"></canvas>
@@ -182,6 +183,13 @@
     <!-- Cast shadows of the sun light (shadows.js). -->
     <label class="check muted" title="Shadows cast by the relief as shown and by the habitat">
       <input type="checkbox" id="shadows" checked>Shadows</label>
+  </details>
+  <!-- Curiosity's own photos, pinned where the camera was (photos.js, P3). -->
+  <details id="photos-box" open>
+    <summary class="muted">Rover photos</summary>
+    <label class="check muted" title="Pins at the stops where Curiosity's Navcam took photos (2025–2026)">
+      <input type="checkbox" id="photos-show" checked disabled>Show photo stops</label>
+    <div class="muted" id="photos-note">Loading the photo catalogue…</div>
   </details>
   <details id="about" open>
     <summary class="muted">About this view</summary>

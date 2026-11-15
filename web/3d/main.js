@@ -19,6 +19,8 @@
 //                   camera's elevation in metres (DEM datum), heading from north and pitch
 //                   below the horizon in degrees (view_link.js). "Copy link to this view"
 //                   in the About section writes it.
+//   photo=<id>      open a rover photo (P3, photos.js) in the photo view, from where the
+//                   Navcam took it
 import * as THREE from 'three';
 import { loadLastPlan, loadRubric, requestDefaultPlan } from './api.js';
 import { hideCard, showCard, stationCard } from './card.js';
@@ -71,7 +73,7 @@ window.addEventListener('pointerdown', e => {
 
 async function main() {
   if (window.innerWidth < 700 || window.innerHeight < 500) {
-    ui('about').open = ui('plan-box').open = ui('sun-box').open = false;
+    ui('about').open = ui('plan-box').open = ui('sun-box').open = ui('photos-box').open = false;
   }
   const quality = pickQuality();
   const canvas = ui('view');
@@ -124,6 +126,8 @@ async function main() {
   // lines of the rehearsal.
   const overlays = new RouteOverlay(terrain, scene);
   const markers = new MarkerLayer(terrain, scene, camera);
+  const photoMarkers = new MarkerLayer(terrain, scene, camera);       // rover photo stops (P3): their own layer
+  photoMarkers.group.name = 'photo markers';
   const walkbackLines = new GroundLines(terrain, scene, 'walkback');
 
   function resize() {
@@ -133,6 +137,7 @@ async function main() {
     camera.updateProjectionMatrix();
     overlays.setResolution(w, h);
     markers.setResolution(w, h);
+    photoMarkers.setResolution(w, h);
     walkbackLines.setResolution(w, h);
     shownFov = camera.fov;
     dirty = true;
@@ -178,6 +183,7 @@ async function main() {
     const k = terrain.setExaggeration(reliefLock ? 1 : Number(value) || 1);
     overlays.refresh();
     markers.refresh();
+    photoMarkers.refresh();
     walkbackLines.refresh();
     controls.refresh();
     shadows.invalidate();                      // what casts and receives changed shape
@@ -254,9 +260,52 @@ async function main() {
   canvas.addEventListener('pointerup', e => {
     if (!press || press.id !== e.pointerId || Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4) return;
     const r = canvas.getBoundingClientRect();
-    const hit = markers.pick([(e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height * 2 - 1)]);
-    if (hit) markers.select(hit);
+    const ndc = [(e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height * 2 - 1)];
+    const hit = markers.pick(ndc);
+    if (hit) { markers.select(hit); return; }
+    // Rover photo stops: one opens its card; pins on top of each other offer a choice.
+    const stops = photos ? photoMarkers.pickAll(ndc).map(m => m.data.groupId) : [];
+    if (stops.length === 1) photos.openGroup(stops[0]);
+    else if (stops.length > 1) photos.chooseStop(stops);
+    if (stops.length) dirty = true;
   });
+
+  // ---- rover photos (P3, photos.js) ---------------------------------------------------
+  // Loaded on their own: a missing catalogue, missing images or an error in this part
+  // leaves the rest of the map as it is.
+  let photos = null;
+  const photosNote = text => { ui('photos-note').textContent = text; };
+  const showPhotoPins = () => photos && photos.setVisible(ui('photos-show').checked && !rehearsal.active);
+  async function loadPhotos() {
+    try {
+      const {PhotoLayer} = await import('./photos.js');
+      const layer = new PhotoLayer({terrain, controls, camera, canvas, relief, sunView, markers: photoMarkers,
+                                    showCard, hideCard, onChange: () => { dirty = true; },
+                                    isBusy: () => rehearsal.active});
+      const got = await layer.load();
+      if (!got.ok) {
+        photosNote(`No rover photos: ${got.error}. The rest of the map works without them ` +
+                   '(web/3d/README.md, "Rover photos", says how to build them).');
+        return;
+      }
+      photos = layer;
+      window.viz3d.photos = layer;
+      ui('photos-show').disabled = false;
+      photosNote(`${got.count} Navcam photos (black and white, 2025–2026) at the stops where they were ` +
+                 'taken. Click a camera pin for the photo; "View from here" lays it over the terrain.');
+      showPhotoPins();
+      dirty = true;
+    } catch (err) {
+      console.error(err);
+      photosNote(`Rover photos not available (${err.message}). The rest of the map works without them.`);
+    }
+  }
+  ui('photos-show').addEventListener('change', showPhotoPins);
+  // The rehearsal takes the camera and the relief: leave the photo view before it starts.
+  document.addEventListener('click', e => {
+    if (photos && photos.active && e.target.closest && e.target.closest('#rehearse')) photos.exit();
+  }, true);
+  let rehearsing = false;                      // pins are hidden while rehearsing (frame())
 
   // ---- plan ---------------------------------------------------------------------
   const line = (parent, cls, text) => {
@@ -376,11 +425,17 @@ async function main() {
     if (pendingRelief !== null) { setRelief(pendingRelief); pendingRelief = null; }
     if (controls.update((now - last) / 1000)) dirty = true;    // wheel easing, auto-rotate, drags, flights
     if (rehearsal.update((now - last) / 1000)) dirty = true;   // every frame only while playing or dragging
+    if (rehearsal.active !== rehearsing) {     // photo pins out of the way of the walk, back after it
+      rehearsing = rehearsal.active;
+      showPhotoPins();
+      dirty = true;
+    }
     last = now;
     if (!dirty && !continuous) return;
     if (camera.fov !== shownFov) {             // a flight or the rehearsal changed it: resize the pins
       shownFov = camera.fov;
       markers.setResolution(canvas.clientWidth, canvas.clientHeight);
+      photoMarkers.setResolution(canvas.clientWidth, canvas.clientHeight);
     }
     renderer.render(scene, camera);
     dirty = false;
@@ -395,17 +450,38 @@ async function main() {
 
   // Handle for the manual checks listed in the PR and for later blocks.
   // `plan` is {fc, source, error, missing, stationTypes, model} once a plan was asked for.
+  // `photos` is the PhotoLayer once its catalogue has loaded (photosReady), else missing.
   window.viz3d = {terrain, scene, camera, controls, renderer, sun, sunDirection, sunView, shadows, overlays, markers,
-                  rehearsal, walkbackLines, plan: null, showPlan, reloadPlan, planDefault, setRelief,
+                  photoMarkers, rehearsal, walkbackLines, plan: null, showPlan, reloadPlan, planDefault, setRelief,
                   currentViewLink, capture, get fps() { return fps; }, redraw() { dirty = true; }};
   // The terrain is usable while the plan loads. ?plan=default is the user asking.
   const planReady = params.get('plan') === 'default' ? planDefault() : reloadPlan();
+  const photosReady = loadPhotos();
+  window.viz3d.photosReady = photosReady;
+
+  // ?photo=<id>: its card and the photo view, once the plan has drawn (it hides the card).
+  const startPhoto = params.get('photo');
+  if (startPhoto) {
+    Promise.all([planReady, photosReady]).then(async () => {
+      const {parsePhotoParam} = await import('./photos_model.js');
+      const id = parsePhotoParam(startPhoto), photo = photos && id && photos.model.byId.get(id);
+      if (photo) {
+        photos.openGroup(photo.groupId, id);
+        photos.enter(id);
+      } else {
+        photosNote(photos ? `The address asks for photo "${startPhoto}", which is not in the catalogue.`
+                          : ui('photos-note').textContent);
+      }
+      dirty = true;
+    });
+  }
 
   // ?check=<name>: run a reproducible check (checks.js) and show its JSON result.
   const check = params.get('check');
   if (check) {
     const {CHECKS} = await import('./checks.js');
     await planReady;
+    await photosReady;
     const result = CHECKS[check] ? await CHECKS[check](window.viz3d) : {error: `unknown check: ${check}`};   // guide is async
     window.viz3d.checkResult = result;
     console.log(JSON.stringify(result));
