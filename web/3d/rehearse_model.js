@@ -468,12 +468,32 @@ export function kAlarmAction({returnNow, storm, home, showing}) {
   return 'keep';
 }
 
-// First line of the player: time, leg and distance.
-export function progressText(model, state) {
-  const parts = [`${clock(state.time - model.start)} of ${clock(model.duration)}`];
+// The clock line of the player: the EVA clock, the leg and the distance. A way home or a
+// rejoin is a new route that starts where the walker was, but the EVA clock goes on (#124):
+//   evaStart   the EVA's start on the plan's clock (the planned route's start; by default
+//              this route's own, which is right for the planned route)
+//   homeStart  when the way home began (Return home or the solar storm), or null. The way
+//              home is then a stretch of the EVA, from that moment to the habitat.
+// "EVA 3:02 of 111:27 · outbound · 132 of 1392 m"; after a rejoin, the EVA's new end;
+// on the way home "EVA 102:04 · way home 2:02 of 2:51 · 120 of 160 m", and "EVA 2:05 · at
+// the habitat" when the way home is a single point (pressed at the habitat, #115).
+export function progressText(model, state, {evaStart = model.start, homeStart = null} = {}) {
+  const eva = `EVA ${clock(state.time - evaStart)}`;
+  const metres = `${state.distance.toFixed(0)} of ${model.length.toFixed(0)} m`;
+  if (homeStart !== null && homeStart !== undefined) {
+    if (!(model.length > 0)) return `${eva} · at the habitat`;
+    return `${eva} · way home ${clock(state.time - homeStart)} of ${clock(model.end - homeStart)} · ${metres}`;
+  }
+  const parts = [`${eva} of ${clock(model.end - evaStart)}`];
   if (model.assumedSpeed !== null) parts[0] += ` (assumed ${model.assumedSpeed.toFixed(0)} m/s)`;
   if (state.standing && state.stop) parts.push(`at ${state.stop.station ? state.stop.station.id : 'a stop'}`);
   else if (state.leg) parts.push(state.leg === 'return' ? 'returning' : 'outbound');
-  parts.push(`${state.distance.toFixed(0)} of ${model.length.toFixed(0)} m`);
+  parts.push(metres);
   return parts.join(' · ');
+}
+
+// The distance to the next maneuver as the arm tablet writes it, big (web/guide.html):
+// guide_core's "in 350 m" as "350 m", and "now" as "Now".
+export function maneuverDistance(distText) {
+  return distText === 'now' ? 'Now' : String(distText ?? '').replace(/^in /, '');
 }

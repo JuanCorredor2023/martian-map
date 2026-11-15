@@ -85,29 +85,42 @@
   #message-close:hover { background: rgba(255, 255, 255, 0.12); }
   #message code { display: block; margin-top: 8px; padding: 6px 8px; border-radius: 4px;
                   background: #1c222b; color: var(--text); user-select: all; }
-  /* Rehearsal: player bar at the bottom centre, as wide as a phone allows. The energy
-     bar has the 2D planner's segments and colours (web/index.html). */
+  /* Rehearsal: player bar at the bottom centre, as wide as a phone allows (#124, block 2).
+     On top the next maneuver as the arm tablet shows it (web/guide.html #maneuver: the
+     arrow, the distance big, the instruction under it), beside "More", "Panel" and "Exit";
+     then one row of main buttons; the other controls wait under "More". The energy bar has
+     the 2D planner's segments and colours (web/index.html). */
   #player { bottom: 16px; left: 50%; transform: translateX(-50%); box-sizing: border-box;
             width: min(560px, calc(100% - 16px)); padding: 10px 12px; }
   .player-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   #player button, #player select { padding: 4px 8px; }
+  #player button:disabled { opacity: 0.5; cursor: default; }
+  #player button[aria-pressed="true"], #player button[aria-expanded="true"] { border-color: var(--accent);
+                                                                              color: var(--accent); }
+  .rh-head { display: flex; gap: 8px; align-items: flex-start; }
+  .rh-corner { flex: none; display: flex; gap: 6px; margin-left: auto; }
+  #rh-exit { margin-left: 6px; }       /* a little apart: it ends the rehearsal */
+  #rh-more[aria-expanded="true"] .rh-chev { display: inline-block; transform: rotate(180deg); }
+  #rh-main { margin-top: 8px; }
+  #rh-more-box { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .rh-demo { margin-top: 6px; }
   #rh-scrub { display: block; width: 100%; margin: 8px 0 0; accent-color: var(--accent); }
   #rh-progress { margin-top: 4px; font-variant-numeric: tabular-nums; }
-  #player button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
-  #rh-exit { margin-left: auto; }
+  #rh-sun { margin-top: 2px; }
   .budget { display: flex; height: 14px; border-radius: 4px; overflow: hidden; gap: 2px; margin: 6px 0 4px; }
   .budget div { height: 100%; }
   .seg-used { background: #8a94a3; } .seg-rv { background: #f2a33a; } .seg-free { background: #4c9be8; }
-  .keyrow { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+  .keyrow { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
   .keyrow i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 3px; }
   #rh-energy-text, #rh-note { margin-top: 4px; font-variant-numeric: tabular-nums; }
-  #rh-note:empty { display: none; }
+  #rh-sun:empty, #rh-energy-text:empty, #rh-note:empty { display: none; }
   .wb-ok { color: #4cd964; } .wb-bad { color: var(--bad-text); }
-  /* Guide (web/guide_core.js, shared with the arm-tablet guide): next maneuver, the
-     three "can I make it back?" meters, and the guide's buttons. */
-  #rh-man { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
-  #rh-man-arrow { font-size: 30px; line-height: 1; width: 36px; text-align: center; }
-  #rh-man-text { font-size: 15px; font-weight: 600; }
+  /* Guide (web/guide_core.js, shared with the arm-tablet guide): next maneuver and the
+     "can I make it back?" meters. */
+  #rh-man { flex: 1 1 auto; min-width: 0; display: flex; gap: 10px; align-items: center; }
+  #rh-man-arrow { flex: none; width: 44px; font-size: 38px; line-height: 1; text-align: center; }
+  #rh-man-dist { font-size: 26px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  #rh-man-text { font-size: 14px; font-weight: 600; color: var(--muted); }
   /* The bar keeps at least 48 px on a phone: the label and the value wrap instead. */
   #rh-meters { display: grid; grid-template-columns: auto minmax(48px, 1fr) auto; gap: 3px 8px; align-items: center;
                margin-top: 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -117,11 +130,49 @@
      amber and in the panel's readable red. */
   .rh-word { font-weight: 700; letter-spacing: 0.02em; }
   .rh-word.ok { color: #3ddc84; } .rh-word.low { color: #ffb020; } .rh-word.out { color: var(--bad-text); }
-  .rh-guide button { font-size: 12px; }
   #rh-man[hidden], #rh-meters[hidden], #rh-meters [hidden] { display: none; }
   #rh-alert { margin-top: 6px; padding: 6px 8px; border-radius: 6px; background: rgba(255,59,48,0.15);
               border: 1px solid rgba(255,59,48,0.6); }
   #rh-alert b { color: var(--bad-text); }
+  /* At the habitat the end summary card takes the stage: the player keeps the maneuver
+     ("Home"), Replay (the Play button), the scrubber, the clock, "Panel" and "Exit". */
+  #player.rh-arrived #rh-home, #player.rh-arrived #rh-detour, #player.rh-arrived #rh-storm,
+  #player.rh-arrived #rh-more, #player.rh-arrived #rh-more-box, #player.rh-arrived #rh-sun,
+  #player.rh-arrived #rh-energy, #player.rh-arrived #rh-meters, #player.rh-arrived #rh-alert,
+  #player.rh-arrived #rh-note { display: none; }
+  @media (max-width: 520px) {
+    #rh-man-arrow { width: 34px; font-size: 30px; }
+    #rh-man-dist { font-size: 22px; }
+    #rh-man-text { font-size: 13px; }
+    /* The four main buttons share one row: a label that does not fit wraps in its button. */
+    #rh-main { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch; }
+    #rh-main button { line-height: 1.2; }
+  }
+  /* Touch screens: every button of the player, and those of the card while rehearsing
+     ("Done, continue", "Replay", "Exit"), at least 44 px tall. */
+  @media (hover: none) and (pointer: coarse) {
+    #player button, #player select, body.rehearsing #card .card-action { min-height: 44px; }
+  }
+  /* While rehearsing the side panel is hidden so the scene shows (#124); "Panel" in the
+     player brings it back. A class of its own: the photo view's (photo-view) would also
+     hide the map layer (map_layers.js). Opened on a narrow screen, it ends above the player
+     (rehearse.js keeps the player's height in --rh-player-h). */
+  body.rh-panel-hidden #info { display: none; }
+  @media (max-width: 1100px) {
+    body.rehearsing #info { max-height: calc(100% - 40px - var(--rh-player-h, 300px)); }
+    body.rehearsing.rh-storm #info { max-height: calc(100% - 80px - var(--rh-player-h, 300px)); }
+  }
+  /* Solar storm (rehearse.js): a red band across the top with what to do, and a red
+     vignette over the view, under the panels. Page elements, not objects of the 3D scene.
+     What sits at the top moves down under the band (the card: in its own rules below). */
+  #rh-tint { position: absolute; inset: 0; pointer-events: none;
+             background: radial-gradient(ellipse at center, rgba(255, 45, 30, 0) 45%, rgba(255, 45, 30, 0.3) 100%),
+                         rgba(255, 45, 30, 0.06); }
+  #rh-storm-band { position: absolute; top: 0; left: 0; right: 0; z-index: 3; box-sizing: border-box;
+                   padding: 8px 16px; background: #b71c1c; color: #fff; text-align: center; font-size: 16px;
+                   font-weight: 800; line-height: 24px; letter-spacing: 0.04em; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5); }
+  body.rh-storm #compass { top: 56px; }
+  body.rehearsing.rh-storm #readout, body.rehearsing.rh-storm #info { top: 56px; }
   /* While rehearsing: the readout moves to the top (the player takes the bottom) and the
      "reset the view" button goes away (the rehearsal owns the camera). */
   body.rehearsing #home, body.walking #home { display: none; }
@@ -150,7 +201,19 @@
   /* Side card: under the compass, or over the info panel on a phone. */
   #card { top: 158px; right: 16px; width: 230px; box-sizing: border-box; max-height: calc(100% - 180px);
           overflow-y: auto; }
+  /* While rehearsing: under the compass (under the storm band too, when it is up). Where it
+     would reach the player (narrower than 1060 px) it ends 8 px above it: rehearse.js keeps
+     the player's height in --rh-player-h, as the player grows and shrinks. */
   body.rehearsing #card { top: 84px; max-height: calc(100% - 310px); }
+  body.rehearsing.rh-storm #card { top: 124px; }
+  @media (max-width: 1060px) {
+    body.rehearsing #card { max-height: calc(100% - 108px - var(--rh-player-h, 300px)); }
+    body.rehearsing.rh-storm #card { max-height: calc(100% - 148px - var(--rh-player-h, 300px)); }
+  }
+  @media (max-width: 520px) {
+    body.rehearsing #card { max-height: calc(100% - 40px - var(--rh-player-h, 300px)); }
+    body.rehearsing.rh-storm #card { top: 56px; max-height: calc(100% - 80px - var(--rh-player-h, 300px)); }
+  }
   .card-title { font-size: 15px; font-weight: 600; padding-left: 8px; border-left: 4px solid var(--muted);
                 margin-right: 24px; overflow-wrap: anywhere; }
   .card-close { position: absolute; top: 4px; right: 6px; width: 26px; height: 26px; border: 0; border-radius: 6px;
@@ -178,6 +241,10 @@
 </head>
 <body>
 <canvas id="view"></canvas>
+<!-- Solar storm alert of the rehearsal (rehearse.js, #124): a red vignette over the view and
+     a red band across the top. For screen readers the alert is the player's #rh-alert. -->
+<div id="rh-tint" aria-hidden="true" hidden></div>
+<div id="rh-storm-band" aria-hidden="true" hidden>SOLAR STORM · go home now</div>
 
 <div id="info" class="panel">
   <h1>Mars EVA Planner <span>· 3D</span></h1>
@@ -290,43 +357,62 @@
 <!-- Station card (card.js); a later block puts rover photos in it. -->
 <aside id="card" class="panel" hidden></aside>
 
-<!-- Player of the route rehearsal (rehearse.js): the same speeds, energy bar and wording
-     as the route profile of the 2D planner. -->
+<!-- Player of the route rehearsal (rehearse.js, #124 block 2). On top, the next maneuver as
+     the arm tablet shows it, beside "More", "Panel" (the side panel, hidden while rehearsing)
+     and "Exit"; then one row of main buttons; the other controls under "More". The same
+     speeds, energy bar and wording as the route profile of the 2D planner. -->
 <div id="player" class="panel" hidden>
-  <div id="rh-man" aria-live="polite"><div id="rh-man-arrow">↑</div>
-    <div><div id="rh-man-text"></div><div id="rh-man-dist" class="muted"></div></div></div>
-  <div class="player-row">
-    <button id="rh-play">▶ Play</button>
-    <select id="rh-speed" aria-label="Playback speed">
-      <option value="1">×1</option><option value="30">×30</option><option value="60" selected>×60</option>
-      <option value="180">×180</option></select>
-    <button id="rh-chase" aria-pressed="false" title="See the walker from behind and above">Chase view</button>
-    <button id="rh-recentre" title="Look forward again (or double-click the view)">Recentre</button>
-    <button id="rh-exit" title="Back to free flight, as it was">Exit</button>
+  <div class="rh-head">
+    <div id="rh-man" aria-live="polite"><div id="rh-man-arrow" aria-hidden="true">↑</div>
+      <div><div id="rh-man-dist"></div><div id="rh-man-text"></div></div></div>
+    <div class="rh-corner">
+      <button id="rh-more" aria-expanded="false" aria-controls="rh-more-box"
+              title="Chase view, Recentre, speed, voice, the energy numbers and the energy-use demo">More <span class="rh-chev" aria-hidden="true">▾</span></button>
+      <button id="rh-panel" aria-expanded="false" aria-controls="info"
+              title="Show or hide the side panel (plan, Sun, map layer, rover photos) without leaving the rehearsal">Panel</button>
+      <button id="rh-exit" title="Back to free flight, as it was">Exit</button>
+    </div>
   </div>
-  <div class="player-row rh-guide" style="margin-top:6px">
-    <button id="rh-voice" aria-pressed="true" title="Spoken maneuvers and arrivals, as in guide mode">🔊 Voice on</button>
+  <div id="rh-main" class="player-row">
+    <button id="rh-play">▶ Play</button>
+    <button id="rh-home" title="Fastest way home from here">🏠 Return home</button>
     <button id="rh-detour" title="Demo: step 25 m off the route, then rejoin it">↪ Detour</button>
     <button id="rh-storm" title="Demo: solar storm alert, automatic way home with the dose">☢ Solar storm</button>
-    <button id="rh-home" title="Fastest way home from here">🏠 Return home</button>
-    <button id="rh-ktrue" title="Demo: how much more or less energy this astronaut uses than the model says; the walk learns it">Use ×1.0</button>
+    <!-- Only at the habitat: the end summary card again, after closing it. -->
+    <button id="rh-summary" title="The plan against the walk, again" hidden>Summary</button>
+  </div>
+  <div id="rh-more-box" hidden>
+    <div class="player-row">
+      <button id="rh-chase" aria-pressed="false" title="See the walker from behind and above">Chase view</button>
+      <button id="rh-recentre" title="Look forward again (or double-click the view)">Recentre</button>
+      <select id="rh-speed" aria-label="Playback speed">
+        <option value="1">×1</option><option value="30">×30</option><option value="60" selected>×60</option>
+        <option value="180">×180</option></select>
+      <button id="rh-voice" aria-pressed="true" title="Spoken maneuvers and arrivals, as in guide mode">🔊 Voice on</button>
+    </div>
+    <div class="player-row rh-demo">
+      <span class="muted">Demo:</span>
+      <button id="rh-ktrue" title="Demo: how much more or less energy this astronaut uses than the model says; the walk learns it">Use ×1.0</button>
+    </div>
+    <div id="rh-energy-text" class="muted"></div>
   </div>
   <input type="range" id="rh-scrub" min="0" max="1" step="any" value="0" aria-label="Position in the rehearsal">
   <div id="rh-progress"></div>
+  <!-- The panel's Sun line, following the EVA clock (copied by rehearse.js from the Sun section). -->
+  <div id="rh-sun" class="muted"></div>
   <div id="rh-energy" hidden>
     <div class="budget" role="img" aria-label="Energy budget at the current point">
       <div id="rh-bar-used" class="seg-used"></div><div id="rh-bar-rv" class="seg-rv"></div><div id="rh-bar-free" class="seg-free"></div>
     </div>
     <div class="keyrow"><span><i class="seg-used"></i>used</span><span><i class="seg-rv"></i>needed to return</span>
       <span><i class="seg-free"></i>free</span></div>
-    <div id="rh-energy-text" class="muted"></div>
   </div>
   <!-- The tablet's meters (web/guide.html): its labels, and its state word before each value. -->
   <div id="rh-meters" hidden>
     <span title="Energy left after walking home from here">Spare energy</span><div class="track"><div id="rh-m-energy" class="fill"></div></div><span><b id="rh-w-energy" class="rh-word"></b> · <span id="rh-v-energy"></span></span>
     <span title="Time to walk home from here; the emergency oxygen covers 30 min">Time home (limit 30 min)</span><div class="track"><div id="rh-m-back" class="fill"></div></div><span><b id="rh-w-back" class="rh-word"></b> · <span id="rh-v-back"></span></span>
     <span id="rh-radio-label" title="Line of sight to the habitat antenna, or a relay through your partner">Radio</span><div class="track" id="rh-radio-track"><div id="rh-m-radio" class="fill"></div></div><span id="rh-v-radio"></span>
-    <span id="rh-k-label" title="Spare energy if you keep using energy the way you have on this walk (90 % estimate of your factor k against the model)" hidden>Spare energy at your pace</span><div class="track" id="rh-k-track" role="meter" aria-label="Spare energy after returning, with this walk's learned energy use" aria-valuemin="0" aria-valuemax="100" hidden><div id="rh-m-k" class="fill"></div></div><span id="rh-v-k" hidden></span>
+    <span id="rh-k-label" title="Spare energy if you keep using energy the way you have on this walk (90 % estimate of your factor k against the model)" hidden>Spare energy at your pace</span><div class="track" id="rh-k-track" role="meter" aria-label="Spare energy after returning, with this walk's learned energy use" aria-valuemin="0" aria-valuemax="100" hidden><div id="rh-m-k" class="fill"></div></div><span id="rh-k-value" hidden><b id="rh-w-k" class="rh-word"></b> · <span id="rh-v-k"></span></span>
     <span id="rh-eva-label">EVA time left</span><div class="track" id="rh-eva-track"><div id="rh-m-eva" class="fill"></div></div><span id="rh-eva-value"><b id="rh-w-eva" class="rh-word"></b> · <span id="rh-v-eva"></span></span>
   </div>
   <div id="rh-alert" role="alert" hidden></div>

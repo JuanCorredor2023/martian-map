@@ -9,12 +9,21 @@
 //     above. The free-flight controls are off and the near plane comes in to NEAR.
 //   - relief: forced to true scale. At eye height an exaggerated knoll would be a wall
 //     that is not there, and slopes are what the rehearsal is for.
-//   - player bar: play / pause, speed, scrubber, and the 2D planner's energy bar.
+//   - player bar (#124, block 2): the next maneuver as the arm tablet shows it; one row of
+//     main buttons (play / pause, Return home, Detour, Solar storm); speed, "Chase view",
+//     "Recentre", voice, the "Use xk" demo and the energy numbers under "More"; the
+//     scrubber, the clock line (the EVA clock, which goes on after a way home or a rejoin:
+//     the way home is a stretch of it), the panel's Sun line and the 2D planner's energy bar.
+//   - side panel: hidden while rehearsing, so the scene shows; "Panel" opens and closes it
+//     without leaving. Its own body class (the photo view's would hide the map layer too).
 //   - keys: space plays or pauses; Esc closes what is on top (the card, or the message
 //     box of main.js) and pauses. Esc never leaves the mode, which would lose the end
 //     summary and the place reached: only "Exit" does (#124).
 //   - stops: arriving at one while playing pauses and shows its card; play again lets
 //     the service time run with the walker standing.
+//   - at the habitat the rehearsal stays on (#124): the storm alert ends, the player
+//     shrinks and the end summary card offers "Replay" (from the start, as a new walk) and
+//     "Exit". Play (now "Replay") and the space bar replay too; the scrubber goes back.
 //   - on pause: the walkback lines from that point (30 min return in red, energy-safe
 //     boundary in cyan), as the 2D planner draws them; cleared on play and on exit.
 //   - EVA clock: onTime(seconds since the start of the EVA) at every move, and
@@ -24,6 +33,9 @@
 //     30 min line, EVA time left against the plan's maximum duration, station tasks,
 //     Return home, a demo detour that rejoins the route, and the solar storm alert. A
 //     way home or a rejoin replaces the walked route (drawn on the ground) until exit.
+//     The storm alert also shows beyond the player, as page elements: a red band across
+//     the top and a red vignette over the view. Nothing is added to the scene for it
+//     (sun.js repaints the sky every frame, and ?check=rehearse compares the scene).
 //   - adaptive walkback (X2, #101, #129), as on the arm tablet (#116): every 30 m played,
 //     guide_core simulates this astronaut's real energy use (k_true x the plan, the "Use
 //     xk" demo button) and POST /walkback/update learns k. The meter "Spare energy at
@@ -38,7 +50,7 @@ import * as M from './camera_math.js';
 import { cardShown, hideCard, showCard, stationCard } from './card.js';
 import { TYPE_COLORS, mainRoute } from './plan_model.js';
 import { EYE_HEIGHT, adaptiveCardRows, buildRehearsal, clock, energyReadout, eyeAltitude, homeInText, kAlarmAction,
-         progressText } from './rehearse_model.js';
+         maneuverDistance, progressText } from './rehearse_model.js';
 import * as G from '../guide_core.js';
 
 const DEG = Math.PI / 180;
@@ -100,10 +112,19 @@ export class Rehearsal {
     this.kTrue = 1.0;                      // demo: simulated energy use against the model (X2)
     this.adaptive = null;                  // guide_core adaptive state of the walk (X2)
     this._kAlarm = false;                  // the RETURN NOW banner is on screen
-    this._storm = false;                   // a solar storm owns the banner
+    this._storm = false;                   // a solar storm owns the banner (and the band on top)
+    this._homeStart = null;                // plan time when the way home began, else null
+    this._arrived = false;                 // played to the habitat: player shrunk, end card up
+    this._endCard = null;                  // the end summary card, shown again on a later arrival
+    this._panelOpen = false;               // the side panel opened with "Panel" while rehearsing
+    this._radioPending = null;             // guide route whose radio is still being asked for
+    this._sizer = null;                    // ResizeObserver of the player's height
 
     // The player's own controls. They are hidden outside the rehearsal.
     el('rh-play').addEventListener('click', () => this.togglePlay());
+    el('rh-more').addEventListener('click', () => this._setMore(el('rh-more-box').hidden));
+    el('rh-panel').addEventListener('click', () => this._setPanel(!this._panelOpen));
+    el('rh-summary').addEventListener('click', () => this._showEnd());
     el('rh-speed').addEventListener('change', e => { this.speed = Number(e.target.value) || 60; });
     el('rh-scrub').addEventListener('input', e => { this.pause(false); this.seek(Number(e.target.value)); });
     el('rh-scrub').addEventListener('change', () => this._settle());
@@ -154,7 +175,7 @@ export class Rehearsal {
 
   enter() {
     if (this.active || !this.model) return false;
-    const {controls, camera, model} = this;
+    const {controls, camera} = this;
     // Everything that exit() must put back.
     this._saved = {pose: controls.pose(), near: camera.near, relief: this.terrain.k};
     controls.cancel();
@@ -179,31 +200,50 @@ export class Rehearsal {
     this._listen(this.canvas, 'dblclick', () => this.recentre());
     this._listen(window, 'keydown', e => this._key(e));
 
-    Object.assign(this, {active: true, playing: false, time: model.start, chase: false, walkback: null});
-    this._evaStart = model.start;
+    Object.assign(this, {active: true, chase: false});
+    this.speed = Number(el('rh-speed').value) || 60;
+    document.body.classList.add('rehearsing');
+    this._setPanel(false);                     // the scene first; the panel is one press away
+    el('player').hidden = false;
+    this._watchPlayer(true);
+    el('rehearse').textContent = 'Exit rehearsal';
+    el('rh-chase').setAttribute('aria-pressed', 'false');
+    this._restart();
+    this._snap = true;
+    this._place(0);
+    this._dirty = true;
+    return true;
+  }
+
+  // The rehearsal from the start of the plan, as a new walk: the planned route (a way
+  // home or a rejoin is dropped), the clock at its start, a new walk log, no storm, no
+  // RETURN NOW, the player full size. enter() and replay() share it; nothing is drawn.
+  _restart() {
+    this.playing = false;
+    if (this._replaced) {                      // a way home or a rejoin: back to the plan
+      this.model = buildRehearsal(mainRoute(this.plan), this.plan.points);
+      this._replaced = false;
+    }
+    this._extra = [];
+    this._clearWalkback();                     // also drops answers still on their way
+    this._setStorm(false);
+    this._kAlarm = false;
+    this._setArrived(false);
+    this._homeStart = null;
+    this._endCard = null;
+    this.time = this._evaStart = this.model.start;
     this.guide = this._guideRoute(mainRoute(this.plan), 'plan');
     this._radio(this.guide);
     this.walkLog = this.guide ? G.createWalkLog(this.guide) : null;   // plan against the walk (P6)
     this._newAdaptive();
     this._spoken.clear();
-    this._extra = [];
     el('rh-alert').hidden = true;
     for (const id of ['rh-home', 'rh-detour', 'rh-storm']) el(id).disabled = !this.guide;
     this.look = {yaw: 0, pitch: 0};
-    this.speed = Number(el('rh-speed').value) || 60;
     hideCard();
-    document.body.classList.add('rehearsing');
-    el('player').hidden = false;
-    el('rehearse').textContent = 'Exit rehearsal';
-    el('rh-play').textContent = '▶ Play';
-    el('rh-chase').setAttribute('aria-pressed', 'false');
-    el('rh-scrub').min = model.start;
-    el('rh-scrub').max = model.end;
+    el('rh-scrub').min = this.model.start;
+    el('rh-scrub').max = this.model.end;
     this._note();
-    this._snap = true;
-    this._place(0);
-    this._dirty = true;
-    return true;
   }
 
   // Back to free flight exactly as it was: camera view, field of view and relief.
@@ -213,7 +253,10 @@ export class Rehearsal {
     this.playing = false;
     this._extra = [];
     this._kAlarm = false;
-    this._storm = false;
+    this._setStorm(false);
+    this._setArrived(false);
+    this._homeStart = null;
+    this._endCard = null;
     this._clearWalkback();
     if (this._replaced) {                      // a way home or a rejoin: back to the plan
       this.model = buildRehearsal(mainRoute(this.plan), this.plan.points);
@@ -228,7 +271,10 @@ export class Rehearsal {
     this.walker = null;
     this.active = false;
     this.state = null;
-    document.body.classList.remove('rehearsing');
+    document.body.classList.remove('rehearsing', 'rh-panel-hidden');     // the side panel is back
+    this._panelOpen = false;
+    el('rh-panel').setAttribute('aria-expanded', 'false');
+    this._watchPlayer(false);
     el('player').hidden = true;
     el('rehearse').textContent = 'Rehearse the route';
     camera.near = saved.near;
@@ -241,6 +287,8 @@ export class Rehearsal {
 
   play() {
     if (!this.active || this.playing) return;
+    // Played to the habitat: the button says "Replay", and it is one.
+    if (this._arrived) { this.replay(); return; }
     // At the end: start again. The scrubber dragged to its end stops a hair before it
     // (a range input keeps 15 digits of its value), and that is the end too.
     if (this.model.end - this.time < 1e-3) this.seek(this.model.start);
@@ -250,12 +298,21 @@ export class Rehearsal {
     el('rh-play').textContent = '❚❚ Pause';
   }
 
+  // "Replay" (end card, or Play at the habitat): the rehearsal again from the start of the
+  // plan, as a new walk (its own summary and walk log at the end), without leaving.
+  replay() {
+    if (!this.active) return;
+    this._restart();
+    this.seek(this.model.start);
+    this.play();
+  }
+
   // settle: also ask for the walkback lines from here, as the 2D planner does on pause.
   pause(settle = true) {
     if (!this.active) return;
     const was = this.playing;
     this.playing = false;
-    el('rh-play').textContent = '▶ Play';
+    el('rh-play').textContent = this._arrived ? '↺ Replay' : '▶ Play';
     if (settle && was) this._settle();
   }
 
@@ -265,6 +322,7 @@ export class Rehearsal {
   seek(time) {
     if (!this.active) return;
     this.time = clamp(time, this.model.start, this.model.end);
+    if (this._arrived && this.model.end - this.time >= 1e-3) this._setArrived(false);   // back from the habitat
     this._clearWalkback();
     this._snap = true;
     this._place(0);
@@ -325,10 +383,45 @@ export class Rehearsal {
     }
     this.time = to;
     if (to >= model.end) {
-      this._place(step); this.pause();
-      this.voice.say('You have arrived at the habitat.');
-      this._finishWalk();
+      this._place(step);
+      this._arrive();
     }
+  }
+
+  // At the habitat the rehearsal stays on (#124): leaving would drop the summary, the
+  // replay and the Sun of the end. The storm alert (and RETURN NOW) end here, the player
+  // shrinks, and the end summary card comes with "Replay" and "Exit". A later arrival on
+  // the same walk (after going back with the scrubber) shows the same card again.
+  _arrive() {
+    this.pause(false);
+    this.voice.say('You have arrived at the habitat.');
+    this._setStorm(false);
+    this._kAlarm = false;
+    el('rh-alert').hidden = true;
+    this._setArrived(true);
+    this._showGuide();                         // the maneuver says "Home"
+    if (!this._finishWalk()) this._showEnd();
+  }
+
+  // The end card once more ("Summary" at the habitat, or a later arrival): the summary of
+  // this walk, or a plain card when there is none (no guide, or nothing was played).
+  _showEnd() {
+    showCard(this._endCard || {title: 'At the habitat', subtitle: 'rehearsal', note: 'End of the rehearsal.',
+                               actions: this._endActions()});
+    this._stopCard = true;
+  }
+
+  _endActions() {
+    return [{label: 'Replay', onClick: () => this.replay()}, {label: 'Exit', onClick: () => this.exit()}];
+  }
+
+  // The shrunk player at the habitat (CSS: #player.rh-arrived): Play as "Replay", and
+  // "Summary" to see the end card again after closing it.
+  _setArrived(on) {
+    this._arrived = Boolean(on);
+    el('player').classList.toggle('rh-arrived', this._arrived);
+    el('rh-summary').hidden = !this._arrived;
+    el('rh-play').textContent = this._arrived ? '↺ Replay' : '▶ Play';
   }
 
   _showStop(stop) {
@@ -415,19 +508,68 @@ export class Rehearsal {
     this._show();
     this._showGuide();
     this.onTime(s.time - this._evaStart);
+    this._showSun();
   }
 
   _show() {
     const {model, state} = this;
     el('rh-scrub').value = state.time;
-    el('rh-progress').textContent = progressText(model, state);
+    el('rh-progress').textContent = progressText(model, state, {evaStart: this._evaStart, homeStart: this._homeStart});
     const bar = energyReadout(state.profile, model.usableWh);
     el('rh-energy').hidden = !bar;
-    if (!bar) return;
+    if (!bar) { el('rh-energy-text').replaceChildren(); return; }
     el('rh-bar-used').style.width = `${bar.usedPct}%`;
     el('rh-bar-rv').style.width = `${bar.rvPct}%`;
     el('rh-bar-free').style.width = `${bar.freePct}%`;
     el('rh-energy-text').replaceChildren(...bar.lines.map(text => Object.assign(document.createElement('div'), {textContent: text})));
+  }
+
+  // The Sun line of the side panel (sun.js), repeated in the player because the panel is
+  // hidden while rehearsing (#124): the local solar time that moves with the EVA clock,
+  // how high the Sun is and where the light comes from, and the note "Following the EVA
+  // clock: it started at …". Read after onTime(), which has just written them.
+  _showSun() {
+    const text = id => { const node = document.getElementById(id); return node ? node.textContent.trim() : ''; };
+    const time = text('sun-time-text');
+    const line = [time && `Local solar time ${time}`, text('sun-readout'), text('sun-note')].filter(Boolean).join(' · ');
+    if (el('rh-sun').textContent !== line) el('rh-sun').textContent = line;
+  }
+
+  // ---- what the player shows around the scene (#124, block 2) -------------------
+
+  // "More": the controls that are not in the main row (and the energy numbers).
+  _setMore(open) {
+    el('rh-more-box').hidden = !open;
+    el('rh-more').setAttribute('aria-expanded', String(Boolean(open)));
+  }
+
+  // "Panel": the side panel (#info) while rehearsing. Hidden on entering, so the scene
+  // shows; a class of its own on the body (the photo view's, photo-view, also hides the
+  // map layer). exit() takes the class away.
+  _setPanel(open) {
+    this._panelOpen = Boolean(open);
+    document.body.classList.toggle('rh-panel-hidden', this.active && !this._panelOpen);
+    el('rh-panel').setAttribute('aria-expanded', String(this._panelOpen));
+  }
+
+  // The solar storm beyond the player: the red band across the top and the red vignette
+  // (index.html, body.rh-storm moves what is at the top under the band). Page elements, no
+  // objects in the scene. Off at the habitat, on Replay and on exit.
+  _setStorm(on) {
+    this._storm = Boolean(on);
+    document.body.classList.toggle('rh-storm', this._storm);
+    el('rh-storm-band').hidden = el('rh-tint').hidden = !this._storm;
+  }
+
+  // The player's height in --rh-player-h while rehearsing: the card and an opened panel
+  // end above the player on narrow screens (index.html), whatever the player shows.
+  _watchPlayer(on) {
+    const style = document.body.style;
+    if (this._sizer) { this._sizer.disconnect(); this._sizer = null; }
+    if (!on) { style.removeProperty('--rh-player-h'); return; }
+    if (typeof ResizeObserver === 'undefined') return;
+    this._sizer = new ResizeObserver(() => style.setProperty('--rh-player-h', `${el('player').offsetHeight}px`));
+    this._sizer.observe(el('player'));
   }
 
   // ---- input (only while rehearsing) -------------------------------------------
@@ -509,10 +651,14 @@ export class Rehearsal {
     el('rh-man').hidden = !g;
     el('rh-meters').hidden = !g;
     if (!g) return;
+    // The next maneuver as on the tablet: the arrow, the distance big ("350 m", "Now"), the
+    // instruction under it; at the habitat, "Home". Written only when it changes: the box
+    // is a live region, read out at every change.
     const i = this._vertex(), {event, distText} = G.nextManeuver(g, i);
-    el('rh-man-arrow').textContent = event.arrow;
-    el('rh-man-text').textContent = event.text;
-    el('rh-man-dist').textContent = distText;
+    const put = (id, text) => { if (el(id).textContent !== text) el(id).textContent = text; };
+    put('rh-man-arrow', this._arrived ? '⌂' : event.arrow);
+    put('rh-man-dist', this._arrived ? 'Home' : maneuverDistance(distText));
+    put('rh-man-text', this._arrived ? 'You are at the habitat.' : event.text);
     if (this.playing) {
       for (const text of G.announcements(g, i, this._spoken)) this.voice.say(text);
       for (const text of G.radioAnnouncements(g, i, this._spoken)) {
@@ -538,11 +684,17 @@ export class Rehearsal {
     el('rh-v-energy').textContent = m.energy.text;
     fill('rh-m-back', m.back.frac, m.back.state); word('rh-w-back', m.back);
     el('rh-v-back').textContent = homeInText(m.back.s);              // never "home in -0.0 min"
-    const radio = G.radioState(g, i);
-    for (const id of ['rh-radio-label', 'rh-radio-track', 'rh-v-radio']) el(id).hidden = !radio;
+    // The radio row keeps its place while the server is asked (it answers a moment after
+    // entering, or after a way home), so the player does not jump when it answers; with no
+    // radio data at all it goes, as on the tablet.
+    const radio = G.radioState(g, i), checking = !radio && this._radioPending === g;
+    for (const id of ['rh-radio-label', 'rh-radio-track', 'rh-v-radio']) el(id).hidden = !radio && !checking;
     if (radio) {                     // as the tablet's radio line: green, amber with no link
       fill('rh-m-radio', radio.state === 'direct' ? 1 : radio.state === 'relay' ? 0.5 : 0, radio.good ? 'ok' : 'low');
       el('rh-v-radio').textContent = radio.text;
+    } else if (checking) {
+      el('rh-m-radio').style.width = '0%';
+      el('rh-v-radio').textContent = 'checking…';
     }
     for (const id of ['rh-eva-label', 'rh-eva-track', 'rh-eva-value']) el(id).hidden = !m.eva;
     if (m.eva) {
@@ -575,11 +727,15 @@ export class Rehearsal {
   _radio(g) {
     if (!g) return;
     const habitat = this.plan && this.plan.properties.habitat;
-    G.attachComms(g, Array.isArray(habitat) ? habitat : null)
-      .then(() => { if (this.active && this.guide === g) { this._showGuide(); this._dirty = true; } });
+    this._radioPending = g;
+    G.attachComms(g, Array.isArray(habitat) ? habitat : null).then(() => {
+      if (this._radioPending === g) this._radioPending = null;
+      if (this.active && this.guide === g) { this._showGuide(); this._dirty = true; }
+    });
   }
 
-  // At the habitat: the walk against the plan, as a card, kept for the debrief (POST /walks).
+  // At the habitat: the walk against the plan, as a card with "Replay" and "Exit", kept
+  // for the debrief (POST /walks). Once per walk log; the card is kept for a later arrival.
   _finishWalk() {
     const log = this.walkLog;
     if (!log || log.done) return null;
@@ -590,8 +746,9 @@ export class Rehearsal {
     if (s.skipped.length) rows.push(['Skipped', s.skipped.join(', ')]);
     rows.push(...adaptiveCardRows(G.adaptiveRows(this.adaptive)));
     const events = s.events.map(e => `${e.t != null ? clock(e.t - this._evaStart) + ' · ' : ''}${e.text}`);
-    showCard({title: 'Plan against the walk', subtitle: 'rehearsal', rows,
-              note: events.length ? events.join(' | ') : 'Walked as planned.'});
+    this._endCard = {title: 'Plan against the walk', subtitle: 'rehearsal', rows,
+                     note: events.length ? events.join(' | ') : 'Walked as planned.', actions: this._endActions()};
+    showCard(this._endCard);
     this._stopCard = true;
     G.postWalk(s, log);
     return s;
@@ -611,6 +768,8 @@ export class Rehearsal {
       // Already at the habitat: the way home is a single point, walked in no time (#115).
       if (home.route.coords.length === 1) home = {...home, text: 'You are already at the habitat.', speech: 'You are at the habitat.'};
       if (this.walkLog) G.logEvent(this.walkLog, 'home', home.text, this.guide, this._vertex());
+      // The way home is a stretch of the EVA, from the first time home was asked (#124).
+      if (this._homeStart === null) this._homeStart = home.route.t[0];
       this._walkRoute(home.route, HOME_LINE, []);
       this._note(home.text);
       this.voice.say(home.speech);
@@ -639,7 +798,7 @@ export class Rehearsal {
   async solarStorm() {
     if (!this.active || !this.guide) return;
     const alert = el('rh-alert');
-    this._storm = true;
+    this._setStorm(true);                      // also the band on top and the red vignette
     this._kAlarm = false;
     alert.hidden = false;
     alert.innerHTML = G.STORM_PENDING;
@@ -648,10 +807,11 @@ export class Rehearsal {
     if (this._radInfo === undefined) {
       try { const res = await fetch('/radiation'); this._radInfo = res.ok ? await res.json() : null; }
       catch { this._radInfo = null; }
+      if (!this.active || !this._storm) return;          // left, replayed or arrived meanwhile
     }
     const home = await this.returnHome();
     if (!home) {
-      if (this.active) alert.innerHTML = G.stormFailedHtml(el('rh-note').textContent);
+      if (this.active && this._storm) alert.innerHTML = G.stormFailedHtml(el('rh-note').textContent);
       return;
     }
     alert.innerHTML = G.stormHtml(G.stormMessage(home.route, this._radInfo));
@@ -665,7 +825,7 @@ export class Rehearsal {
     if (this.guide) G.adaptiveNewRoute(this.adaptive, this.guide);
     this._kAlarm = false;
     this._kState = null;
-    for (const id of ['rh-k-label', 'rh-k-track', 'rh-v-k']) el(id).hidden = true;
+    for (const id of ['rh-k-label', 'rh-k-track', 'rh-k-value']) el(id).hidden = true;
   }
 
   // One observed segment every 30 m played: the posterior of k, the meter and the alarm.
@@ -673,15 +833,19 @@ export class Rehearsal {
     if (!this.adaptive || !this.walkbackOnPause) return;      // checks.js: ask nothing
     const state = this.adaptive;
     G.adaptiveStep(state, g, i).then(res => {
-      if (!res || !this.active || this.adaptive !== state) return;
+      // (at the habitat the walk is over: an answer still on its way changes nothing)
+      if (!res || !this.active || this.adaptive !== state || this._arrived) return;
       const km = G.kMeter(res);
-      for (const id of ['rh-k-label', 'rh-k-track', 'rh-v-k']) el(id).hidden = false;
+      for (const id of ['rh-k-label', 'rh-k-track', 'rh-k-value']) el(id).hidden = false;
       const fill = el('rh-m-k'), frac = Math.max(0, Math.min(1, km.frac));
       fill.style.width = `${frac * 100}%`;
       fill.style.background = km.state === 'ok' ? METER.good : km.state === 'low' ? METER.warn : METER.bad;
       el('rh-k-track').setAttribute('aria-valuenow', String(Math.round(frac * 100)));
       el('rh-k-track').setAttribute('aria-valuetext', `${km.word}, ${km.text}`);
-      el('rh-v-k').textContent = `${km.word} · ${km.text}`;
+      // The state word as the other meters have it: bold, in its state's colour (OK, LOW,
+      // RETURN NOW), then the value.
+      Object.assign(el('rh-w-k'), {textContent: km.word, className: `rh-word ${km.state}`});
+      el('rh-v-k').textContent = km.text;
       // Crossing into LOW is said once, as on the tablet (RETURN NOW has its own line).
       if (km.state === 'low' && this._kState === 'ok') {
         this.voice.say('Your energy use is above the plan. Plan to turn back.', {priority: 'alert'});
@@ -728,11 +892,11 @@ export class Rehearsal {
     if (!this.active || !bar || !this.walkbackOnPause) return;
     const token = ++this._token, start = plan.points.find(p => p.kind === 'start');
     const base = start ? [start.x, start.y] : (Array.isArray(plan.properties.habitat) ? plan.properties.habitat : null);
-    this._note('Walkback from here: computing…');
+    this._note('Way home from here: computing…');
     const {fc, error} = await requestWalkback(walkbackRequest(
       {x: state.x, y: state.y, energyLeftWh: bar.energyLeft, base, properties: plan.properties}));
     if (token !== this._token || !this.active) return;         // played on, moved or left meanwhile
-    if (!fc) { this._note(`Walkback from here: ${error}`); return; }
+    if (!fc) { this._note(`Way home from here: ${error}`); return; }
     const lines = kind => fc.features.filter(f => f.properties && f.properties.kind === kind && f.geometry &&
                                                   f.geometry.type === 'MultiLineString')
                                      .flatMap(f => f.geometry.coordinates);
@@ -741,15 +905,19 @@ export class Rehearsal {
     const p = this.walkback = fc.properties || {};
     const part = (ok, text) => Object.assign(document.createElement('span'),
                                              {className: ok ? 'wb-ok' : 'wb-bad', textContent: `${ok ? '✔' : '⚠'} ${text}`});
-    const nodes = ['Walkback from here (red: 30 min return · cyan: energy-safe area): '];
+    // In the tablet's words ("Way home: 13.4 min, …", "spare"), with the numbers as before
+    // (#124): time against the 30 min line, then energy and what is left after it; then
+    // what the two lines on the ground are.
+    const parts = [];
     if (Number.isFinite(p.return_time_s)) {
-      nodes.push(part(p.contingency_ok, `Return time ${(p.return_time_s / 60).toFixed(1)} min (limit 30)`), ' · ');
+      parts.push(part(p.contingency_ok, `${(p.return_time_s / 60).toFixed(1)} min (limit 30)`));
     }
     if (Number.isFinite(p.return_energy_wh) && Number.isFinite(p.energy_left_after_return_wh)) {
-      nodes.push(part(p.energy_ok, `Return energy ${p.return_energy_wh.toFixed(1)} Wh · ` +
-                                   `${p.energy_left_after_return_wh.toFixed(1)} Wh left after returning`));
+      parts.push(part(p.energy_ok, `${p.return_energy_wh.toFixed(1)} Wh, ` +
+                                   `${p.energy_left_after_return_wh.toFixed(1)} Wh spare after it`));
     }
-    this._note(...nodes);
+    this._note('Way home from here: ', ...parts.flatMap((node, k) => (k ? [' · ', node] : [node])),
+               ' (red line: 30 min from home · cyan line: energy-safe area)');
     this._dirty = true;
   }
 }

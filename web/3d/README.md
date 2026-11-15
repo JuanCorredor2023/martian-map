@@ -50,24 +50,45 @@ or press "Reload plan". With no saved plan the terrain still works.
   the terrain may still hide it); "View the rover photo" opens its photo view. With none that
   near, the card says so. At a rehearsal stop the card shows the same photo, without the button
   and without moving the walker or the clock.
-- **Guide** (the arm tablet's logic, shared in `web/guide_core.js`): the next maneuver
-  with its distance, voice on/off, the tablet's meters with its labels ("Spare energy" after
+- **Guide** (the arm tablet's logic, shared in `web/guide_core.js`): the next maneuver as
+  the tablet shows it (the arrow, the distance big, "350 m" or "Now", the instruction under
+  it), voice on/off, the tablet's meters with its labels ("Spare energy" after
   walking home, "Time home (limit 30 min)", "Radio", "EVA time left" against the plan's
   maximum duration and, once the walk has learned it, "Spare energy at your pace" with this
   astronaut's own energy use, X2), each value with the tablet's state word before it (OK, LOW
-  or TURN BACK; OK, TURN SOON or OVER 30 MIN for the time home) and its bar in that state's
-  colour, a RETURN NOW alert when the way home no longer fits at that use (screen readers
+  or TURN BACK; OK, TURN SOON or OVER 30 MIN for the time home; OK, LOW or RETURN NOW at your
+  pace), bold in its state's colour, and its bar in that colour; the radio row says
+  "checking…" until the server answers (no jump), and goes if there is no radio data; a
+  RETURN NOW alert when the way home no longer fits at that use (screen readers
   announce it, as the storm alert),
   station tasks with "Done, continue", "Return home", "Detour" (demo: 25 m off the route,
   then rejoin), "Solar storm" (demo: automatic way home with the dose) and "Use ×k" (demo:
   the simulated energy use against the model, 1.0 / 1.2 / 1.5 / 0.8). A way home is
-  drawn red and a rejoin orange; it replaces the walked route until "Exit".
-- **Rehearsal**: play / pause (space bar), ×1 to ×180, scrubber, "Chase view" (the astronaut
-  seen from behind), drag to look around, double-click or "Recentre" to look forward, "Exit".
+  drawn red and a rejoin orange; it replaces the walked route until "Exit". The solar storm
+  also shows beyond the player: a red band across the top ("SOLAR STORM · go home now") and
+  a red vignette over the view, page elements (nothing is added to the 3D scene); both go at
+  the habitat, on "Replay" and on "Exit".
+- **Rehearsal**: the side panel is hidden while rehearsing, so the scene shows; "Panel" in the
+  player opens it (and closes it) without leaving. The player has the maneuver on top, with
+  "More", "Panel" and "Exit" beside it; one row of main buttons: play / pause (space bar),
+  "Return home", "Detour", "Solar storm"; under "More": "Chase view" (the astronaut seen from
+  behind), "Recentre", the speed (×1 to ×180), voice, "Use ×k" and the energy numbers. Then
+  the scrubber, the clock line, the panel's Sun line (local solar time, the Sun's height and
+  light, "Following the EVA clock: …") and the 2D planner's energy bar. The clock line is the
+  EVA clock, "EVA 3:02 of 111:27 · outbound · 132 of 1392 m"; after "Return home" or the
+  storm it goes on and the way home is a stretch of it, "EVA 102:04 · way home 2:02 of 2:51 ·
+  120 of 160 m" (after a rejoin, the EVA's new end), while the scrubber covers the new route.
+  Drag to look around; double-click or "Recentre" looks forward.
   Esc closes what is on top (the card, or a message) and pauses; it never leaves the rehearsal,
   which would lose the end summary: only "Exit" does.
   It pauses at every stop with the station's card; on pause it draws the walkback lines from
-  there (red: 30 min return, cyan: energy-safe area). The relief is locked at ×1 and the Sun
+  there and says the way home from there ("Way home from here: ✔ 2.9 min (limit 30) · ✔ 14.4
+  Wh, 868.6 Wh spare after it", red line: 30 min from home, cyan: energy-safe area). At the
+  habitat it stays in the rehearsal: the storm alert ends, the player shrinks (the maneuver
+  says "Home"), and the card "Plan against the walk" has "Replay" (from the start, as a new
+  walk with its own summary) and "Exit"; Play (now "↺ Replay") and the space bar replay too,
+  "Summary" shows the card again after closing it, and the scrubber goes back. On touch
+  screens the player's buttons are at least 44 px tall. The relief is locked at ×1 and the Sun
   follows the EVA clock.
 - **Walk freely** (Plan section; works without a plan too): walk anywhere in the box in first
   person, like a game. It starts next to the habitat, facing the way the route leaves (with
@@ -148,7 +169,7 @@ check in the address the page does not ask for the best time to leave: the Sun s
 |---|---|
 | `shading` | is the terrain lit from the right side? (lit from N, S, E, W against the slopes) |
 | `route` | is the route 0.3 m above the drawn ground at relief ×1, ×3 and ×5, as long as the plan says, with the pins where the plan puts them? |
-| `rehearse` | the whole walk in steps of 0.1 s: eye height, turns, distance from the route, pauses at the stops; does leaving put everything back? |
+| `rehearse` | the whole walk in steps of 0.1 s: eye height, turns, distance from the route, pauses at the stops (and the clock line at each, "EVA …"); does leaving put everything back? |
 | `sun` | is the light where the Sun of Mars is at five times of the sol; morning against afternoon; does the Sun follow the rehearsal? |
 | `guide` | does the rehearsal carry the arm-tablet guide? banner and meters at start, middle and end; Return home, detour and solar storm (asks the server); the plan is back after exit |
 | `shadows` | rendered shadows against a ray march over the mesh, 07:00, 15:00 and 17:00 at ×1 and ×5 (about 12 s; 7 s in the low preset) |
@@ -266,7 +287,10 @@ already present and logs size and SHA-256 in `navcam_p3/_download_log.json`. Tes
 - "Copy link" writes to the clipboard only on `localhost` or https; from another machine of
   the local network the link is shown in a box to copy by hand.
 - "Save image" saves the canvas at its size on screen (times the pixel ratio, at most 2;
-  1.5 in the low preset): terrain, route and pins, without the panels, the card or the player.
+  1.5 in the low preset): terrain, route and pins, without the panels, the card or the player
+  (nor the storm's band and vignette, which are page elements).
+- The player's Sun line repeats the panel's Sun section as text (`rehearse.js` reads it after
+  the Sun moves); it follows that section's wording.
 - The pixel ratio is read when the page loads: moving the window to a screen with another
   density needs a reload.
 - Speed was measured on one laptop (60 fps in both presets); no tablet was measured.
