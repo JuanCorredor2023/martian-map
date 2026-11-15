@@ -136,6 +136,8 @@ python src/viz3d/build_terrain_assets.py
 python -m uvicorn api.main:app --port 8000
 ```
 
+**Optional, recommended: GDAL with conda.** The radio check (line of sight to the habitat) uses GDAL's viewshed when its Python bindings are installed, which pip cannot do on Windows: `conda install -c conda-forge gdal`. Without them the app computes the same viewshed with a NumPy port of GDAL's algorithm (identical cells on the real terrain, checked in `tests/gis/test_comms.py`), so everything works either way.
+
 `python -m api.check_data` lists anything missing, with the command to get it.
 
 </details>

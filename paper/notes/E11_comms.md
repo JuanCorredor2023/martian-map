@@ -1,6 +1,6 @@
 # E11 · Pair EVA and radio line of sight to the habitat
 
-Owner: JB (`@JavierBonilla2004`) · Issue: #45 (P6), #76 (integration) · PRs: #75 (library, note, figure), #77 (API), #82 (HUD and walk, Sebas) · Status: done · Last update: 2026-11-15
+Owner: JB (`@JavierBonilla2004`) · Issue: #45 (P6), #76 (integration) · PRs: #75 (library, note, figure), #77 (API), #82 (HUD and walk, Sebas), NumPy viewshed for installs without GDAL · Status: done · Last update: 2026-11-15
 
 ## Question
 Along a planned EVA route, where does the astronaut lose direct radio contact with the habitat, and how much of it does a partner walking behind on the same route recover as a relay?
@@ -11,6 +11,7 @@ Along a planned EVA route, where does the astronaut lose direct radio contact wi
 
 ## Method
 1. **Habitat coverage.** GDAL `ViewshedGenerate` on the DEM, observer at the habitat cell with the antenna 3 m above the ground, target an astronaut radio 1.7 m above each cell. The curvature coefficient is 1.0 (no refraction: Mars' atmosphere is too thin to bend the radio path noticeably). GDAL takes the radius from the DEM's CRS (Mars sphere, 3,396,190 m). Computed in memory, about 0.1 s per habitat, cached per habitat cell (`src/gis/comms.py: line_of_sight`).
+   **Without GDAL.** GDAL's Python bindings install with conda but not with a plain `pip install` on Windows, so a judge following the README had no radio. `comms.viewshed_numpy` is a NumPy port of GDAL 3.13's algorithm (`alg/viewshed/viewshed_executor.cpp`: normal output, Edge cell mode, curvature): each cell is lowered by the observer height and the curvature drop κ r²/2R, and the sweep goes outwards from the observer, hiding a cell when its height plus 1.7 m is below the horizon interpolated from its two neighbours on the observer's side. Same formulas in the same order; GDAL sweeps row by row, the port sweeps one ring at a time (octants with |dx| < |dy| by rows, the others by columns), which keeps every cell's inputs the same. The DEM is then read with rasterio. GDAL is used when present; the port otherwise.
 2. **Astronaut to astronaut.** An exact profile between the two positions: bilinear DEM samples every 0.5 m, with the same curvature bulge s (D − s) / 2R (`profile_los`).
 3. **One astronaut** (`check_route`): each route vertex has radio if its cell is in the viewshed. A step between two vertices counts as "no radio" if either end lacks it (conservative, ≤ 1 m per transition). Times come from E4's per-vertex `t_s`.
 4. **Pair** (`check_pair`): B walks `gap` metres behind A along the route. B waits at the habitat until A is `gap` m out, and A waits at the habitat at the end until B arrives. Every 1 m of progress the pair is **linked** if both see the habitat, or one sees it and the two see each other within the 100 m separation limit (relay).
@@ -32,6 +33,7 @@ Source: `src/gis/comms_figures.py` → `data/comms/summary.json`, figure [e11_fi
 ## Checks
 - **GDAL viewshed vs exact profile:** 99.6 % agreement on 5,000 random cells from the centre habitat (`checks.viewshed_vs_profile_agreement`). The rest are cells where the line grazes the ground.
 - **Mars radius in GDAL:** on a flat DEM in the team CRS with both ends 0.1 m high, the last visible cell is at 1,648 m. The Mars horizon 2√(2Rh) is 1,648.3 m; with Earth's radius it would be 2,258.9 m (`checks.horizon`).
+- **NumPy port = GDAL, cell for cell.** On the real DEM, 63 viewsheds (21 habitat cells: the centre and its neighbour, the four corners, edge cells and 12 random cells; antenna 1.7, 3 and 10 m) differ in **0** of 4,000,000 cells each; the port takes 0.18 s (median). With either engine the 120 min tour gives the same coverage (22.50 %), the same stretches without radio (575.3 m, 41 %, 12.8 min) and the same pair answer; rasterio and GDAL read the same DEM and geotransform (`src/gis/comms_engine_check.py` → `data/comms/engine_check.json`). The tests compare both engines on rough synthetic terrain from the centre, corners and edges (`test_numpy_port_gives_gdal_cells`, 24 cases) and run every radio test with each engine.
 - Synthetic tests (`tests/gis/test_comms.py`): flat ground is fully visible, a wall hides what is behind it, and a partner 20 m behind delays the loss of link by 20 m (±2 m).
 
 ## Limitations

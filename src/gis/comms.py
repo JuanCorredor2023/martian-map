@@ -5,6 +5,11 @@
   radio `astronaut_h` m above each cell. In memory (MEM driver), cached per habitat
   cell. Curvature coefficient 1.0 (no refraction: Mars' atmosphere is too thin to
   bend VHF/UHF noticeably); GDAL takes the radius from the DEM's sphere (3,396,190 m).
+- Without GDAL's Python bindings (a plain pip install has none on Windows), the same
+  viewshed is computed by `viewshed_numpy`, a NumPy port of GDAL 3.13's algorithm
+  (alg/viewshed/viewshed_executor.cpp: normal output, Edge cell mode, curvature) with
+  the same formulas in the same order, and the DEM is read with rasterio.
+  tests/gis/test_comms.py checks that both give the same cells where GDAL is installed.
 - Astronaut to astronaut: exact profile along the segment (bilinear DEM samples every
   0.5 m) with the same curvature bulge, so no viewshed per point.
 - check_route: where on a route the astronaut has no direct radio to the habitat.
@@ -20,9 +25,14 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
-from osgeo import gdal
 
-gdal.UseExceptions()
+try:                     # GDAL's bindings come with conda (conda-forge gdal), not pip
+    from osgeo import gdal
+    gdal.UseExceptions()
+except ImportError:      # NumPy port of the same viewshed, DEM read with rasterio
+    gdal = None
+
+ENGINE = "gdal" if gdal is not None else "numpy"
 
 ANTENNA_H = 3.0          # m, habitat antenna mast above the ground
 ASTRONAUT_H = 1.7        # m, suit radio above the ground (standing astronaut)
@@ -34,7 +44,12 @@ PROFILE_STEP_M = 0.5
 @lru_cache(maxsize=2)
 def dem(base_dir):
     """(elevation float64 array, geotransform) of data/base/dem_1m.tif."""
-    ds = gdal.Open(str(Path(base_dir) / "dem_1m.tif"))
+    path = Path(base_dir) / "dem_1m.tif"
+    if gdal is None:
+        import rasterio
+        with rasterio.open(path) as src:
+            return src.read(1).astype(np.float64), tuple(src.transform.to_gdal())
+    ds = gdal.Open(str(path))
     z = ds.GetRasterBand(1).ReadAsArray().astype(np.float64)
     return z, ds.GetGeoTransform()
 
@@ -55,8 +70,84 @@ def cells_of(gt, x, y, shape):
     return row, col
 
 
+def viewshed_numpy(z, gt, row, col, antenna_h, astronaut_h, radius=MARS_RADIUS_M,
+                   curv_coeff=CURV_COEFF):
+    """bool[rows, cols] visibility from cell (row, col), as GDAL ViewshedGenerate.
+
+    Port of GDAL 3.13 (normal output, GVM_Edge, curvature, no distance limits). Each
+    cell's height is lowered by curv_coeff * r^2 / (2 R) and by the observer's height;
+    then the sweep goes outwards from the observer. A cell is hidden when its height
+    plus `astronaut_h` is below the horizon dfZ interpolated from the two cells next to
+    it on the observer's side, and it carries max(height, dfZ) outwards. GDAL sweeps
+    row by row; a cell off the diagonals depends only on cells one step closer in its
+    own octant, so here the octants with |dx| < |dy| advance by rows and those with
+    |dx| > |dy| by columns, one ring k at a time, vectorised along the ring."""
+    fac = curv_coeff / (radius * 2.0)
+    z_obs = antenna_h + z[row, col]
+    yy = (np.arange(z.shape[0]) - row) * gt[5]
+    xx = (np.arange(z.shape[1]) - col) * gt[1]
+    h = z - (fac * (xx[None, :] ** 2 + yy[:, None] ** 2) + z_obs)
+    vis = np.ones(z.shape, dtype=bool)
+
+    def put(cur, dfz):                    # GDAL setOutputNormal: visibility, then max
+        return ~(cur + astronaut_h < dfz), np.where(cur < dfz, dfz, cur)
+
+    # The observer's row and column (GDAL: first line and initial position): CalcHeightLine.
+    a_rows = {}
+    for sy, sx, axis in ((0, 1, "r+"), (0, -1, "r-"), (1, 0, "c+"), (-1, 0, "c-")):
+        n = (z.shape[1] - col if sx > 0 else col + 1) if sy == 0 else (z.shape[0] - row if sy > 0 else row + 1)
+        line = np.empty(n)
+        line[0] = h[row, col]
+        for k in range(1, n):
+            r, c = row + sy * k, col + sx * k
+            cur = h[r, c]
+            if k == 1:
+                dfz = cur                    # next to the observer: visible
+            else:
+                dfz = line[k - 1] * k / (k - 1)
+            vis[r, c] = not (cur + astronaut_h < dfz)
+            line[k] = dfz if cur < dfz else cur
+        a_rows[axis] = line
+    vis[row, col] = True
+    # The four quadrants, each seen from the observer: a[i, j] is the carried height
+    # i rows and j columns away; row 0 and column 0 are the observer's row and column.
+    for (sy, sx) in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+        rs = np.arange(row, z.shape[0]) if sy > 0 else np.arange(row, -1, -1)
+        cs = np.arange(col, z.shape[1]) if sx > 0 else np.arange(col, -1, -1)
+        hq = h[np.ix_(rs, cs)]
+        ni, nj = hq.shape
+        a = np.full(hq.shape, np.nan)
+        vq = np.ones(hq.shape, dtype=bool)
+        a[0, :] = a_rows["r+" if sx > 0 else "r-"]
+        a[:, 0] = a_rows["c+" if sy > 0 else "c-"]
+        for k in range(1, max(ni, nj)):
+            if k < ni and k < nj:            # diagonal |dx| == |dy| == k
+                cur = hq[k, k]
+                dfz = cur if k == 1 else a[k - 1, k - 1] * k / (k - 1)
+                vq[k, k] = not (cur + astronaut_h < dfz)
+                a[k, k] = dfz if cur < dfz else cur
+            if k < ni and k > 1:             # row k, 0 < j < k: |dx| < |dy|
+                j = np.arange(1, min(k, nj))
+                if j.size:
+                    dfz = (a[k - 1, j - 1] * j + a[k - 1, j] * (k - j)) / (k - 1)
+                    vq[k, j], a[k, j] = put(hq[k, j], dfz)
+            if k < nj and k > 1:             # column k, 0 < i < k: |dx| > |dy|
+                i = np.arange(1, min(k, ni))
+                if i.size:
+                    dfz = (a[i - 1, k - 1] * i + a[i, k - 1] * (k - i)) / (k - 1)
+                    vq[i, k], a[i, k] = put(hq[i, k], dfz)
+        inner = vq[1:, 1:]
+        vis[np.ix_(rs[1:], cs[1:])] = inner
+    return vis
+
+
 @lru_cache(maxsize=16)
 def _viewshed(base_dir, row, col, antenna_h, astronaut_h):
+    if gdal is None:
+        z, gt = dem(base_dir)
+        vis = viewshed_numpy(z, gt, row, col, antenna_h, astronaut_h)
+        vis.setflags(write=False)
+        return vis
     ds = gdal.Open(str(Path(base_dir) / "dem_1m.tif"))
     gt = ds.GetGeoTransform()
     ox, oy = gt[0] + (col + 0.5) * gt[1], gt[3] + (row + 0.5) * gt[5]
