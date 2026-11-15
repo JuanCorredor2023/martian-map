@@ -34,7 +34,7 @@ The reason is that walking back is not walking out: coming back can cost half as
 | --- | --- | --- |
 | **Planner (HUD)** `/` | Habitat crew | Layers (HiRISE photo, slope, steep cells, sand, boulders, walking cost, radio, night temperature, rover photos). Pick science stations. Set time, energy and O₂ limits. Get the best tour, then rehearse it with the safety lines on the map. |
 | **Arm tablet guide** `/guide.html` | Astronaut | Turn-by-turn voice, "can I get back?" meters, a way home on demand, re-routing when off route, a solar-storm return, and a plan-against-the-walk summary. |
-| **3D rehearsal** `/3d/` | Everyone | The 1 m terrain at eye height under the Sun of the EVA's sol, with the route, the map layers and 383 Curiosity Navcam photos at their real camera poses (the photo catalogue is built from the raw images, see [`web/3d/README.md`](web/3d/README.md); without it the rest works). |
+| **3D rehearsal** `/3d/` | Everyone | The 1 m terrain at eye height under the Sun of the EVA's sol, with the route, the map layers and 383 Curiosity Navcam photos at their real camera poses (release `rover-photos-v1`, built from the raw images as described in [`web/3d/README.md`](web/3d/README.md); without it the rest works). |
 | **Wrist card** `/card.html` | Astronaut | A printable step list with turn-back rules and a QR code to the guide. |
 
 <table><tr>
@@ -88,17 +88,35 @@ We used Curiosity's real drive through this box (5,247 localized poses, sols 436
 
 ## Quick start
 
-**Requirements:** Python 3.12, the [GitHub CLI](https://cli.github.com) (`gh`) to download the data, and Node.js only for the web tests. Everything runs locally and needs no internet once the data is downloaded.
+**Requirements:** Python 3.12 and about 3 GB of free disk. Node.js only for the web tests. Everything runs locally and needs no internet once the data is downloaded.
 
 ```bash
 git clone https://github.com/JuanCorredor2023/martian-map.git && cd martian-map
+make demo
+```
+
+`make demo` installs the Python packages (into `.venv`, unless a virtualenv or conda environment is active), downloads all the data (about 0.8 GB: every layer, the 3D terrain and the 383 rover photos), starts the server and opens the landing page. Later, `make run` starts it again. **Without make** (Windows): `python tools/demo.py demo`, and the same for every command below.
+
+| Command | What it does |
+| --- | --- |
+| `make doctor` | Checks Python, the packages, the data, the disk and the port, and says how to fix anything missing |
+| `make setup` | Installs the Python packages |
+| `make data` | Downloads every data release and builds the 3D assets; run it again to resume |
+| `make run` | Starts the app and opens http://localhost:8000/home/ (`make run PORT=8001` for another port; Ctrl+C stops it) |
+| `make test` | Python and JavaScript tests |
+
+The data is not in git: each piece is a release on the [Releases](https://github.com/JuanCorredor2023/martian-map/releases) page, unzipped into `data/<folder>/`. Only `base`, `tiles` and `e2` are required; without the others, the matching layer or panel switches off. `make data` uses the GitHub CLI (`gh`, signed in) when the repository is private.
+
+<details><summary>Manual steps (without the script)</summary>
+
+```bash
 python -m pip install -r api/requirements.txt
 ```
 
-**Data** (about 950 MB, not in git; each release is a zip you can also download from the [Releases](https://github.com/JuanCorredor2023/martian-map/releases) page). On Windows PowerShell:
+On Windows PowerShell:
 
 ```powershell
-foreach ($r in @("base-grid-v2:base","tiles-v2:tiles","e2-trajectory-v1:e2","e12-dose-v1:e12","e8-v0:e8","e1-sand-v1:e1","e9-rocks-v1:e9","minerals-v1:minerals","themis-v1:thermal","rems-v1:rems")) {
+foreach ($r in @("base-grid-v2:base","tiles-v2:tiles","e2-trajectory-v1:e2","e12-dose-v1:e12","e8-v0:e8","e1-sand-v1:e1","e9-rocks-v1:e9","minerals-v1:minerals","themis-v1:thermal","rems-v1:rems","rover-photos-v1:tiles\3d\photos")) {
   $tag, $dir = $r.Split(":"); $zip = $tag.Replace("-", "_").Replace(".", "_") + ".zip"
   gh release download $tag --dir data; Expand-Archive "data\$zip" "data\$dir" -Force; Remove-Item "data\$zip" }
 gh release download stations-v1 --dir data\stations
@@ -109,21 +127,18 @@ python src/viz3d/build_terrain_assets.py
 On macOS or Linux:
 
 ```bash
-for r in base-grid-v2:base tiles-v2:tiles e2-trajectory-v1:e2 e12-dose-v1:e12 e8-v0:e8 e1-sand-v1:e1 e9-rocks-v1:e9 minerals-v1:minerals themis-v1:thermal rems-v1:rems; do
+for r in base-grid-v2:base tiles-v2:tiles e2-trajectory-v1:e2 e12-dose-v1:e12 e8-v0:e8 e1-sand-v1:e1 e9-rocks-v1:e9 minerals-v1:minerals themis-v1:thermal rems-v1:rems rover-photos-v1:tiles/3d/photos; do
   tag=${r%%:*}; dir=${r##*:}; zip=$(echo "$tag" | tr '.-' '__').zip
   gh release download "$tag" --dir data && unzip -oq "data/$zip" -d "data/$dir" && rm "data/$zip"; done
 gh release download stations-v1 --dir data/stations
 gh release download stations-e8-v0 --dir data/stations
 python src/viz3d/build_terrain_assets.py
-```
-
-`python -m api.check_data` lists anything missing, with the command to get it. Only `base`, `tiles` and `e2` are required; without the others, the matching layer or panel switches off.
-
-**Run:**
-
-```bash
 python -m uvicorn api.main:app --port 8000
 ```
+
+`python -m api.check_data` lists anything missing, with the command to get it.
+
+</details>
 
 Open **http://localhost:8000/**:
 1. **Plan the walk** in step 3. The first plan takes 10–30 s while the terrain graph is built.
@@ -133,7 +148,7 @@ User guides with annotated screenshots of every button: [2D planner](docs/user_g
 
 `docs/demo.md` is a 6-minute walkthrough. The same server also has a **landing page**, **http://localhost:8000/home/** (what the app is, in one page), and the demo step by step with screenshots, **http://localhost:8000/home/demo.html**.
 
-**Tests:** `python -m pytest tests -q` (most run without the data) and `node --test tests/web tests/viz3d`.
+**Tests:** `make test`, or `python -m pytest tests -q` (most run without the data) and `node --test tests/web tests/viz3d`.
 
 ## Data
 

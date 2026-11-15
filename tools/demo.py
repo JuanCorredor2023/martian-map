@@ -47,6 +47,8 @@ RELEASES = [
      "Curiosity's drive"),
     ("stations-v1", ["stations_manual.gpkg", "stations_rubric.json"], "stations",
      "stations_manual.gpkg", False, "the science stations"),
+    ("stations-e8-v0", ["stations_e8.gpkg", "stations_e8_preview.png"], "stations",
+     "stations_e8.gpkg", False, "the E8 contact stations (rock next to sand)"),
     ("e12-dose-v1", ["e12_dose_v1.zip"], "e12", "sep_alert.json", False,
      "the radiation panel and the storm alarm"),
     ("e8-v0", ["e8_v0.zip"], "e8", "sand.tif", False, "the sand layer"),
@@ -383,8 +385,18 @@ def demo(args):
 
 # ---- test ------------------------------------------------------------------------
 
+RESEARCH_PACKAGES = {"torch": "torch", "osgeo": "GDAL", "threadpoolctl": "threadpoolctl"}
+
+
 def test(args):
-    rc = subprocess.run([sys.executable, "-m", "pytest", "tests", "-q"], cwd=REPO).returncode
+    # A few research tests need packages the app does not (torch, GDAL, threadpoolctl):
+    # without them those files cannot load, so keep going and say why.
+    absent = [pip for mod, pip in RESEARCH_PACKAGES.items() if importlib.util.find_spec(mod) is None]
+    if absent:
+        print(f"Not installed: {', '.join(absent)}. The research tests that need them will show "
+              "as collection errors; the app's tests still run.", flush=True)
+    rc = subprocess.run([sys.executable, "-m", "pytest", "tests", "-q",
+                         "--continue-on-collection-errors"], cwd=REPO).returncode
     if shutil.which("node"):
         rc |= subprocess.run(["node", "--test", "tests/web", "tests/viz3d"], cwd=REPO).returncode
     else:
